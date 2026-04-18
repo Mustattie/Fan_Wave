@@ -1,0 +1,126 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "retry": "Try Again",
+    "save": "Save",
+    "cancel": "Cancel",
+    "done": "Done",
+    "search": "Search...",
+    "share": "Share",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back",
+    "seeAll": "See All",
+    "noConnection": "No internet connection"
+  },
+  "auth": {
+    "signIn": "Sign In",
+    "signUp": "Create Account",
+    "signOut": "Sign Out",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "displayName": "Display Name",
+    "forgotPassword": "Forgot password?",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?",
+    "signInFailed": "Sign In Failed",
+    "signUpFailed": "Sign Up Failed",
+    "checkEmail": "Check your email",
+    "confirmationSent": "We sent a confirmation link to your email address.",
+    "missingFields": "Please fill in all fields.",
+    "invalidEmail": "Please enter a valid email address.",
+    "weakPassword": "Password must be at least 8 characters.",
+    "passwordMismatch": "Passwords do not match.",
+    "wrongCredentials": "Incorrect email or password. Please try again.",
+    "connectionError": "Unable to sign in. Please check your connection and try again.",
+    "tagline": "Your crew, any city, every game."
+  },
+  "home": {
+    "title": "Game Day",
+    "gamesSection": "Today's Games",
+    "partiesSection": "Watch Parties Near You",
+    "groupsSection": "Your Crew",
+    "noGames": "No games on deck today — check back tomorrow!",
+    "noParties": "No watch parties nearby yet — rally your crew!",
+    "noGroups": "Find your crew — join a fan group!",
+    "createParty": "Create Watch Party"
+  },
+  "discover": {
+    "title": "Discover",
+    "groups": "Fan Groups",
+    "parties": "Watch Parties This Week",
+    "noGroups": "No groups here yet — be the first to start one!",
+    "noParties": "No watch parties yet — host the first one!"
+  },
+  "clips": {
+    "title": "Clips",
+    "forYou": "For You",
+    "following": "Following",
+    "trending": "Trending",
+    "noClips": "No highlights yet — drop the first one!",
+    "share": "Share"
+  },
+  "groups": {
+    "title": "Groups",
+    "myGroups": "My Groups",
+    "suggested": "Suggested Groups",
+    "noGroups": "Your crew awaits — join a fan group!",
+    "noSuggested": "No groups in your area yet — start one!",
+    "createGroup": "Create Group"
+  },
+  "profile": {
+    "title": "Profile",
+    "editProfile": "Edit Profile",
+    "myTeams": "My Teams",
+    "rsvpHistory": "RSVP History",
+    "myClips": "My Clips",
+    "myStats": "My Stats",
+    "notifications": "Notifications",
+    "signOut": "Sign Out"
+  },
+  "worldCup": {
+    "title": "World Cup 2026",
+    "subtitle": "USA · Canada · Mexico · June 11 - July 19",
+    "schedule": "Schedule",
+    "watchParties": "Watch Parties",
+    "fanGroups": "Fan Groups",
+    "followTeams": "Follow World Cup Teams",
+    "noParties": "No World Cup watch parties yet",
+    "beFirst": "Be the first to create one!",
+    "noGroups": "No fan groups yet — create the first one!",
+    "noTeams": "No teams on your roster yet",
+    "followToUnlock": "Follow your squads to unlock the full experience"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "disabled": "Notifications are disabled",
+    "enableInSettings": "Tap to enable in Settings",
+    "scoreUpdates": "Score Updates",
+    "scoreUpdatesDesc": "Goals, touchdowns, and score changes for your teams",
+    "gameReminders": "Game Reminders",
+    "gameRemindersDesc": "30 minutes before your teams play",
+    "partyReminders": "Watch Party Reminders",
+    "partyRemindersDesc": "1 hour before parties you're attending",
+    "groupActivity": "Group Activity",
+    "groupActivityDesc": "New messages in your fan groups",
+    "momentAlerts": "Moment Alerts",
+    "momentAlertsDesc": "Big plays and moments from games you follow",
+    "newClips": "New Clips",
+    "newClipsDesc": "When someone posts a highlight in your groups"
+  },
+  "tiers": {
+    "lite": "Stay in the Loop",
+    "liteDesc": "Scores and top plays, no noise",
+    "social": "Join the Tribe",
+    "socialDesc": "Chat, parties, and your crew's best clips",
+    "allIn": "Live the Game",
+    "allInDesc": "Every alert, every moment, nothing missed"
+  },
+  "empty": {
+    "myClips": "Your highlights reel is empty — capture the moment!",
+    "myTeams": "No teams on your roster yet",
+    "myTeamsSubtitle": "Follow your squads to unlock the full experience",
+    "rsvpHistory": "No watch parties on your calendar yet — find your spot!"
+  }
+}

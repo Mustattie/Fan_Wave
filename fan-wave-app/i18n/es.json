@@ -1,0 +1,126 @@
+{
+  "common": {
+    "loading": "Cargando...",
+    "retry": "Intentar de nuevo",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "done": "Listo",
+    "search": "Buscar...",
+    "share": "Compartir",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "back": "Volver",
+    "seeAll": "Ver todo",
+    "noConnection": "Sin conexión a internet"
+  },
+  "auth": {
+    "signIn": "Iniciar sesión",
+    "signUp": "Crear cuenta",
+    "signOut": "Cerrar sesión",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "confirmPassword": "Confirmar contraseña",
+    "displayName": "Nombre de usuario",
+    "forgotPassword": "¿Olvidaste tu contraseña?",
+    "noAccount": "¿No tienes cuenta?",
+    "hasAccount": "¿Ya tienes cuenta?",
+    "signInFailed": "Error al iniciar sesión",
+    "signUpFailed": "Error al crear cuenta",
+    "checkEmail": "Revisa tu correo",
+    "confirmationSent": "Te enviamos un enlace de confirmación a tu correo.",
+    "missingFields": "Por favor completa todos los campos.",
+    "invalidEmail": "Ingresa un correo electrónico válido.",
+    "weakPassword": "La contraseña debe tener al menos 8 caracteres.",
+    "passwordMismatch": "Las contraseñas no coinciden.",
+    "wrongCredentials": "Correo o contraseña incorrectos. Intenta de nuevo.",
+    "connectionError": "No se pudo iniciar sesión. Verifica tu conexión e intenta de nuevo.",
+    "tagline": "Tu crew, cualquier ciudad, cada partido."
+  },
+  "home": {
+    "title": "Día de juego",
+    "gamesSection": "Partidos de hoy",
+    "partiesSection": "Watch Parties cerca",
+    "groupsSection": "Tu crew",
+    "noGames": "No hay partidos hoy — ¡vuelve mañana!",
+    "noParties": "No hay watch parties cerca — ¡reúne a tu crew!",
+    "noGroups": "Encuentra tu crew — ¡únete a un grupo!",
+    "createParty": "Crear Watch Party"
+  },
+  "discover": {
+    "title": "Descubrir",
+    "groups": "Grupos de fans",
+    "parties": "Watch Parties esta semana",
+    "noGroups": "No hay grupos aquí — ¡sé el primero!",
+    "noParties": "No hay watch parties — ¡organiza la primera!"
+  },
+  "clips": {
+    "title": "Clips",
+    "forYou": "Para ti",
+    "following": "Siguiendo",
+    "trending": "Tendencias",
+    "noClips": "No hay clips aún — ¡sube el primero!",
+    "share": "Compartir"
+  },
+  "groups": {
+    "title": "Grupos",
+    "myGroups": "Mis grupos",
+    "suggested": "Grupos sugeridos",
+    "noGroups": "Tu crew te espera — ¡únete a un grupo!",
+    "noSuggested": "No hay grupos en tu zona — ¡crea uno!",
+    "createGroup": "Crear grupo"
+  },
+  "profile": {
+    "title": "Perfil",
+    "editProfile": "Editar perfil",
+    "myTeams": "Mis equipos",
+    "rsvpHistory": "Historial RSVP",
+    "myClips": "Mis clips",
+    "myStats": "Mis estadísticas",
+    "notifications": "Notificaciones",
+    "signOut": "Cerrar sesión"
+  },
+  "worldCup": {
+    "title": "Copa del Mundo 2026",
+    "subtitle": "EUA · Canadá · México · Junio 11 - Julio 19",
+    "schedule": "Calendario",
+    "watchParties": "Watch Parties",
+    "fanGroups": "Grupos de fans",
+    "followTeams": "Sigue equipos del Mundial",
+    "noParties": "No hay watch parties del Mundial aún",
+    "beFirst": "¡Sé el primero en crear una!",
+    "noGroups": "No hay grupos aún — ¡crea el primero!",
+    "noTeams": "Aún no sigues equipos",
+    "followToUnlock": "Sigue a tus equipos para desbloquear la experiencia completa"
+  },
+  "notifications": {
+    "title": "Notificaciones",
+    "disabled": "Las notificaciones están desactivadas",
+    "enableInSettings": "Toca para activar en Configuración",
+    "scoreUpdates": "Actualizaciones de marcador",
+    "scoreUpdatesDesc": "Goles, touchdowns y cambios de marcador de tus equipos",
+    "gameReminders": "Recordatorios de partidos",
+    "gameRemindersDesc": "30 minutos antes de que jueguen tus equipos",
+    "partyReminders": "Recordatorios de Watch Parties",
+    "partyRemindersDesc": "1 hora antes de las fiestas a las que asistirás",
+    "groupActivity": "Actividad de grupos",
+    "groupActivityDesc": "Nuevos mensajes en tus grupos de fans",
+    "momentAlerts": "Alertas de momentos",
+    "momentAlertsDesc": "Grandes jugadas y momentos de partidos que sigues",
+    "newClips": "Nuevos clips",
+    "newClipsDesc": "Cuando alguien sube un highlight en tus grupos"
+  },
+  "tiers": {
+    "lite": "Mantente al tanto",
+    "liteDesc": "Marcadores y mejores jugadas, sin ruido",
+    "social": "Únete a la tribu",
+    "socialDesc": "Chat, fiestas y los mejores clips de tu crew",
+    "allIn": "Vive el partido",
+    "allInDesc": "Cada alerta, cada momento, sin perderte nada"
+  },
+  "empty": {
+    "myClips": "Tu reel de highlights está vacío — ¡captura el momento!",
+    "myTeams": "Aún no sigues equipos",
+    "myTeamsSubtitle": "Sigue a tus equipos para desbloquear la experiencia completa",
+    "rsvpHistory": "No hay watch parties en tu calendario — ¡encuentra tu lugar!"
+  }
+}

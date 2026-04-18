@@ -1,0 +1,80 @@
+{
+  "expo": {
+    "name": "Fan Wave",
+    "slug": "fan-wave-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "fanwave",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f0f1a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fanwave.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Fan Wave needs camera access to record highlights and update your profile photo.",
+        "NSPhotoLibraryUsageDescription": "Fan Wave needs photo access to share highlights and set your profile photo.",
+        "NSLocationWhenInUseUsageDescription": "Fan Wave uses your location to find watch parties and fan groups near you."
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#0f0f1a"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.fanwave.app",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "VIBRATE"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-video",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#6c5ce7"
+        }
+      ],
+      "expo-localization"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "owner": "dataking263",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/c620edb5-8d1b-437c-9df0-c728c4d0da2c",
+      "checkAutomatically": "ON_ERROR_RECOVERY",
+      "fallbackToCacheTimeout": 0
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c620edb5-8d1b-437c-9df0-c728c4d0da2c"
+      }
+    }
+  }
+}
