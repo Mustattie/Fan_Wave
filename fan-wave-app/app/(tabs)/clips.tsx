@@ -14,8 +14,10 @@ import {
   ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Heart, MessageCircle, Repeat2, Share2, UserPlus, Download } from 'lucide-react-native';
+import { Heart, MessageCircle, Repeat2, Share2, UserPlus, Download, Plus, Trash2 } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import { SportPillRow } from '@/components/SportPill';
 import { supabase } from '@/lib/supabase';
@@ -41,8 +43,10 @@ function ClipCard({
   onComment,
   onFollow,
   onExport,
+  onDelete,
   isVisible,
   isFollowingPoster,
+  isOwner,
 }: {
   clip: ClipDisplay;
   isLiked: boolean;
@@ -51,8 +55,10 @@ function ClipCard({
   onComment: () => void;
   onFollow: (userId: string) => void;
   onExport: (clip: ClipDisplay) => void;
+  onDelete: (clip: ClipDisplay) => void;
   isVisible: boolean;
   isFollowingPoster: boolean;
+  isOwner: boolean;
 }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const lastTapRef = useRef<number>(0);
@@ -203,6 +209,12 @@ function ClipCard({
             <Download size={16} color={Colors.dark.textSecondary} />
             <Text style={styles.actionText}>Save</Text>
           </TouchableOpacity>
+          {isOwner && (
+            <TouchableOpacity style={styles.actionItem} onPress={() => onDelete(clip)}>
+              <Trash2 size={16} color={Colors.dark.error} />
+              <Text style={[styles.actionText, { color: Colors.dark.error }]}>Delete</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </View>
@@ -210,6 +222,7 @@ function ClipCard({
 }
 
 export default function ClipsScreen() {
+  const router = useRouter();
   const [activeFilter, setActiveFilter] = useState('foryou');
   const [clips, setClips] = useState<ClipDisplay[]>([]);
   const [loading, setLoading] = useState(true);
@@ -217,6 +230,13 @@ export default function ClipsScreen() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setCurrentUserId(data.user?.id ?? null);
+    });
+  }, []);
   const [likedClipIds, setLikedClipIds] = useState<Set<string>>(new Set());
   const [visibleClipIds, setVisibleClipIds] = useState<Set<string>>(new Set());
 
@@ -388,7 +408,37 @@ export default function ClipsScreen() {
 
   const handleShare = useCallback(async (clip: ClipDisplay) => {
     const { shareClip } = await import('@/lib/sharing');
-    await shareClip({ id: clip.id, title: clip.title });
+    await shareClip({
+      id: clip.id,
+      title: clip.title,
+      mediaUrl: clip.videoUrl,
+    });
+  }, []);
+
+  const handleDelete = useCallback((clip: ClipDisplay) => {
+    Alert.alert(
+      'Delete Clip',
+      `Delete "${clip.title}"? This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            // Optimistic remove — RLS `media_clips_delete` scopes to auth.uid,
+            // so the DB will reject if somehow not the owner.
+            setClips((prev) => prev.filter((c) => c.id !== clip.id));
+            const { error } = await supabase
+              .from('media_clips')
+              .delete()
+              .eq('id', clip.id);
+            if (error) {
+              Alert.alert('Could not delete', error.message);
+            }
+          },
+        },
+      ],
+    );
   }, []);
 
   const handleComment = useCallback(() => {
@@ -414,11 +464,13 @@ export default function ClipsScreen() {
         onComment={handleComment}
         onFollow={handleFollow}
         onExport={handleExport}
+        onDelete={handleDelete}
         isVisible={visibleClipIds.has(item.id)}
         isFollowingPoster={followedUserIds.has(item.userId)}
+        isOwner={!!currentUserId && item.userId === currentUserId}
       />
     ),
-    [likedClipIds, handleLike, handleShare, handleComment, visibleClipIds]
+    [likedClipIds, handleLike, handleShare, handleComment, visibleClipIds, handleDelete, currentUserId, handleExport, handleFollow, followedUserIds]
   );
 
   const renderFooter = useCallback(() => {
@@ -440,6 +492,71 @@ export default function ClipsScreen() {
       </View>
     );
   }, [loading]);
+
+  const handleUploadPress = useCallback(() => {
+    Alert.alert(
+      'New Clip',
+      'Add a highlight to the feed.',
+      [
+        {
+          text: 'Record new',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert(
+                'Camera permission denied',
+                'Enable camera access in Settings to record clips.'
+              );
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+              videoMaxDuration: 60,
+              quality: 0.8,
+            });
+            if (!result.canceled && result.assets[0]?.uri) {
+              const asset = result.assets[0];
+              router.push({
+                pathname: '/create-clip',
+                params: {
+                  videoUri: asset.uri,
+                  durationMs: String(asset.duration ?? ''),
+                },
+              });
+            }
+          },
+        },
+        {
+          text: 'Choose from library',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert(
+                'Library permission denied',
+                'Enable photo library access in Settings to pick a clip.'
+              );
+              return;
+            }
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+              quality: 0.8,
+            });
+            if (!result.canceled && result.assets[0]?.uri) {
+              const asset = result.assets[0];
+              router.push({
+                pathname: '/create-clip',
+                params: {
+                  videoUri: asset.uri,
+                  durationMs: String(asset.duration ?? ''),
+                },
+              });
+            }
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  }, [router]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -483,6 +600,14 @@ export default function ClipsScreen() {
           viewabilityConfig={viewabilityConfig}
         />
       )}
+
+      <TouchableOpacity
+        style={styles.uploadFab}
+        onPress={handleUploadPress}
+        accessibilityLabel="Post a new clip"
+      >
+        <Plus size={28} color="#fff" />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -511,6 +636,22 @@ const styles = StyleSheet.create({
   pillContainer: {
     paddingHorizontal: 16,
     marginBottom: 8,
+  },
+  uploadFab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.dark.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 6,
   },
   listContent: {
     paddingHorizontal: 16,

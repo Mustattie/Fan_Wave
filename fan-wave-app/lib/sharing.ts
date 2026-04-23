@@ -33,9 +33,41 @@ async function shareContent(options: ShareOptions, analyticsType: string, analyt
 
 /**
  * Share a media clip via native share sheet.
+ *
+ * Prefers sharing the video file (via expo-sharing) so Instagram, TikTok,
+ * WhatsApp, etc. show up as targets with full video-handling support.
+ * Falls back to text+URL share (Share.share) if the file can't be fetched.
  */
-export async function shareClip(clip: { id: string; title: string; description?: string }): Promise<boolean> {
+export async function shareClip(clip: {
+  id: string;
+  title: string;
+  description?: string;
+  mediaUrl?: string;
+}): Promise<boolean> {
   const deepLink = `${DEEP_LINK_BASE}/clip/${clip.id}`;
+
+  if (clip.mediaUrl) {
+    try {
+      const Sharing = await import('expo-sharing');
+      if (await Sharing.isAvailableAsync()) {
+        const FS = await import('expo-file-system/legacy');
+        const localPath = `${FS.cacheDirectory}fanwave_share_${clip.id}.mp4`;
+        const download = await FS.downloadAsync(clip.mediaUrl, localPath);
+        if (download.status === 200) {
+          await Sharing.shareAsync(download.uri, {
+            mimeType: 'video/mp4',
+            dialogTitle: clip.title,
+            UTI: 'public.mpeg-4',
+          });
+          trackEvent('content_shared', 'clip', { id: clip.id, platform: 'file' });
+          return true;
+        }
+      }
+    } catch {
+      // Fall through to text/URL share below.
+    }
+  }
+
   return shareContent(
     {
       title: clip.title,

@@ -4,7 +4,12 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
+import { LogBox } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+
+LogBox.ignoreLogs([
+  "The action 'GO_BACK' was not handled by any navigator",
+]);
 import { Session } from '@supabase/supabase-js';
 import { supabase, setupAuthDeepLinkHandler } from '@/lib/supabase';
 import { registerForPushNotifications, clearPushToken, setupNotificationResponseListener } from '@/lib/notifications';
@@ -126,6 +131,23 @@ export default function RootLayout() {
       setOnboardingChecked(true);
     });
 
+    // Server-truth onboarding check: users.onboarded_at is the authoritative
+    // signal (set in onboarding-city, back-filled by migration 020). Survives
+    // AsyncStorage wipes (reinstall, device switch, Expo Go cache clear).
+    // Note: users.auth_id links to auth.uid; users.id is separate.
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return;
+      const { data } = await supabase
+        .from('users')
+        .select('onboarded_at')
+        .eq('auth_id', user.id)
+        .maybeSingle();
+      if (data?.onboarded_at) {
+        setOnboardingComplete(true);
+        AsyncStorage.setItem('onboarding_complete', 'true').catch(() => {});
+      }
+    }).catch(() => {});
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session);
@@ -200,6 +222,10 @@ export default function RootLayout() {
             options={{ presentation: 'modal', headerShown: false }}
           />
           <Stack.Screen name="my-clips" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="create-clip"
+            options={{ presentation: 'modal', headerShown: false }}
+          />
           <Stack.Screen name="rsvp-history" options={{ headerShown: false }} />
           <Stack.Screen name="my-teams" options={{ headerShown: false }} />
           <Stack.Screen name="notification-settings" options={{ headerShown: false }} />

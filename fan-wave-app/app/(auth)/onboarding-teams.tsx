@@ -37,7 +37,8 @@ const SPORT_NAME_TO_KEY: Record<string, string> = {
 
 export default function OnboardingTeamsScreen() {
   const router = useRouter();
-  const { selectedSports } = useLocalSearchParams<{ selectedSports: string }>();
+  const { selectedSports, mode } = useLocalSearchParams<{ selectedSports: string; mode?: string }>();
+  const isEditMode = mode === 'edit';
 
   const [allTeams, setAllTeams] = useState<Team[]>([]);
   const [loadingTeams, setLoadingTeams] = useState(true);
@@ -154,6 +155,11 @@ export default function OnboardingTeamsScreen() {
       }
     } catch {
       // Supabase unavailable — local cache still works
+    }
+
+    if (isEditMode) {
+      router.back();
+      return;
     }
 
     router.push({

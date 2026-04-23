@@ -22,6 +22,7 @@ import {
   Edit3,
   BarChart3,
   Share2,
+  Trophy,
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
@@ -134,7 +135,9 @@ export default function ProfileScreen() {
   };
 
   const handleMenuPress = (label: string) => {
-    if (label === 'My Teams') {
+    if (label === 'My Sports') {
+      router.push('/(auth)/onboarding-sports' as any);
+    } else if (label === 'My Teams') {
       router.push('/my-teams' as any);
     } else if (label === 'My Clips') {
       router.push('/my-clips' as any);
@@ -171,6 +174,7 @@ export default function ProfileScreen() {
 
   const menuItems = [
     { icon: Edit3, label: 'Edit Profile', color: Colors.dark.text },
+    { icon: Trophy, label: 'My Sports', color: Colors.dark.text },
     { icon: Star, label: 'My Teams', color: Colors.dark.text },
     { icon: Ticket, label: 'RSVP History', color: Colors.dark.text },
     { icon: Video, label: 'My Clips', color: Colors.dark.text },

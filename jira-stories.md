@@ -1625,6 +1625,125 @@ Prepare all assets and metadata needed for App Store and Google Play Store submi
 
 ---
 
+### FW-80: Invite watch-party guests from phone contacts
+**Type:** Story · **Points:** 3 · **Priority:** Medium
+**Assignee:** Frontend Dev
+**Epic:** FW-E3 Watch Parties
+
+**Description:**
+On the create-private-watch-party flow, replace the manual "Name + phone number" entry as the primary path with a picker that pulls invitees directly from the user's phone contacts (iOS Contacts / Android Contacts). Keep manual entry as a secondary option for friends not in the address book.
+
+**Acceptance Criteria:**
+- [ ] When visibility is set to "Private", an "Add from Contacts" button appears above the manual form
+- [ ] Tapping it requests OS contacts permission once; on deny, user sees a clear message and the manual form remains usable
+- [ ] Permission-granted path opens a modal listing contacts with phone numbers, sorted alphabetically, with a search bar
+- [ ] Tapping a contact with one phone number adds it to the invite list immediately
+- [ ] Tapping a contact with multiple phone numbers prompts to pick one via an action sheet
+- [ ] "Enter manually" toggle reveals the existing name+phone form
+- [ ] Duplicate-phone entries are silently deduped
+- [ ] Selected contacts save to `watch_party_invites` with `{name, phone}` (unchanged schema)
+- [ ] `NSContactsUsageDescription` (iOS) and `READ_CONTACTS` (Android) configured in `app.json`
+- [ ] Works in Expo Go — no dev-build required
+
+**Technical Notes:**
+- Uses `expo-contacts` (installed for this story) — reads directly from the device address book; no Expo-owned directory
+- Fetches with `fields: [Name, PhoneNumbers]` to minimize permission surface
+- No backend migration — `watch_party_invites` shape is preserved
+
+---
+
+### FW-81: Persist onboarding completion server-side
+**Type:** Story · **Points:** 3 · **Priority:** High
+**Assignee:** Full-stack
+**Epic:** FW-E1 Foundation & Auth
+
+**Description:**
+The `onboarding_complete` flag currently lives only in device AsyncStorage. Any wipe (uninstall/reinstall, device switch, Expo Go cache clear) resets it and forces the user back through onboarding. Move the truth to the `users` table so completion survives device state changes.
+
+**Acceptance Criteria:**
+- [ ] `users.onboarded_at TIMESTAMPTZ` column added via migration
+- [ ] Migration back-fills `onboarded_at` for any user who has rows in `user_team_follows` using the earliest follow timestamp
+- [ ] `onboarding-city.tsx` writes `home_city` and `onboarded_at` to `users` at flow completion (currently only AsyncStorage)
+- [ ] `_layout.tsx` NavigationGuard treats a user as onboarded if any of: AsyncStorage cache flag, `users.onboarded_at` set, or any row in `user_team_follows` for that user
+- [ ] AsyncStorage cache is still written on success so first-paint after relaunch is zero-flash
+- [ ] Routing survives a `pm clear` / fresh install of Expo Go without re-onboarding
+
+**Technical Notes:**
+- Client falls back to the `user_team_follows` count check when the new column isn't yet deployed, so the client fix is useful on its own.
+- Migration `020_onboarded_at.sql` is idempotent (uses `ADD COLUMN IF NOT EXISTS`).
+
+---
+
+### FW-82: Edit team preferences from profile without re-onboarding
+**Type:** Story · **Points:** 2 · **Priority:** Medium
+**Assignee:** Frontend Dev
+**Epic:** FW-E3 Watch Parties (preferences adjacent to teams)
+
+**Description:**
+Users who want to change the teams/sports they follow currently have no clean path — re-onboarding is the only way. Profile already has a "My Teams" entry with a "+ Follow More Teams" button, but the flow after saving forces the user through city selection again. Add an `edit` mode that short-circuits the post-save routing.
+
+**Acceptance Criteria:**
+- [ ] Profile → "My Teams" screen has a working "+ Follow More Teams" entry point (already exists)
+- [ ] When entered with `mode=edit`, `onboarding-teams.tsx` returns to the previous screen (My Teams) on save instead of pushing to `onboarding-city`
+- [ ] Long-press on a team in My Teams unfollows it (already exists)
+- [ ] Sport filter pills at the top of `onboarding-teams.tsx` work in edit mode so users can browse beyond their original sport picks
+
+**Out of scope (follow-up):**
+- Dedicated "My Sports" editor — sports are not persisted server-side today (they're just a filter for onboarding-teams). Revisit when/if `users.favorite_sport_ids` is added.
+
+---
+
+### FW-83: Post a clip from the Clips tab
+**Type:** Story · **Points:** 5 · **Priority:** High
+**Assignee:** Full-stack
+**Epic:** FW-E6 Clips Feed
+
+**Description:**
+The Clips tab had no affordance for uploading a clip — users could read but not contribute. Add an upload FAB with camera/library picker, a caption-first create screen, and a Supabase storage bucket to hold the videos.
+
+**Acceptance Criteria:**
+- [ ] Floating "+" FAB on Clips tab (bottom-right, above the tab bar)
+- [ ] Tap opens action sheet: Record new / Choose from library / Cancel
+- [ ] Camera path requests `Camera` permission, opens the OS video recorder, caps at 60s
+- [ ] Library path requests media library permission, opens the OS video picker
+- [ ] After capture/pick, routes to `create-clip.tsx` with the video URI + duration
+- [ ] Create-clip screen shows: looping muted preview, required caption (≤80 chars), optional description (≤300 chars), Post button
+- [ ] Post uploads the video blob to the `clips` Supabase Storage bucket under `<user_profile_id>/<timestamp>.<ext>`
+- [ ] Inserts a row into `media_clips` with `title`, `description`, `media_url`, `media_type='video'`, `duration_seconds`
+- [ ] On success: router.back() returns to the feed
+- [ ] Error states: network failure shows an alert; user can retry without losing input
+- [ ] Horizontal pill row above the feed scrolls properly (bug fix for SportPill — was using `overflow: 'scroll'` on a `View` which has no effect on native)
+
+**Technical Notes:**
+- Migration `021_clips_storage_bucket.sql` provisions the bucket (50 MB/file cap, public read, authenticated write scoped to owner's folder)
+- `media_clips` INSERT policy from migration 002 already requires `user_id = auth.uid()`, so no policy changes needed on the table
+- No video transcoding, trimming, or thumbnail selection in v1 — deferred
+
+---
+
+### FW-84: Auto-create user profile on signup
+**Type:** Bug · **Points:** 2 · **Priority:** High
+**Assignee:** Backend Dev
+**Epic:** FW-E1 Foundation & Auth
+
+**Description:**
+Nothing in the codebase creates a `public.users` row when a user signs up via Supabase auth. The auth record exists in `auth.users` but `public.users` (where display name, home city, avatar, onboarded_at, etc. live) is empty. Any feature that joins on `public.users` — profile, my-teams, my-clips, creator-stats, create-clip — crashes with "profile not found" until the row is provisioned. Surfaced when posting a clip failed for a brand-new account.
+
+**Acceptance Criteria:**
+- [ ] Postgres trigger on `auth.users` INSERT creates a `public.users` row with `auth_id = NEW.id`
+- [ ] Trigger function is `SECURITY DEFINER` so it can write regardless of session RLS
+- [ ] `display_name` seeded from `raw_user_meta_data.display_name`, falls back to email local-part, then to `'Fan'`
+- [ ] `ON CONFLICT (auth_id) DO NOTHING` so re-running the migration is idempotent
+- [ ] Back-fill: any existing `auth.users` without a matching `public.users` row gets one on migration apply
+- [ ] `create-clip.tsx` self-heal path stays as a belt-and-suspenders fallback for pre-trigger accounts and edge cases
+
+**Technical Notes:**
+- Migration: `022_user_profile_trigger.sql`
+- Trigger name: `on_auth_user_created`
+- Follow-up: consider extending the trigger to seed `onboarded_at` from `raw_user_meta_data` if the signup flow starts collecting it up front
+
+---
+
 ## Updated Summary
 
 | Phase | Epic | Sprint | Points | Key Deliverable |

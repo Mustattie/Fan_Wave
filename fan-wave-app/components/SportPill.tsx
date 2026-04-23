@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, StyleSheet, TouchableOpacity, View, Platform } from 'react-native';
+import { Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Colors } from '@/constants/Colors';
 
 interface Pill {
@@ -15,36 +15,35 @@ interface SportPillRowProps {
 
 export function SportPillRow({ pills, activeId, onSelect }: SportPillRowProps) {
   return (
-    <View style={styles.scrollContainer}>
-      <View style={styles.row}>
-        {pills.map((pill) => (
-          <TouchableOpacity
-            key={pill.id}
-            style={[styles.pill, activeId === pill.id && styles.pillActive]}
-            onPress={() => onSelect(pill.id)}
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.row}
+      style={styles.scrollContainer}
+    >
+      {pills.map((pill) => (
+        <TouchableOpacity
+          key={pill.id}
+          style={[styles.pill, activeId === pill.id && styles.pillActive]}
+          onPress={() => onSelect(pill.id)}
+        >
+          <Text
+            style={[
+              styles.pillText,
+              activeId === pill.id && styles.pillTextActive,
+            ]}
           >
-            <Text
-              style={[
-                styles.pillText,
-                activeId === pill.id && styles.pillTextActive,
-              ]}
-            >
-              {pill.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
+            {pill.label}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   scrollContainer: {
-    overflow: 'scroll' as any,
     paddingVertical: 4,
-    ...(Platform.OS === 'web'
-      ? { scrollbarWidth: 'none' as any, WebkitOverflowScrolling: 'touch' as any }
-      : {}),
   },
   row: {
     flexDirection: 'row',

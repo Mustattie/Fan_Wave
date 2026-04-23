@@ -57,7 +57,19 @@ export default function OnboardingSportsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.canGoBack() && router.back()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              // Reached via router.replace (nav guard or fresh sign-in) —
+              // no back stack, so route to tabs; the navigation guard will
+              // bounce back to onboarding if the user isn't fully onboarded.
+              router.replace('/(tabs)');
+            }
+          }}
+          style={styles.backBtn}
+        >
           <ArrowLeft size={24} color={Colors.dark.text} />
         </TouchableOpacity>
         <Text style={styles.title}>What sports do you follow?</Text>

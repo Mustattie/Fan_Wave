@@ -258,7 +258,11 @@ export default function WCWatchParties() {
             style={[styles.pill, activeCity === item && styles.pillActive]}
             onPress={() => setActiveCity(item)}
           >
-            <Text style={[styles.pillText, activeCity === item && styles.pillTextActive]}>
+            <Text
+              style={[styles.pillText, activeCity === item && styles.pillTextActive]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
               {item}
             </Text>
           </TouchableOpacity>
@@ -313,29 +317,28 @@ const styles = StyleSheet.create({
   },
   pillRow: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 10,
+    paddingVertical: 10,
+    gap: 8,
   },
   pill: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 24,
+    width: 110,
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: 18,
     backgroundColor: Colors.dark.surfaceLight,
     borderWidth: 1,
     borderColor: '#3a3a5a',
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-    minHeight: 44,
   },
   pillActive: {
     backgroundColor: Colors.dark.accentGreen,
     borderColor: Colors.dark.accentGreen,
   },
   pillText: {
-    fontSize: 15,
+    fontSize: 13,
     color: '#ffffff',
     fontWeight: '600',
-    lineHeight: 20,
   },
   pillTextActive: {
     color: '#ffffff',

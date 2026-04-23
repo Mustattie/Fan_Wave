@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { Video, Film, X, Share2 } from 'lucide-react-native';
+import { Video, Film, X, Share2, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { getMomentTypesForSport, REACTION_EMOJIS } from '@/constants/MomentTypes';
 import type { MomentType } from '@/constants/MomentTypes';
@@ -136,6 +136,33 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
     setShowEmojiPicker(null);
   };
 
+  const handleDeleteMoment = (momentId: string) => {
+    Alert.alert(
+      'Delete Moment',
+      "Delete this moment? This can't be undone.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setMoments((prev) => prev.filter((m) => m.id !== momentId));
+            // Best-effort DB delete — only server-backed moments will match.
+            // RLS scopes delete to the owner (user_id = auth.uid()).
+            try {
+              await supabase
+                .from('match_moments')
+                .delete()
+                .eq('id', momentId);
+            } catch {
+              // Local-only moment; state removal is enough.
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const handlePost = async () => {
     if (!selectedType || !commentText.trim()) return;
 
@@ -241,6 +268,14 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
           >
             <Share2 size={14} color={Colors.dark.textSecondary} />
           </TouchableOpacity>
+          {item.user === 'You' && (
+            <TouchableOpacity
+              style={styles.addReactionBtn}
+              onPress={() => handleDeleteMoment(item.id)}
+            >
+              <Trash2 size={14} color={Colors.dark.error} />
+            </TouchableOpacity>
+          )}
         </View>
         {showEmojiPicker === item.id && (
           <View style={styles.emojiPickerRow}>

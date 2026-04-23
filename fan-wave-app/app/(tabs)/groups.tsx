@@ -10,9 +10,11 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Search, Plus, X } from 'lucide-react-native';
+import { Search, Plus, X, Users, UserPlus } from 'lucide-react-native';
+import * as Contacts from 'expo-contacts';
 import { Colors } from '@/constants/Colors';
 import { GroupCard } from '@/components/GroupCard';
 import { SectionHeader } from '@/components/SectionHeader';
@@ -22,10 +24,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mapChatRoomToDisplay, type ChatRoomDisplay } from '@/lib/mappers';
 
 const SPORT_PILLS = [
-  { id: 'nfl', label: '🏈 NFL' },
-  { id: 'nba', label: '🏀 NBA' },
-  { id: 'soccer', label: '⚽ Soccer' },
-  { id: 'mlb', label: '⚾ MLB' },
+  { id: 'nfl', label: 'NFL 🏈', emoji: '🏈' },
+  { id: 'nba', label: 'NBA 🏀', emoji: '🏀' },
+  { id: 'soccer', label: 'Soccer ⚽', emoji: '⚽' },
+  { id: 'mlb', label: 'MLB ⚾', emoji: '⚾' },
 ];
 
 const VISIBILITY_OPTIONS = [
@@ -39,6 +41,12 @@ export default function GroupsScreen() {
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedSport, setSelectedSport] = useState('nfl');
   const [selectedVisibility, setSelectedVisibility] = useState('public');
+
+  // Private-group invite flow (reuses the watch-party contact-picker pattern)
+  const [invitedFriends, setInvitedFriends] = useState<{ name: string; phone: string }[]>([]);
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
+  const [contactsList, setContactsList] = useState<Contacts.Contact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
 
   // Supabase-backed state
   const [myGroups, setMyGroups] = useState<ChatRoomDisplay[]>([]);
@@ -205,8 +213,7 @@ export default function GroupsScreen() {
     setIsCreating(true);
 
     const sportEmoji =
-      SPORT_PILLS.find((s) => s.id === selectedSport)?.label.split(' ')[0] ||
-      '🏈';
+      SPORT_PILLS.find((s) => s.id === selectedSport)?.emoji || '🏈';
 
     try {
       const {
@@ -259,6 +266,25 @@ export default function GroupsScreen() {
 
       // Add to local state
       setMyGroups((prev) => [mapChatRoomToDisplay(room), ...prev]);
+
+      // Dispatch SMS invites for private groups — uses the device's native
+      // SMS composer so the user reviews and sends. No DB invite table yet.
+      if (selectedVisibility === 'private' && invitedFriends.length > 0) {
+        const inviteLink = `https://fanwave.app/group/${room.id}`;
+        const body = encodeURIComponent(
+          `Join my Fan Wave group "${newGroupName.trim()}": ${inviteLink}`,
+        );
+        // Android uses ? for body; iOS tolerates it. Multi-recipient via
+        // comma-separated numbers works on both.
+        const numbers = invitedFriends.map((f) => f.phone.replace(/\s+/g, '')).join(',');
+        const smsUrl = `sms:${numbers}?body=${body}`;
+        try {
+          const supported = await Linking.canOpenURL(smsUrl);
+          if (supported) await Linking.openURL(smsUrl);
+        } catch {
+          // SMS composer not available — silently skip.
+        }
+      }
     } catch {
       Alert.alert('Error', 'Could not create group. Please try again.');
     } finally {
@@ -267,6 +293,7 @@ export default function GroupsScreen() {
       setTeamQuery('');
       setSelectedTeam(null);
       setTeamResults([]);
+      setInvitedFriends([]);
       setShowCreateModal(false);
     }
   };
@@ -276,16 +303,88 @@ export default function GroupsScreen() {
     setTeamQuery('');
     setSelectedTeam(null);
     setTeamResults([]);
+    setInvitedFriends([]);
     setShowCreateModal(true);
   };
+
+  const openContactPicker = useCallback(async () => {
+    const { status } = await Contacts.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Contacts permission denied',
+        'Enable Contacts access in Settings to invite friends.',
+      );
+      return;
+    }
+    setContactPickerOpen(true);
+    setContactsLoading(true);
+    try {
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
+      });
+      const withPhones = data
+        .filter((c) => c.phoneNumbers && c.phoneNumbers.length > 0 && c.name)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      setContactsList(withPhones);
+    } catch {
+      Alert.alert('Could not load contacts', 'Please try again.');
+      setContactPickerOpen(false);
+    } finally {
+      setContactsLoading(false);
+    }
+  }, []);
+
+  const addContactToInvites = useCallback((name: string, phone: string) => {
+    const cleaned = phone.replace(/\s+/g, '');
+    setInvitedFriends((prev) => {
+      if (prev.some((f) => f.phone.replace(/\s+/g, '') === cleaned)) return prev;
+      return [...prev, { name, phone }];
+    });
+  }, []);
+
+  const handlePickContact = useCallback(
+    (contact: Contacts.Contact) => {
+      const phones = contact.phoneNumbers || [];
+      const name = contact.name || 'Unknown';
+      if (phones.length === 1) {
+        addContactToInvites(name, phones[0].number || '');
+        setContactPickerOpen(false);
+        return;
+      }
+      Alert.alert(
+        `Pick a number for ${name}`,
+        undefined,
+        [
+          ...phones.map((p) => ({
+            text: `${p.label ? `${p.label}: ` : ''}${p.number}`,
+            onPress: () => {
+              addContactToInvites(name, p.number || '');
+              setContactPickerOpen(false);
+            },
+          })),
+          { text: 'Cancel', style: 'cancel' as const },
+        ],
+      );
+    },
+    [addContactToInvites],
+  );
+
+  const removeInvite = useCallback((phone: string) => {
+    setInvitedFriends((prev) => prev.filter((f) => f.phone !== phone));
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>My Groups</Text>
-        <Text style={styles.subtitle}>
-          {myGroups.length} groups
-        </Text>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>My Groups</Text>
+          <Text style={styles.subtitle}>
+            {myGroups.length} groups
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.headerAction} onPress={handleOpenCreateModal}>
+          <Plus size={22} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.searchBar}>
@@ -384,10 +483,6 @@ export default function GroupsScreen() {
         )}
         ListFooterComponent={<View style={styles.spacer} />}
       />
-
-      <TouchableOpacity style={styles.fab} onPress={handleOpenCreateModal}>
-        <Plus size={28} color="#fff" />
-      </TouchableOpacity>
 
       {/* Create Group Modal */}
       <Modal
@@ -526,6 +621,31 @@ export default function GroupsScreen() {
                 onSelect={setSelectedVisibility}
               />
 
+              {selectedVisibility === 'private' && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={styles.fieldLabel}>Invite Friends</Text>
+                  <TouchableOpacity
+                    style={styles.inviteButton}
+                    onPress={openContactPicker}
+                  >
+                    <UserPlus size={16} color={Colors.dark.accent} />
+                    <Text style={styles.inviteButtonText}>Pick from contacts</Text>
+                  </TouchableOpacity>
+                  {invitedFriends.length > 0 && (
+                    <View style={styles.inviteeList}>
+                      {invitedFriends.map((f) => (
+                        <View key={f.phone} style={styles.inviteeChip}>
+                          <Text style={styles.inviteeName}>{f.name}</Text>
+                          <TouchableOpacity onPress={() => removeInvite(f.phone)}>
+                            <X size={14} color={Colors.dark.textSecondary} />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   style={styles.cancelButton}
@@ -552,6 +672,58 @@ export default function GroupsScreen() {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Contact Picker Modal */}
+      <Modal
+        visible={contactPickerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setContactPickerOpen(false)}
+      >
+        <View style={[styles.modalOverlay, { justifyContent: 'flex-end' }]}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Pick Contacts</Text>
+              <TouchableOpacity onPress={() => setContactPickerOpen(false)}>
+                <X size={24} color={Colors.dark.text} />
+              </TouchableOpacity>
+            </View>
+            {contactsLoading ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator color={Colors.dark.accent} />
+              </View>
+            ) : (
+              <FlatList
+                data={contactsList}
+                keyExtractor={(c) => c.id || c.name || Math.random().toString()}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.contactRow}
+                    onPress={() => handlePickContact(item)}
+                  >
+                    <View style={styles.contactAvatar}>
+                      <Users size={18} color={Colors.dark.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.contactName}>{item.name}</Text>
+                      {item.phoneNumbers?.[0]?.number && (
+                        <Text style={styles.contactPhone}>
+                          {item.phoneNumbers[0].number}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <Text style={styles.emptyContactsText}>
+                    No contacts with phone numbers found.
+                  </Text>
+                }
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -565,6 +737,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerText: {
+    flex: 1,
+  },
+  headerAction: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.dark.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontSize: 28,
@@ -676,22 +862,6 @@ const styles = StyleSheet.create({
   joinedButtonText: {
     color: Colors.dark.success,
   },
-  fab: {
-    position: 'absolute',
-    bottom: 100,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: Colors.dark.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 8,
-    shadowColor: Colors.dark.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-  },
   spacer: {
     height: 80,
   },
@@ -730,6 +900,72 @@ const styles = StyleSheet.create({
     color: Colors.dark.textSecondary,
     marginBottom: 20,
     marginTop: 4,
+  },
+  inviteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.dark.accent,
+    marginTop: 8,
+  },
+  inviteButtonText: {
+    color: Colors.dark.accent,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  inviteeList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  inviteeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: Colors.dark.surfaceLight,
+  },
+  inviteeName: {
+    color: Colors.dark.text,
+    fontSize: 12,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border,
+  },
+  contactAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.dark.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contactName: {
+    color: Colors.dark.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  contactPhone: {
+    color: Colors.dark.textSecondary,
+    fontSize: 12,
+  },
+  emptyContactsText: {
+    color: Colors.dark.textSecondary,
+    textAlign: 'center',
+    padding: 40,
   },
   fieldLabelRow: {
     flexDirection: 'row',

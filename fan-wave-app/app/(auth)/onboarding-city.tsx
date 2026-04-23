@@ -14,6 +14,7 @@ import { MapPin, Search, Check } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
+import { supabase } from '@/lib/supabase';
 
 const POPULAR_CITIES = [
   'Chicago',
@@ -145,6 +146,29 @@ export default function OnboardingCityScreen() {
       );
     }
     await AsyncStorage.setItem('onboarding_complete', 'true');
+
+    // Persist to Supabase profile so onboarding state survives device wipes.
+    // onboarded_at column is added by migration 020; if it isn't applied yet
+    // we retry without it so home_city still gets saved.
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const now = new Date().toISOString();
+        const { error } = await supabase
+          .from('users')
+          .update({ home_city: selectedCity, onboarded_at: now })
+          .eq('auth_id', user.id);
+        if (error) {
+          await supabase
+            .from('users')
+            .update({ home_city: selectedCity })
+            .eq('auth_id', user.id);
+        }
+      }
+    } catch {
+      // Network/Supabase failure — AsyncStorage cache still unblocks this session
+    }
+
     router.replace('/(tabs)');
   }, [selectedCity, selectedSports, router]);
 

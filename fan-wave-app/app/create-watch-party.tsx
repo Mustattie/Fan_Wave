@@ -11,9 +11,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   FlatList,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Globe, Lock, UserPlus, X } from 'lucide-react-native';
+import { Globe, Lock, UserPlus, X, Users, Search } from 'lucide-react-native';
+import * as Contacts from 'expo-contacts';
 import { Colors } from '@/constants/Colors';
 import { SPORTS } from '@/constants/Sports';
 import { searchVenues, geocodeCity, searchAddress, Venue, AddressSuggestion } from '@/lib/venueSearchApi';
@@ -104,6 +106,11 @@ export default function CreateWatchPartyScreen() {
   const [invitedFriends, setInvitedFriends] = useState<{ name: string; phone: string }[]>([]);
   const [friendName, setFriendName] = useState('');
   const [friendPhone, setFriendPhone] = useState('');
+  const [showManualInvite, setShowManualInvite] = useState(false);
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
+  const [contactsList, setContactsList] = useState<Contacts.Contact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactSearch, setContactSearch] = useState('');
   const [creating, setCreating] = useState(false);
 
   // Geo coordinates for venue search (loaded from user city)
@@ -205,6 +212,71 @@ export default function CreateWatchPartyScreen() {
     setSelectedManualCoords({ lat: suggestion.lat, lon: suggestion.lon });
     setAddressSuggestions([]);
   }, []);
+
+  // -----------------------------------------------------------------------
+  // Contact picker
+  // -----------------------------------------------------------------------
+  const openContactPicker = useCallback(async () => {
+    const { status } = await Contacts.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Contacts permission denied',
+        'Enable Contacts access in Settings, or use "Enter manually" to add friends by phone number.'
+      );
+      return;
+    }
+    setContactPickerOpen(true);
+    setContactsLoading(true);
+    try {
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
+      });
+      const withPhones = data
+        .filter((c) => c.phoneNumbers && c.phoneNumbers.length > 0 && c.name)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      setContactsList(withPhones);
+    } catch (e) {
+      Alert.alert('Could not load contacts', 'Please try again.');
+      setContactPickerOpen(false);
+    } finally {
+      setContactsLoading(false);
+    }
+  }, []);
+
+  const addContactToInvites = useCallback((name: string, phone: string) => {
+    const cleaned = phone.replace(/\s+/g, '');
+    setInvitedFriends((prev) => {
+      if (prev.some((f) => f.phone.replace(/\s+/g, '') === cleaned)) return prev;
+      return [...prev, { name, phone }];
+    });
+  }, []);
+
+  const handlePickContact = useCallback(
+    (contact: Contacts.Contact) => {
+      const phones = contact.phoneNumbers || [];
+      const name = contact.name || 'Unknown';
+      if (phones.length === 1) {
+        addContactToInvites(name, phones[0].number || '');
+        setContactPickerOpen(false);
+        return;
+      }
+      Alert.alert(
+        `Pick a number for ${name}`,
+        undefined,
+        [
+          ...phones.map((p) => ({
+            text: `${p.label ? `${p.label}: ` : ''}${p.number}`,
+            onPress: () => {
+              addContactToInvites(name, p.number || '');
+              setContactPickerOpen(false);
+            },
+          })),
+          { text: 'Cancel', style: 'cancel' as const },
+        ]
+      );
+    },
+    [addContactToInvites]
+  );
 
   // -----------------------------------------------------------------------
   // Helpers
@@ -680,41 +752,53 @@ export default function CreateWatchPartyScreen() {
         <View style={styles.inviteSection}>
           <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Invite Friends</Text>
 
-          {/* Add friend form */}
-          <View style={styles.addFriendRow}>
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              placeholder="Name"
-              placeholderTextColor={C.textMuted}
-              value={friendName}
-              onChangeText={setFriendName}
-            />
-            <TextInput
-              style={[styles.input, { flex: 1, marginLeft: 8 }]}
-              placeholder="Phone number"
-              placeholderTextColor={C.textMuted}
-              value={friendPhone}
-              onChangeText={setFriendPhone}
-              keyboardType="phone-pad"
-            />
-            <TouchableOpacity
-              style={[
-                styles.addFriendBtn,
-                (!friendName.trim() || !friendPhone.trim()) && { opacity: 0.4 },
-              ]}
-              disabled={!friendName.trim() || !friendPhone.trim()}
-              onPress={() => {
-                setInvitedFriends((prev) => [
-                  ...prev,
-                  { name: friendName.trim(), phone: friendPhone.trim() },
-                ]);
-                setFriendName('');
-                setFriendPhone('');
-              }}
-            >
-              <UserPlus size={20} color="#fff" />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity style={styles.contactsCta} onPress={openContactPicker}>
+            <Users size={20} color="#fff" />
+            <Text style={styles.contactsCtaText}>Add from Contacts</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.manualToggle}
+            onPress={() => setShowManualInvite((v) => !v)}
+          >
+            <Text style={styles.manualToggleText}>
+              {showManualInvite ? 'Hide manual entry' : 'Enter manually'}
+            </Text>
+          </TouchableOpacity>
+
+          {showManualInvite && (
+            <View style={styles.addFriendRow}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder="Name"
+                placeholderTextColor={C.textMuted}
+                value={friendName}
+                onChangeText={setFriendName}
+              />
+              <TextInput
+                style={[styles.input, { flex: 1, marginLeft: 8 }]}
+                placeholder="Phone number"
+                placeholderTextColor={C.textMuted}
+                value={friendPhone}
+                onChangeText={setFriendPhone}
+                keyboardType="phone-pad"
+              />
+              <TouchableOpacity
+                style={[
+                  styles.addFriendBtn,
+                  (!friendName.trim() || !friendPhone.trim()) && { opacity: 0.4 },
+                ]}
+                disabled={!friendName.trim() || !friendPhone.trim()}
+                onPress={() => {
+                  addContactToInvites(friendName.trim(), friendPhone.trim());
+                  setFriendName('');
+                  setFriendPhone('');
+                }}
+              >
+                <UserPlus size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Invited list */}
           {invitedFriends.length > 0 && (
@@ -744,7 +828,7 @@ export default function CreateWatchPartyScreen() {
 
           {invitedFriends.length === 0 && (
             <Text style={styles.inviteHint}>
-              Add friends by name and phone number. They'll receive an invite to your watch party.
+              Pick friends from your contacts — or tap "Enter manually" to type a name and number.
             </Text>
           )}
         </View>
@@ -827,6 +911,73 @@ export default function CreateWatchPartyScreen() {
           </View>
         )}
       </View>
+
+      {/* Contact picker modal */}
+      <Modal
+        visible={contactPickerOpen}
+        animationType="slide"
+        onRequestClose={() => setContactPickerOpen(false)}
+        transparent={false}
+      >
+        <View style={styles.contactModal}>
+          <View style={styles.contactModalHeader}>
+            <Text style={styles.contactModalTitle}>Pick a contact</Text>
+            <TouchableOpacity onPress={() => setContactPickerOpen(false)}>
+              <X size={22} color={C.text} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.contactSearchRow}>
+            <Search size={18} color={C.textMuted} />
+            <TextInput
+              style={styles.contactSearchInput}
+              placeholder="Search contacts"
+              placeholderTextColor={C.textMuted}
+              value={contactSearch}
+              onChangeText={setContactSearch}
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
+          </View>
+          {contactsLoading ? (
+            <View style={styles.contactsCenter}>
+              <ActivityIndicator color={C.text} />
+            </View>
+          ) : (
+            <FlatList
+              data={contactsList.filter((c) =>
+                (c.name || '').toLowerCase().includes(contactSearch.toLowerCase())
+              )}
+              keyExtractor={(item, idx) => `${item.name}-${idx}`}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.contactRow}
+                  onPress={() => handlePickContact(item)}
+                >
+                  <View style={styles.contactAvatar}>
+                    <Text style={styles.contactInitial}>
+                      {(item.name || '?').charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.contactName}>{item.name}</Text>
+                    <Text style={styles.contactPhone}>
+                      {item.phoneNumbers?.[0]?.number}
+                      {(item.phoneNumbers?.length || 0) > 1 &&
+                        ` · ${item.phoneNumbers!.length} numbers`}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <View style={styles.contactsCenter}>
+                  <Text style={styles.contactEmpty}>No contacts with phone numbers.</Text>
+                </View>
+              }
+            />
+          )}
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -1270,6 +1421,108 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 10,
     lineHeight: 18,
+  },
+  contactsCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: C.accent,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  contactsCtaText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  manualToggle: {
+    alignSelf: 'center',
+    paddingVertical: 10,
+  },
+  manualToggleText: {
+    color: C.accent,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  contactModal: {
+    flex: 1,
+    backgroundColor: C.background,
+  },
+  contactModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 56,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  contactModalTitle: {
+    color: C.text,
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  contactSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: C.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  contactSearchInput: {
+    flex: 1,
+    color: C.text,
+    fontSize: 15,
+    paddingVertical: 10,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  contactAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: C.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  contactInitial: {
+    color: C.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  contactName: {
+    color: C.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  contactPhone: {
+    color: C.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  contactsCenter: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  contactEmpty: {
+    color: C.textMuted,
+    fontSize: 14,
   },
 
   // Bottom bar

@@ -193,7 +193,12 @@ export default function MyTeamsScreen() {
       <View style={styles.bottomBar}>
         <TouchableOpacity
           style={styles.followMoreBtn}
-          onPress={() => router.push('/(auth)/onboarding-teams')}
+          onPress={() =>
+            router.push({
+              pathname: '/(auth)/onboarding-teams',
+              params: { mode: 'edit' },
+            })
+          }
         >
           <Text style={styles.followMoreText}>+ Follow More Teams</Text>
         </TouchableOpacity>
