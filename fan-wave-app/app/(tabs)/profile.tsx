@@ -23,6 +23,7 @@ import {
   BarChart3,
   Share2,
   Trophy,
+  Shield,
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
@@ -31,6 +32,7 @@ import { useRouter } from 'expo-router';
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const [isAdmin, setIsAdmin] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [stats, setStats] = useState({ groups: 0, parties: 0, clips: 0 });
   const [followedTeams, setFollowedTeams] = useState<string[]>([]);
@@ -59,6 +61,7 @@ export default function ProfileScreen() {
 
       if (profileData && !profileError) {
         setProfile(profileData);
+        setIsAdmin(profileData.is_admin === true);
         if (profileData.home_city) {
           setHomeCity(profileData.home_city);
         }
@@ -251,6 +254,19 @@ export default function ProfileScreen() {
             <ChevronRight size={18} color={Colors.dark.textMuted} />
           </TouchableOpacity>
         ))}
+
+        {isAdmin && (
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push('/(admin)' as any)}
+          >
+            <Shield size={20} color={Colors.dark.accent} />
+            <Text style={[styles.menuLabel, { color: Colors.dark.accent }]}>
+              Admin Dashboard
+            </Text>
+            <ChevronRight size={18} color={Colors.dark.accent} />
+          </TouchableOpacity>
+        )}
 
         <View style={styles.spacer} />
       </ScrollView>

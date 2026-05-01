@@ -94,7 +94,8 @@ export default function MyClipsScreen() {
     );
   };
 
-  const formatCount = (n: number) => {
+  const formatCount = (n: number | null | undefined) => {
+    if (!n) return '0';
     if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
     return n.toString();
   };
