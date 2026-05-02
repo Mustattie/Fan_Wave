@@ -17,6 +17,7 @@ export function FilterPillRow({ items, activeItem, onSelect, accentColor = Color
       data={items}
       keyExtractor={(item) => item}
       contentContainerStyle={styles.row}
+      style={styles.list}
       renderItem={({ item }) => (
         <TouchableOpacity
           style={[
@@ -35,31 +36,33 @@ export function FilterPillRow({ items, activeItem, onSelect, accentColor = Color
 }
 
 const styles = StyleSheet.create({
+  list: {
+    flexGrow: 0,
+  },
   row: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 10,
+    paddingVertical: 10,
+    gap: 8,
+    alignItems: 'center',
   },
   pill: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
     backgroundColor: Colors.dark.surfaceLight,
     borderWidth: 1,
     borderColor: '#3a3a5a',
     justifyContent: 'center',
     alignItems: 'center',
-    minHeight: 44,
   },
   pillActive: {
     backgroundColor: Colors.dark.accent,
     borderColor: Colors.dark.accent,
   },
   pillText: {
-    fontSize: 15,
+    fontSize: 13,
     color: '#ffffff',
     fontWeight: '600',
-    lineHeight: 20,
   },
   pillTextActive: {
     color: '#ffffff',
