@@ -45,7 +45,7 @@ export default function GroupsScreen() {
   // Private-group invite flow (reuses the watch-party contact-picker pattern)
   const [invitedFriends, setInvitedFriends] = useState<{ name: string; phone: string }[]>([]);
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
-  const [contactsList, setContactsList] = useState<Contacts.Contact[]>([]);
+  const [contactsList, setContactsList] = useState<Contacts.ExistingContact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
 
   // Supabase-backed state
