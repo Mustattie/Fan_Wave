@@ -28,6 +28,7 @@ const FILTER_OPTIONS = [
 ];
 
 const STAGE_OPTIONS = [
+  { id: 'all', label: 'All Stages' },
   { id: 'group', label: 'Group Stage' },
   { id: 'round_of_32', label: 'Round of 32' },
   { id: 'round_of_16', label: 'Round of 16' },
@@ -135,7 +136,7 @@ type FlatItem =
 // ── Component ──────────────────────────────────────────────
 export function WCSchedule() {
   const [activeFilter, setActiveFilter] = useState('all');
-  const [activeStage, setActiveStage] = useState('group');
+  const [activeStage, setActiveStage] = useState('all');
   const [followedTeamIds, setFollowedTeamIds] = useState<Set<string>>(new Set());
   const [allGames, setAllGames] = useState<WCGameRow[]>([]);
   const [loading, setLoading] = useState(true);
