@@ -21,6 +21,7 @@ import {
 } from '@/constants/FollowTiers';
 import { loadFollowsFromStorage } from '@/lib/tierUtils';
 import { supabase } from '@/lib/supabase';
+import { reportError } from '@/lib/errorReporting';
 
 export default function MyTeamsScreen() {
   const router = useRouter();
@@ -42,7 +43,9 @@ export default function MyTeamsScreen() {
           return;
         }
       }
-    } catch {}
+    } catch (e) {
+      reportError(e, { source: 'my-teams:loadTeams' });
+    }
     // Fallback to AsyncStorage
     const stored = await loadFollowsFromStorage();
     setTeams(stored);
@@ -68,7 +71,9 @@ export default function MyTeamsScreen() {
             p_tier: newTier,
           });
         }
-      } catch {}
+      } catch (e) {
+        reportError(e, { source: 'my-teams:handleTierChange', teamId, newTier });
+      }
     },
     []
   );
@@ -93,7 +98,9 @@ export default function MyTeamsScreen() {
                     p_team_id: team.team_id,
                   });
                 }
-              } catch {}
+              } catch (e) {
+                reportError(e, { source: 'my-teams:handleUnfollow', teamId: team.team_id });
+              }
             },
           },
         ]

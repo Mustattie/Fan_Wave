@@ -14,7 +14,7 @@ import {
   ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Heart, MessageCircle, Repeat2, Share2, UserPlus, Download, Plus, Trash2 } from 'lucide-react-native';
+import { Heart, MessageCircle, Repeat2, Share2, UserPlus, Download, Plus, Trash2, Slash } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabase';
 import { subscribeToClips } from '@/lib/realtime';
 import { mapClipToDisplay, type ClipDisplay } from '@/lib/mappers';
 import { trackEvent } from '@/lib/analytics';
+import { blockUser } from '@/lib/blocks';
 
 const PAGE_SIZE = 20;
 
@@ -44,6 +45,7 @@ function ClipCard({
   onFollow,
   onExport,
   onDelete,
+  onBlock,
   isVisible,
   isFollowingPoster,
   isOwner,
@@ -56,6 +58,7 @@ function ClipCard({
   onFollow: (userId: string) => void;
   onExport: (clip: ClipDisplay) => void;
   onDelete: (clip: ClipDisplay) => void;
+  onBlock: (clip: ClipDisplay) => void;
   isVisible: boolean;
   isFollowingPoster: boolean;
   isOwner: boolean;
@@ -175,10 +178,19 @@ function ClipCard({
           <Text style={styles.clipMeta}>
             {clip.poster} · {clip.group} · {clip.time}
           </Text>
-          {clip.userId && !isFollowingPoster && (
+          {clip.userId && !isFollowingPoster && !isOwner && (
             <TouchableOpacity style={styles.followChip} onPress={() => onFollow(clip.userId)}>
               <UserPlus size={12} color={Colors.dark.accent} />
               <Text style={styles.followChipText}>Follow</Text>
+            </TouchableOpacity>
+          )}
+          {!isOwner && clip.userId && (
+            <TouchableOpacity
+              style={styles.blockChip}
+              onPress={() => onBlock(clip)}
+              accessibilityLabel="Block this user"
+            >
+              <Slash size={12} color={Colors.dark.error} />
             </TouchableOpacity>
           )}
         </View>
@@ -445,6 +457,29 @@ export default function ClipsScreen() {
     // Comments will be enabled in a future release
   }, []);
 
+  const handleBlock = useCallback((clip: ClipDisplay) => {
+    if (!clip.userId) return;
+    Alert.alert(
+      'Block user',
+      `Block ${clip.poster}? You won't see their clips, watch parties, or messages, and they won't see yours. You can unblock from Profile → Blocked Users.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            const ok = await blockUser(clip.userId);
+            if (ok) {
+              setClips((prev) => prev.filter((c) => c.userId !== clip.userId));
+            } else {
+              Alert.alert('Could not block', 'Please try again.');
+            }
+          },
+        },
+      ],
+    );
+  }, []);
+
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       const ids = new Set(viewableItems.map((item) => item.item?.id).filter(Boolean));
@@ -465,12 +500,13 @@ export default function ClipsScreen() {
         onFollow={handleFollow}
         onExport={handleExport}
         onDelete={handleDelete}
+        onBlock={handleBlock}
         isVisible={visibleClipIds.has(item.id)}
         isFollowingPoster={followedUserIds.has(item.userId)}
         isOwner={!!currentUserId && item.userId === currentUserId}
       />
     ),
-    [likedClipIds, handleLike, handleShare, handleComment, visibleClipIds, handleDelete, currentUserId, handleExport, handleFollow, followedUserIds]
+    [likedClipIds, handleLike, handleShare, handleComment, visibleClipIds, handleDelete, handleBlock, currentUserId, handleExport, handleFollow, followedUserIds]
   );
 
   const renderFooter = useCallback(() => {
@@ -743,6 +779,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: Colors.dark.accent,
+  },
+  blockChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.dark.error,
+    marginLeft: 6,
   },
   clipActions: {
     flexDirection: 'row',

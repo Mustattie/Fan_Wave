@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import { reportError } from './errorReporting';
 
 type ChangeEvent = 'INSERT' | 'UPDATE' | 'DELETE' | '*';
 
@@ -49,13 +50,17 @@ export function subscribeToPresence(
       try {
         const state = channel.presenceState();
         onSync(state);
-      } catch {}
+      } catch (e) {
+        reportError(e, { source: 'realtime:presenceSync', channelName });
+      }
     })
     .subscribe(async (status: string) => {
       if (status === 'SUBSCRIBED' && trackPayload) {
         try {
           await channel.track(trackPayload);
-        } catch {}
+        } catch (e) {
+          reportError(e, { source: 'realtime:presenceTrack', channelName });
+        }
       }
     });
 

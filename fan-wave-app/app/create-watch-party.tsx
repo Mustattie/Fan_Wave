@@ -632,6 +632,7 @@ export default function CreateWatchPartyScreen() {
         placeholderTextColor={C.textMuted}
         value={title}
         onChangeText={setTitle}
+        maxLength={200}
       />
 
       {/* Description */}
@@ -647,6 +648,7 @@ export default function CreateWatchPartyScreen() {
         multiline
         numberOfLines={4}
         textAlignVertical="top"
+        maxLength={2000}
       />
 
       {/* Atmosphere */}

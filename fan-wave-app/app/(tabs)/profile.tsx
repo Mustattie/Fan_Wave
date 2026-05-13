@@ -24,6 +24,8 @@ import {
   Share2,
   Trophy,
   Shield,
+  ScrollText,
+  Slash,
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
@@ -154,6 +156,12 @@ export default function ProfileScreen() {
       router.push('/creator-stats' as any);
     } else if (label === 'Invite Friends') {
       handleInvite();
+    } else if (label === 'Privacy Policy') {
+      router.push('/legal/privacy' as any);
+    } else if (label === 'Terms of Service') {
+      router.push('/legal/terms' as any);
+    } else if (label === 'Blocked Users') {
+      router.push('/blocked-users' as any);
     } else if (label === 'Sign Out') {
       handleSignOut();
     }
@@ -184,6 +192,9 @@ export default function ProfileScreen() {
     { icon: BarChart3, label: 'My Stats', color: Colors.dark.text },
     { icon: Bell, label: 'Notifications', color: Colors.dark.text },
     { icon: Share2, label: 'Invite Friends', color: Colors.dark.accent },
+    { icon: Slash, label: 'Blocked Users', color: Colors.dark.text },
+    { icon: Shield, label: 'Privacy Policy', color: Colors.dark.text },
+    { icon: ScrollText, label: 'Terms of Service', color: Colors.dark.text },
     { icon: LogOut, label: 'Sign Out', color: Colors.dark.error },
   ];
 

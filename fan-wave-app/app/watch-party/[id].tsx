@@ -22,11 +22,14 @@ import {
   Flag,
   Lock,
   Globe,
+  Slash,
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { subscribeToRsvpCounts } from '@/lib/realtime';
 import { getSportEmoji, getSportColor, formatFullDate } from '@/lib/mappers';
+import { reportError } from '@/lib/errorReporting';
+import { blockUser } from '@/lib/blocks';
 
 type RsvpStatus = 'going' | 'interested' | 'cant_go' | null;
 
@@ -55,6 +58,7 @@ interface WatchPartyDetail {
   description: string;
   capacity: number;
   rsvp_count: number;
+  creator_id: string | null;
   creator_name: string;
   creator_initial: string;
   creator_avatar_bg: string;
@@ -105,14 +109,48 @@ export default function WatchPartyDetailScreen() {
     if (!id) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // Try the joined view first; fall back to base table if the view is
+      // unavailable (missing grants, stale PostgREST schema cache, etc.).
+      let data: any = null;
+      const viewResult = await supabase
         .from('watch_party_details')
         .select('*')
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
-      if (error) throw error;
-      if (!data) throw new Error('Not found');
+      if (viewResult.data) {
+        data = viewResult.data;
+      } else {
+        if (viewResult.error) {
+          console.warn('[watch-party] view query failed, falling back:', viewResult.error.message);
+        }
+        const baseResult = await supabase
+          .from('watch_parties')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (baseResult.error) throw baseResult.error;
+        if (!baseResult.data) throw new Error('Not found');
+        data = baseResult.data;
+
+        // Hydrate sport_name and creator_name with separate lookups.
+        if (data.sport_id) {
+          const { data: sportRow } = await supabase
+            .from('sports')
+            .select('name')
+            .eq('id', data.sport_id)
+            .maybeSingle();
+          data.sport_name = sportRow?.name ?? '';
+        }
+        if (data.creator_id) {
+          const { data: userRow } = await supabase
+            .from('users')
+            .select('display_name')
+            .eq('auth_id', data.creator_id)
+            .maybeSingle();
+          data.creator_name = userRow?.display_name ?? 'Unknown';
+        }
+      }
 
       const sportName = data.sport_name || '';
       const creatorName = data.creator_name || 'Unknown';
@@ -140,6 +178,7 @@ export default function WatchPartyDetailScreen() {
         description: data.description || '',
         capacity: data.capacity || 50,
         rsvp_count: data.rsvp_count || 0,
+        creator_id: data.creator_id ?? null,
         creator_name: creatorName,
         creator_initial: creatorName.charAt(0).toUpperCase(),
         creator_avatar_bg: '#3498db',
@@ -162,7 +201,8 @@ export default function WatchPartyDetailScreen() {
       }
 
       await loadAttendees();
-    } catch {
+    } catch (e: any) {
+      console.warn('[watch-party] loadParty failed:', e?.message ?? e);
       setParty(null);
     } finally {
       setLoading(false);
@@ -206,7 +246,9 @@ export default function WatchPartyDetailScreen() {
         p_party_id: id ?? party?.id,
         p_status: newStatus ?? 'cancelled',
       });
-    } catch {}
+    } catch (e) {
+      reportError(e, { source: 'watch-party:handleRsvp', partyId: id, status: newStatus });
+    }
   };
 
   const handleShare = async () => {
@@ -227,12 +269,40 @@ export default function WatchPartyDetailScreen() {
         p_reason: selectedReason,
         p_details: reportDetails.trim() || null,
       });
-    } catch {}
+    } catch (e) {
+      reportError(e, { source: 'watch-party:handleSubmitReport', partyId: id });
+    }
 
     Alert.alert('Report submitted', 'Thank you. We will review this watch party.');
     setReportModalVisible(false);
     setSelectedReason(null);
     setReportDetails('');
+  };
+
+  const handleBlockHost = () => {
+    if (!party?.creator_id) return;
+    const creatorId = party.creator_id;
+    const creatorName = party.creator_name;
+    Alert.alert(
+      'Block host',
+      `Block ${creatorName}? You won't see their watch parties, clips, or messages, and they won't see yours. You can unblock from Profile → Blocked Users.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            const ok = await blockUser(creatorId);
+            if (ok) {
+              Alert.alert('Blocked', `${creatorName} has been blocked.`);
+              router.back();
+            } else {
+              Alert.alert('Could not block', 'Please try again.');
+            }
+          },
+        },
+      ],
+    );
   };
 
   if (loading) {
@@ -556,6 +626,16 @@ export default function WatchPartyDetailScreen() {
             <Flag size={18} color={Colors.dark.error} />
             <Text style={[styles.actionBtnText, { color: Colors.dark.error }]}>Report</Text>
           </TouchableOpacity>
+
+          {!isCreator && party.creator_id && (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionBtnReport]}
+              onPress={handleBlockHost}
+            >
+              <Slash size={18} color={Colors.dark.error} />
+              <Text style={[styles.actionBtnText, { color: Colors.dark.error }]}>Block</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={{ height: 40 }} />

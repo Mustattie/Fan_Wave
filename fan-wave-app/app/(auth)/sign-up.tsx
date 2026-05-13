@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { Mail, Lock, User, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { parseAuthError } from '@/lib/authErrors';
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -62,11 +63,16 @@ export default function SignUpScreen() {
         'We sent a confirmation link to your email address.',
         [{ text: 'OK', onPress: () => router.replace('/(auth)/sign-in') }]
       );
-    } catch {
-      Alert.alert(
-        'Sign Up Failed',
-        'Could not create account. Please check your connection and try again.',
-      );
+    } catch (e) {
+      const info = parseAuthError(e);
+      if (info.kind === 'email_already_registered') {
+        Alert.alert(info.title, info.message, [
+          { text: 'Sign In', onPress: () => router.replace('/(auth)/sign-in') },
+          { text: 'Cancel', style: 'cancel' },
+        ]);
+      } else {
+        Alert.alert(info.title, info.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -162,6 +168,18 @@ export default function SignUpScreen() {
               <Text style={styles.signUpButtonText}>Create Account</Text>
             )}
           </TouchableOpacity>
+
+          <Text style={styles.consentText}>
+            By creating an account, you agree to our{' '}
+            <Text style={styles.consentLink} onPress={() => router.push('/legal/terms' as any)}>
+              Terms of Service
+            </Text>
+            {' '}and{' '}
+            <Text style={styles.consentLink} onPress={() => router.push('/legal/privacy' as any)}>
+              Privacy Policy
+            </Text>
+            .
+          </Text>
 
         </View>
 
@@ -282,5 +300,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.dark.accent,
     fontWeight: '700',
+  },
+  consentText: {
+    fontSize: 12,
+    color: Colors.dark.textMuted,
+    textAlign: 'center',
+    marginTop: 14,
+    lineHeight: 18,
+  },
+  consentLink: {
+    color: Colors.dark.accent,
+    fontWeight: '600',
   },
 });

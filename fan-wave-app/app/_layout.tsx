@@ -19,6 +19,7 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { AppQueryClientProvider } from '@/hooks/useQueryClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-reanimated';
+import { initErrorReporting, setUserContext, clearUserContext } from '@/lib/errorReporting';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -27,19 +28,7 @@ export const unstable_settings = {
 };
 
 SplashScreen.preventAutoHideAsync();
-
-// Sentry initialization:
-// @sentry/react-native requires a custom dev build (not Expo Go).
-// To enable: create a dev build with `eas build --profile development`,
-// then uncomment the config plugin in app.json and the init below.
-//
-// import * as Sentry from '@sentry/react-native';
-// Sentry.init({
-//   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN || '',
-//   tracesSampleRate: 0.2,
-//   enableAutoSessionTracking: true,
-//   enabled: !__DEV__,
-// });
+initErrorReporting();
 
 const FanWaveDarkTheme = {
   ...DarkTheme,
@@ -152,10 +141,12 @@ export default function RootLayout() {
       (event, session) => {
         setSession(session);
         if (event === 'SIGNED_IN' && session) {
+          setUserContext({ id: session.user.id, email: session.user.email });
           registerForPushNotifications();
           recordDailyActivity();
           startAnalyticsFlush();
         } else if (event === 'SIGNED_OUT') {
+          clearUserContext();
           clearPushToken();
         }
       }
@@ -236,6 +227,8 @@ export default function RootLayout() {
             name="create-wc-group"
             options={{ presentation: 'modal', headerShown: false }}
           />
+          <Stack.Screen name="legal" options={{ headerShown: false }} />
+          <Stack.Screen name="blocked-users" options={{ headerShown: false }} />
         </Stack>
       </ThemeProvider>
     </AppQueryClientProvider>

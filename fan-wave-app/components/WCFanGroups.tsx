@@ -13,6 +13,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Search, Share2 } from 'lucide-react-native';
 import { shareGroup } from '@/lib/sharing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { reportError } from '@/lib/errorReporting';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 
@@ -73,7 +74,9 @@ export default function WCFanGroups() {
     try {
       const raw = await AsyncStorage.getItem(WC_CREATED_GROUPS_KEY);
       if (raw) return JSON.parse(raw);
-    } catch {}
+    } catch (e) {
+      reportError(e, { source: 'WCFanGroups:loadLocalGroups' });
+    }
     return [];
   };
 

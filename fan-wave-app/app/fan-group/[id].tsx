@@ -23,6 +23,7 @@ import {
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { reportError } from '@/lib/errorReporting';
 import { subscribeToMessages, subscribeToPresence } from '@/lib/realtime';
 import {
   mapChatRoomToDisplay,
@@ -66,7 +67,9 @@ export default function FanGroupDetailScreen() {
           setCurrentUserName(displayName);
           setCurrentUserAvatar(displayName.charAt(0).toUpperCase());
         }
-      } catch {}
+      } catch (e) {
+        reportError(e, { source: 'fan-group:loadAuthUser' });
+      }
     })();
   }, []);
 
@@ -425,6 +428,7 @@ export default function FanGroupDetailScreen() {
                 onChangeText={setMessage}
                 onSubmitEditing={handleSend}
                 returnKeyType="send"
+                maxLength={2000}
               />
               <TouchableOpacity
                 style={[

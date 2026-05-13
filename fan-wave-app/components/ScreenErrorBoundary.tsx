@@ -1,6 +1,7 @@
 import React, { Component, type ReactNode } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Colors } from '@/constants/Colors';
+import { reportError } from '@/lib/errorReporting';
 
 interface Props {
   children: ReactNode;
@@ -19,12 +20,7 @@ export class ScreenErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // When Sentry is enabled (custom dev build), uncomment:
-    // import * as Sentry from '@sentry/react-native';
-    // Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } });
-    if (__DEV__) {
-      console.error('ScreenErrorBoundary caught:', error);
-    }
+    reportError(error, { componentStack: errorInfo.componentStack, source: 'ScreenErrorBoundary' });
   }
 
   handleRetry = () => {

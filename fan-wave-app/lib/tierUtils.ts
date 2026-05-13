@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { UserTeamFollow, FollowTier } from '@/constants/FollowTiers';
+import { reportError } from '@/lib/errorReporting';
 
 const dismissedPrompts = new Set<string>();
 
@@ -31,9 +32,12 @@ export async function upgradeTier(userId: string, teamId: string, newTier: Follo
         event_name: 'tier_upsell_accepted',
         metadata: { team_id: teamId, new_tier: newTier },
       });
-    } catch {}
+    } catch (e) {
+      reportError(e, { source: 'tierUtils:logUpsellAccepted', userId, teamId });
+    }
     return true;
-  } catch {
+  } catch (e) {
+    reportError(e, { source: 'tierUtils:upgradeTier', userId, teamId, newTier });
     return false;
   }
 }

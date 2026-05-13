@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { parseAuthError } from '@/lib/authErrors';
 
 export default function SignInScreen() {
   const router = useRouter();
@@ -38,11 +39,9 @@ export default function SignInScreen() {
         password,
       });
       if (error) throw error;
-    } catch (e: any) {
-      const msg = e?.message?.includes('Invalid login')
-        ? 'Incorrect email or password. Please try again.'
-        : 'Unable to sign in. Please check your connection and try again.';
-      Alert.alert('Sign In Failed', msg);
+    } catch (e) {
+      const info = parseAuthError(e);
+      Alert.alert(info.title, info.message);
     } finally {
       setLoading(false);
     }
