@@ -14,6 +14,7 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Globe, Lock, UserPlus, X, Users, Search } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
 import { Colors } from '@/constants/Colors';
@@ -74,6 +75,7 @@ const TIME_PRESETS = computeTimePresets();
 
 export default function CreateWatchPartyScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState(1);
 
   // Step 1 state
@@ -863,7 +865,7 @@ export default function CreateWatchPartyScreen() {
       {step === 3 && renderStep3()}
 
       {/* Bottom button */}
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: 12 + insets.bottom }]}>
         {step === 1 && (
           <TouchableOpacity
             style={[styles.primaryBtn, !isStep1Valid && styles.primaryBtnDisabled]}
@@ -1527,10 +1529,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  // Bottom bar
+  // Bottom bar — paddingBottom set dynamically via insets.bottom at the JSX site
   bottomBar: {
     paddingHorizontal: 16,
-    paddingBottom: 34,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: C.border,

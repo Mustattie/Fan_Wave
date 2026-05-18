@@ -8,8 +8,6 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -18,6 +16,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { uploadAsync, FileSystemUploadType } from 'expo-file-system/legacy';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 
 const C = Colors.dark;
 const MAX_TITLE = 80;
@@ -25,6 +24,7 @@ const MAX_DESCRIPTION = 300;
 
 export default function CreateClipScreen() {
   const router = useRouter();
+  const keyboardHeight = useKeyboardHeight();
   const { videoUri, durationMs } = useLocalSearchParams<{
     videoUri: string;
     durationMs?: string;
@@ -152,10 +152,7 @@ export default function CreateClipScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <View style={{ flex: 1, marginBottom: keyboardHeight }}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
             <X size={24} color={C.text} />
@@ -218,7 +215,7 @@ export default function CreateClipScreen() {
             )}
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

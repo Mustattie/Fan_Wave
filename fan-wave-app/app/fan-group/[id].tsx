@@ -5,12 +5,11 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
   FlatList,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft,
@@ -41,6 +40,7 @@ export default function FanGroupDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<ChatMessageDisplay[]>([]);
   const [activeTab, setActiveTab] = useState<SubTab>('Chat');
@@ -376,7 +376,7 @@ export default function FanGroupDetailScreen() {
 
       {/* Tab Content */}
       {activeTab === 'Chat' ? (
-        <>
+        <View style={{ flex: 1, marginBottom: keyboardHeight }}>
           {loadingMessages ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
               <ActivityIndicator size="large" color={Colors.dark.accent} />
@@ -409,41 +409,41 @@ export default function FanGroupDetailScreen() {
             />
           )}
 
-          {/* Input Bar */}
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={0}
+          {/* Input Bar — keyboard avoidance handled by parent marginBottom */}
+          <View
+            style={[
+              styles.inputBar,
+              { paddingBottom: 10 + (keyboardHeight > 0 ? 0 : insets.bottom) },
+            ]}
           >
-            <View style={[styles.inputBar, { paddingBottom: 10 + insets.bottom }]}>
-              <TouchableOpacity style={styles.inputAction}>
-                <ImageIcon size={20} color={Colors.dark.textMuted} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.inputAction}>
-                <Smile size={20} color={Colors.dark.textMuted} />
-              </TouchableOpacity>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Message..."
-                placeholderTextColor={Colors.dark.textMuted}
-                value={message}
-                onChangeText={setMessage}
-                onSubmitEditing={handleSend}
-                returnKeyType="send"
-                maxLength={2000}
-              />
-              <TouchableOpacity
-                style={[
-                  styles.sendButton,
-                  !message.trim() && styles.sendButtonDisabled,
-                ]}
-                onPress={handleSend}
-                disabled={!message.trim()}
-              >
-                <Send size={18} color={message.trim() ? '#fff' : Colors.dark.textMuted} />
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        </>
+            <TouchableOpacity style={styles.inputAction}>
+              <ImageIcon size={20} color={Colors.dark.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.inputAction}>
+              <Smile size={20} color={Colors.dark.textMuted} />
+            </TouchableOpacity>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Message..."
+              placeholderTextColor={Colors.dark.textMuted}
+              value={message}
+              onChangeText={setMessage}
+              onSubmitEditing={handleSend}
+              returnKeyType="send"
+              maxLength={2000}
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                !message.trim() && styles.sendButtonDisabled,
+              ]}
+              onPress={handleSend}
+              disabled={!message.trim()}
+            >
+              <Send size={18} color={message.trim() ? '#fff' : Colors.dark.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </View>
       ) : (
         <View style={{ flex: 1 }}>
           <MomentsFeed chatRoomId={id || ''} sportId={group.sport || 'nfl'} />
