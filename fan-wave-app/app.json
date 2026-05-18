@@ -58,7 +58,8 @@
           "color": "#6c5ce7"
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

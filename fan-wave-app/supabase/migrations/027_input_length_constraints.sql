@@ -17,7 +17,7 @@
 --   content_flags.details       1000
 -- ============================================================================
 
-DO $$
+DO $migration_027$
 BEGIN
     -- watch_parties
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'watch_parties_title_len_chk') THEN
@@ -60,4 +60,4 @@ BEGIN
         ALTER TABLE content_flags
             ADD CONSTRAINT content_flags_details_len_chk CHECK (details IS NULL OR length(details) <= 1000);
     END IF;
-END $$;
+END $migration_027$;

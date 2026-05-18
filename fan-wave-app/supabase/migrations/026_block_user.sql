@@ -56,11 +56,11 @@ CREATE POLICY user_blocks_delete ON user_blocks
 --    "blocked_id = auth.uid()" direction.
 CREATE OR REPLACE FUNCTION blocked_user_ids()
 RETURNS SETOF UUID
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $bui$
     SELECT blocked_id FROM user_blocks WHERE blocker_id = auth.uid()
     UNION
     SELECT blocker_id FROM user_blocks WHERE blocked_id = auth.uid()
-$$;
+$bui$;
 
 -- 3. Tighten RLS on user-authored content to honour blocks.
 
@@ -73,11 +73,16 @@ CREATE POLICY media_clips_select ON media_clips
     );
 
 -- messages: keep chat-room membership requirement, add block filter.
+-- Inlined membership subquery (instead of user_chat_room_ids()) so this works
+-- on databases where migration 017's helper was never applied.
 DROP POLICY IF EXISTS messages_select ON messages;
 CREATE POLICY messages_select ON messages
     FOR SELECT TO authenticated
     USING (
-        chat_room_id IN (SELECT user_chat_room_ids())
+        chat_room_id IN (
+            SELECT chat_room_id FROM chat_room_members
+            WHERE user_id = auth.uid()
+        )
         AND user_id NOT IN (SELECT blocked_user_ids())
     );
 
@@ -95,7 +100,7 @@ CREATE POLICY watch_parties_select ON watch_parties
 -- Block a user by their auth.uid(). Idempotent.
 CREATE OR REPLACE FUNCTION block_user(p_blocked_id UUID)
 RETURNS VOID
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $blk$
 BEGIN
     IF p_blocked_id IS NULL THEN
         RAISE EXCEPTION 'blocked_id is required';
@@ -108,15 +113,15 @@ BEGIN
     VALUES (auth.uid(), p_blocked_id)
     ON CONFLICT (blocker_id, blocked_id) DO NOTHING;
 END;
-$$;
+$blk$;
 
 -- Unblock a user. Idempotent.
 CREATE OR REPLACE FUNCTION unblock_user(p_blocked_id UUID)
 RETURNS VOID
-LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE sql SECURITY DEFINER SET search_path = public AS $unblk$
     DELETE FROM user_blocks
     WHERE blocker_id = auth.uid() AND blocked_id = p_blocked_id;
-$$;
+$unblk$;
 
 -- List users I have blocked, with display name and when.
 CREATE OR REPLACE FUNCTION get_my_blocks()
@@ -125,7 +130,7 @@ RETURNS TABLE (
     display_name  TEXT,
     blocked_at    TIMESTAMPTZ
 )
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $gmb$
     SELECT
         ub.blocked_id,
         COALESCE(u.display_name, 'User') AS display_name,
@@ -134,7 +139,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
     LEFT JOIN users u ON u.auth_id = ub.blocked_id
     WHERE ub.blocker_id = auth.uid()
     ORDER BY ub.created_at DESC;
-$$;
+$gmb$;
 
 GRANT EXECUTE ON FUNCTION block_user(UUID)   TO authenticated;
 GRANT EXECUTE ON FUNCTION unblock_user(UUID) TO authenticated;
