@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,17 +9,20 @@ import {
   TextInput,
   ScrollView,
   Alert,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
 import { Video, Film, X, Share2, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { getMomentTypesForSport, REACTION_EMOJIS } from '@/constants/MomentTypes';
 import type { MomentType } from '@/constants/MomentTypes';
 import { supabase } from '@/lib/supabase';
+import { formatRelativeTime } from '@/lib/mappers';
+import { reportError } from '@/lib/errorReporting';
 
 interface Reaction {
   emoji: string;
@@ -43,6 +46,27 @@ interface MomentsFeedProps {
   sportId: string;
 }
 
+// VideoView requires a player instance, and useVideoPlayer must be called
+// unconditionally — so video vs image clips render via separate subcomponents
+// to keep hook ordering stable per moment card.
+function MomentClipImage({ uri }: { uri: string }) {
+  return <Image source={{ uri }} style={styles.clipThumbnail} contentFit="cover" />;
+}
+
+function MomentClipVideo({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = false;
+    p.muted = false;
+  });
+  return (
+    <VideoView
+      player={player}
+      style={styles.clipThumbnail}
+      nativeControls
+      contentFit="cover"
+    />
+  );
+}
 
 export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
   const insets = useSafeAreaInsets();
@@ -53,6 +77,72 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
   const [commentText, setCommentText] = useState('');
   const [clipUri, setClipUri] = useState<string | null>(null);
   const [clipType, setClipType] = useState<'video' | 'image' | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  // Track keyboard height so the bottom-anchored modal can lift off the
+  // soft keyboard. RN's Modal on Android doesn't respect adjustResize, and
+  // KeyboardAvoidingView with behavior="height" is unreliable inside a
+  // transparent Modal — a manual listener + marginBottom is the most
+  // robust cross-platform approach.
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) =>
+      setKeyboardHeight(e.endCoordinates.height),
+    );
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  // Load auth user once so handlePost can write match_moments.user_id
+  // (NOT NULL in the schema — previous inserts were failing silently).
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setCurrentUserId(user.id);
+    }).catch(() => {});
+  }, []);
+
+  // Hydrate moments from match_moments on mount so posted moments survive
+  // re-opening the Highlights tab. Limit + order keeps the feed fresh.
+  useEffect(() => {
+    if (!chatRoomId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('match_moments')
+          .select('id, moment_type, comment, media_url, user_id, created_at')
+          .eq('chat_room_id', chatRoomId)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (error) throw error;
+        if (cancelled || !data) return;
+        const mapped: Moment[] = data.map((row) => {
+          const isVideo = typeof row.media_url === 'string' && /\.(mp4|mov|m4v|webm)$/i.test(row.media_url);
+          return {
+            id: row.id,
+            momentTypeId: row.moment_type,
+            user: row.user_id === currentUserId ? 'You' : 'Member',
+            comment: row.comment || '',
+            time: formatRelativeTime(row.created_at),
+            reactions: [],
+            clipUri: row.media_url || undefined,
+            clipType: row.media_url ? (isVideo ? 'video' : 'image') : undefined,
+          };
+        });
+        setMoments(mapped);
+      } catch (e) {
+        reportError(e, { source: 'MomentsFeed:loadMoments', chatRoomId });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [chatRoomId, currentUserId]);
 
   const pickClip = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -168,10 +258,11 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
   };
 
   const handlePost = async () => {
-    if (!selectedType || !commentText.trim()) return;
+    if (!selectedType) return;
 
+    const tempId = `mo-${Date.now()}`;
     const newMoment: Moment = {
-      id: `mo-${Date.now()}`,
+      id: tempId,
       momentTypeId: selectedType.id,
       user: 'You',
       comment: commentText.trim(),
@@ -183,21 +274,45 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
 
     setMoments((prev) => [newMoment, ...prev]);
     setShowPostModal(false);
+    const submittedType = selectedType;
+    const submittedComment = commentText.trim();
+    const submittedClipUri = clipUri;
     setSelectedType(null);
     setCommentText('');
     setClipUri(null);
     setClipType(null);
 
-    try {
-      await supabase.from('match_moments').insert({
-        chat_room_id: chatRoomId,
-        moment_type: selectedType.id,
-        sport_id: sportId,
-        user_name: 'You',
-        comment: newMoment.comment,
+    if (!currentUserId) {
+      // No auth user — moment stays local. Surface the issue so we don't
+      // silently lose posts.
+      reportError(new Error('Cannot persist moment: no auth user'), {
+        source: 'MomentsFeed:handlePost',
+        chatRoomId,
       });
-    } catch {
-      // Graceful fallback — moment already added locally
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('match_moments')
+        .insert({
+          chat_room_id: chatRoomId,
+          user_id: currentUserId,
+          moment_type: submittedType.id,
+          comment: submittedComment,
+          media_url: submittedClipUri,
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      // Swap tempId for the real DB id so deletes target the right row.
+      if (data?.id) {
+        setMoments((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, id: data.id } : m)),
+        );
+      }
+    } catch (e) {
+      reportError(e, { source: 'MomentsFeed:handlePost', chatRoomId });
     }
   };
 
@@ -219,11 +334,10 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
         <Text style={styles.momentComment}>{item.comment}</Text>
         {item.clipUri && (
           <View style={styles.clipContainer}>
-            <Image source={{ uri: item.clipUri }} style={styles.clipThumbnail} />
-            {item.clipType === 'video' && (
-              <View style={styles.clipPlayOverlay}>
-                <Text style={styles.clipPlayIcon}>▶</Text>
-              </View>
+            {item.clipType === 'video' ? (
+              <MomentClipVideo uri={item.clipUri} />
+            ) : (
+              <MomentClipImage uri={item.clipUri} />
             )}
             <View style={styles.clipBadge}>
               <Text style={styles.clipBadgeText}>
@@ -323,11 +437,16 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
         transparent
         onRequestClose={() => setShowPostModal(false)}
       >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <View style={[styles.modalContent, { paddingBottom: insets.bottom + 20 }]}>
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                paddingBottom: insets.bottom + 20,
+                marginBottom: keyboardHeight,
+              },
+            ]}
+          >
             <ScrollView
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
@@ -410,17 +529,16 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
               <TouchableOpacity
                 style={[
                   styles.submitBtn,
-                  (!selectedType || !commentText.trim()) &&
-                    styles.submitBtnDisabled,
+                  !selectedType && styles.submitBtnDisabled,
                 ]}
                 onPress={handlePost}
-                disabled={!selectedType || !commentText.trim()}
+                disabled={!selectedType}
               >
                 <Text style={styles.submitBtnText}>Post</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </View>
   );

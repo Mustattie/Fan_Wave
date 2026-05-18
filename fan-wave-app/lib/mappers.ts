@@ -187,20 +187,26 @@ export interface ChatRoomDisplay {
 }
 
 export function mapChatRoomToDisplay(row: any): ChatRoomDisplay {
-  const sportName = row.sport || row.sport_id || '';
+  const rawSport = (row.sport || row.sport_id || '').toLowerCase();
+  const tags: string[] = row.tags || [];
+  // World Cup fan groups don't always have sport='soccer' set on the row —
+  // detect via tag so MomentsFeed renders soccer-relevant moment types
+  // (Goal, Yellow Card, Penalty, etc.) instead of the NFL default.
+  const isWorldCup = tags.some((t) => /world\s?cup/i.test(String(t)));
+  const sport = isWorldCup ? 'worldcup' : rawSport;
 
   return {
     id: row.id,
     name: row.name || 'Fan Group',
-    icon: row.icon || getSportEmoji(sportName),
-    iconBg: row.icon_bg || getSportIconBg(sportName),
+    icon: row.icon || getSportEmoji(sport),
+    iconBg: row.icon_bg || getSportIconBg(sport),
     memberCount: row.member_count || 0,
     onlineCount: row.online_count || 0,
     lastMessage: row.last_message || '',
     lastMessageTime: row.last_message_at ? formatRelativeTime(row.last_message_at) : '',
     unreadCount: row.unread_count || 0,
-    tags: row.tags || [],
-    sport: (sportName || '').toLowerCase(),
+    tags,
+    sport,
   };
 }
 

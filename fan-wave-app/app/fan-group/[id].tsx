@@ -10,7 +10,7 @@ import {
   FlatList,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft,
@@ -40,6 +40,7 @@ const PAGE_SIZE = 20;
 export default function FanGroupDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<ChatMessageDisplay[]>([]);
   const [activeTab, setActiveTab] = useState<SubTab>('Chat');
@@ -413,7 +414,7 @@ export default function FanGroupDetailScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             keyboardVerticalOffset={0}
           >
-            <View style={styles.inputBar}>
+            <View style={[styles.inputBar, { paddingBottom: 10 + insets.bottom }]}>
               <TouchableOpacity style={styles.inputAction}>
                 <ImageIcon size={20} color={Colors.dark.textMuted} />
               </TouchableOpacity>
