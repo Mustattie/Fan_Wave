@@ -51,7 +51,7 @@ function NavigationGuard({
   onboardingComplete: boolean;
   hasSeenWelcome: boolean;
 }) {
-  const segments = useSegments();
+  const segments = useSegments() as string[];
   const router = useRouter();
   const navigationState = useRootNavigationState();
 
