@@ -9,7 +9,10 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { Video, Film, X, Share2, Trash2 } from 'lucide-react-native';
@@ -42,6 +45,7 @@ interface MomentsFeedProps {
 
 
 export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
+  const insets = useSafeAreaInsets();
   const [moments, setMoments] = useState<Moment[]>([]);
   const [showPostModal, setShowPostModal] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
@@ -319,71 +323,76 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
         transparent
         onRequestClose={() => setShowPostModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Post a Moment</Text>
-
-            <Text style={styles.modalLabel}>Select Moment Type</Text>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={[styles.modalContent, { paddingBottom: insets.bottom + 20 }]}>
             <ScrollView
-              horizontal={false}
-              style={styles.typeGrid}
-              contentContainerStyle={styles.typeGridContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
             >
-              {momentTypes.map((type) => (
-                <TouchableOpacity
-                  key={type.id}
-                  style={[
-                    styles.typeOption,
-                    selectedType?.id === type.id && {
-                      borderColor: type.color,
-                      backgroundColor: type.color + '22',
-                    },
-                  ]}
-                  onPress={() => setSelectedType(type)}
-                >
-                  <Text style={styles.typeOptionEmoji}>{type.emoji}</Text>
-                  <Text style={styles.typeOptionLabel}>{type.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+              <Text style={styles.modalTitle}>Post a Moment</Text>
 
-            <Text style={styles.modalLabel}>Attach a Clip</Text>
-            {clipUri ? (
-              <View style={styles.clipPreviewRow}>
-                <Image source={{ uri: clipUri }} style={styles.clipPreviewThumb} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.clipPreviewLabel}>
-                    {clipType === 'video' ? '🎬 Video clip attached' : '📸 Photo attached'}
-                  </Text>
-                  <Text style={styles.clipPreviewHint}>Max 30 seconds</Text>
+              <Text style={styles.modalLabel}>Select Moment Type</Text>
+              <View style={styles.typeGridContent}>
+                {momentTypes.map((type) => (
+                  <TouchableOpacity
+                    key={type.id}
+                    style={[
+                      styles.typeOption,
+                      selectedType?.id === type.id && {
+                        borderColor: type.color,
+                        backgroundColor: type.color + '22',
+                      },
+                    ]}
+                    onPress={() => setSelectedType(type)}
+                  >
+                    <Text style={styles.typeOptionEmoji}>{type.emoji}</Text>
+                    <Text style={styles.typeOptionLabel}>{type.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.modalLabel, { marginTop: 16 }]}>Attach a Clip</Text>
+              {clipUri ? (
+                <View style={styles.clipPreviewRow}>
+                  <Image source={{ uri: clipUri }} style={styles.clipPreviewThumb} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.clipPreviewLabel}>
+                      {clipType === 'video' ? '🎬 Video clip attached' : '📸 Photo attached'}
+                    </Text>
+                    <Text style={styles.clipPreviewHint}>Max 30 seconds</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => { setClipUri(null); setClipType(null); }}>
+                    <X size={20} color={Colors.dark.textMuted} />
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity onPress={() => { setClipUri(null); setClipType(null); }}>
-                  <X size={20} color={Colors.dark.textMuted} />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.clipButtonRow}>
-                <TouchableOpacity style={styles.clipButton} onPress={recordClip}>
-                  <Video size={20} color={Colors.dark.accent} />
-                  <Text style={styles.clipButtonText}>Record Clip</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.clipButton} onPress={pickClip}>
-                  <Film size={20} color={Colors.dark.accent} />
-                  <Text style={styles.clipButtonText}>From Gallery</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+              ) : (
+                <View style={styles.clipButtonRow}>
+                  <TouchableOpacity style={styles.clipButton} onPress={recordClip}>
+                    <Video size={20} color={Colors.dark.accent} />
+                    <Text style={styles.clipButtonText}>Record Clip</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.clipButton} onPress={pickClip}>
+                    <Film size={20} color={Colors.dark.accent} />
+                    <Text style={styles.clipButtonText}>From Gallery</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
-            <Text style={[styles.modalLabel, { marginTop: 12 }]}>Comment</Text>
-            <TextInput
-              style={styles.commentInput}
-              placeholder="What just happened?"
-              placeholderTextColor={Colors.dark.textMuted}
-              value={commentText}
-              onChangeText={setCommentText}
-              multiline
-              maxLength={280}
-            />
+              <Text style={[styles.modalLabel, { marginTop: 12 }]}>Comment</Text>
+              <TextInput
+                style={styles.commentInput}
+                placeholder="What just happened?"
+                placeholderTextColor={Colors.dark.textMuted}
+                value={commentText}
+                onChangeText={setCommentText}
+                multiline
+                maxLength={280}
+              />
+            </ScrollView>
 
             <View style={styles.modalActions}>
               <TouchableOpacity
@@ -411,7 +420,7 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -637,8 +646,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.dark.surface,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '80%',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    maxHeight: '90%',
+  },
+  modalScrollContent: {
+    paddingBottom: 16,
   },
   modalTitle: {
     fontSize: 18,
@@ -652,10 +665,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.dark.textSecondary,
     marginBottom: 8,
-  },
-  typeGrid: {
-    maxHeight: 180,
-    marginBottom: 16,
   },
   typeGridContent: {
     flexDirection: 'row',

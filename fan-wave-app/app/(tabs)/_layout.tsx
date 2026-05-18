@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Home, Compass, Play, Users, User, Trophy } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { isFeatureActive } from '@/lib/featureFlags';
 
 export default function TabLayout() {
   const [worldCupEnabled, setWorldCupEnabled] = useState(true);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     isFeatureActive('world_cup_mode', { ignoreDateWindow: true }).then(setWorldCupEnabled).catch(() => setWorldCupEnabled(true));
@@ -20,8 +22,8 @@ export default function TabLayout() {
           backgroundColor: Colors.dark.tabBar,
           borderTopColor: Colors.dark.border,
           borderTopWidth: 1,
-          height: 85,
-          paddingBottom: 20,
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom + 8,
           paddingTop: 8,
         },
         tabBarLabelStyle: {

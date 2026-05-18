@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,12 +11,35 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { SPORTS } from '@/constants/Sports';
 import { Colors } from '@/constants/Colors';
+import { supabase } from '@/lib/supabase';
 
 type SportItem = (typeof SPORTS)[number];
 
 export default function OnboardingSportsScreen() {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Screen-level guard: if this user already completed onboarding (server-side
+  // users.onboarded_at is set), redirect to tabs immediately. Defense in depth
+  // against any state race in the root NavigationGuard so returning users
+  // never see the sport-picker again.
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user || cancelled) return;
+      const { data } = await supabase
+        .from('users')
+        .select('onboarded_at')
+        .eq('auth_id', user.id)
+        .maybeSingle();
+      if (!cancelled && data?.onboarded_at) {
+        router.replace('/(tabs)');
+      }
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const toggleSport = useCallback((id: string) => {
     setSelected((prev) => {
