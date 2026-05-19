@@ -8,8 +8,28 @@ interface GameCardProps {
   onPress?: () => void;
 }
 
+function formatPeriodLabel(sport: string, period: number | null | undefined, clock: string | null | undefined): string | null {
+  if (period == null) return null;
+  const s = sport?.toLowerCase() || '';
+  let periodLabel: string;
+  if (s === 'mlb' || s === 'baseball') {
+    periodLabel = `Inn ${period}`;
+  } else if (s === 'soccer' || s === 'mls' || s === 'worldcup') {
+    periodLabel = period === 1 ? '1st' : period === 2 ? '2nd' : `${period}'`;
+  } else if (s === 'nhl' || s === 'hockey') {
+    periodLabel = period > 3 ? `OT${period - 3}` : `P${period}`;
+  } else {
+    // NFL / NBA / college etc — quarters
+    periodLabel = period > 4 ? `OT${period - 4}` : `Q${period}`;
+  }
+  return clock ? `${periodLabel} · ${clock}` : periodLabel;
+}
+
 export function GameCard({ game, onPress }: GameCardProps) {
   const isLive = game.status === 'live';
+  const isFinal = game.status === 'final';
+  const hasScore = game.homeScore != null && game.awayScore != null;
+  const periodLabel = formatPeriodLabel(game.sport, game.period, game.displayClock);
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
@@ -18,12 +38,18 @@ export function GameCard({ game, onPress }: GameCardProps) {
           <Text style={styles.teamEmoji}>{game.homeTeam.icon}</Text>
           <Text style={styles.teamName}>{game.homeTeam.name}</Text>
         </View>
-        {isLive && game.homeScore != null && game.awayScore != null ? (
+        {(isLive || isFinal) && hasScore ? (
           <View style={styles.scoreContainer}>
             <Text style={styles.score}>{game.homeScore} - {game.awayScore}</Text>
-            <View style={styles.liveBadge}>
-              <Text style={styles.liveText}>LIVE</Text>
-            </View>
+            {isLive ? (
+              <View style={styles.liveBadge}>
+                <Text style={styles.liveText}>LIVE</Text>
+              </View>
+            ) : (
+              <View style={styles.finalBadge}>
+                <Text style={styles.finalText}>FINAL</Text>
+              </View>
+            )}
           </View>
         ) : (
           <Text style={styles.vs}>VS</Text>
@@ -33,7 +59,11 @@ export function GameCard({ game, onPress }: GameCardProps) {
           <Text style={styles.teamName}>{game.awayTeam.name}</Text>
         </View>
       </View>
-      <Text style={styles.time}>{game.time}</Text>
+      {isLive && periodLabel ? (
+        <Text style={styles.periodLabel}>{periodLabel}</Text>
+      ) : (
+        <Text style={styles.time}>{game.time}</Text>
+      )}
       <Text style={styles.league}>{game.league}</Text>
     </TouchableOpacity>
   );
@@ -89,6 +119,24 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: '#fff',
     fontWeight: '800',
+  },
+  finalBadge: {
+    backgroundColor: Colors.dark.textMuted,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 2,
+  },
+  finalText: {
+    fontSize: 9,
+    color: '#fff',
+    fontWeight: '800',
+  },
+  periodLabel: {
+    fontSize: 11,
+    color: Colors.dark.error,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   time: {
     fontSize: 12,

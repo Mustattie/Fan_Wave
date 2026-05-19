@@ -329,7 +329,15 @@ export function WCSchedule() {
     const homeName = getTeamName(match.home_team, match.metadata, 'home');
     const awayName = getTeamName(match.away_team, match.metadata, 'away');
     const group = match.metadata?.group;
-    const isLive = match.status === 'live';
+    // ESPN sync writes status='in' for live games; accept either form.
+    const isLive = match.status === 'live' || match.status === 'in';
+    const isFinal = match.status === 'final' || match.status === 'post';
+    // Soccer live extras stored on the metadata column by the ESPN function.
+    const period = typeof match.metadata?.period === 'number' ? match.metadata.period : null;
+    const clock = typeof match.metadata?.display_clock === 'string' ? match.metadata.display_clock : null;
+    const periodLabel = period != null
+      ? (clock ? `${period === 1 ? '1st' : period === 2 ? '2nd' : `${period}'`} · ${clock}` : period === 1 ? '1st half' : period === 2 ? '2nd half' : `${period}'`)
+      : null;
 
     return (
       <View style={[styles.matchCard, isLive && styles.matchCardLive]}>
@@ -344,7 +352,12 @@ export function WCSchedule() {
           {isLive && (
             <View style={styles.liveIndicator}>
               <View style={styles.liveDot} />
-              <Text style={styles.liveText}>LIVE</Text>
+              <Text style={styles.liveText}>{periodLabel ? `LIVE · ${periodLabel}` : 'LIVE'}</Text>
+            </View>
+          )}
+          {!isLive && isFinal && (
+            <View style={styles.liveIndicator}>
+              <Text style={styles.liveText}>FINAL</Text>
             </View>
           )}
         </View>

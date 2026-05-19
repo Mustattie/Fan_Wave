@@ -36,6 +36,15 @@ interface ParsedGame {
   scheduledAt: string;
   status: string;
   league: string;
+  // Live-game extras for in-progress / final games. period is the
+  // current quarter/period/inning (1-indexed). displayClock is ESPN's
+  // formatted clock string ("8:42", "Top 3rd", "HT"). linescores hold
+  // the per-period running scores so the UI can show a breakdown.
+  period: number | null;
+  displayClock: string | null;
+  homeLinescore: number[] | null;
+  awayLinescore: number[] | null;
+  isHalftime: boolean;
 }
 
 interface SportsDataProvider {
@@ -64,8 +73,9 @@ class ESPNAdapter implements SportsDataProvider {
         if (!homeTeamData || !awayTeamData) continue;
 
         const statusType = comp.status?.type?.name ?? "scheduled";
+        const isHalftime = statusType === "STATUS_HALFTIME";
         let normalizedStatus = "scheduled";
-        if (statusType === "STATUS_IN_PROGRESS" || statusType === "STATUS_HALFTIME") {
+        if (statusType === "STATUS_IN_PROGRESS" || isHalftime) {
           normalizedStatus = "in";
         } else if (
           statusType === "STATUS_FINAL" ||
@@ -73,6 +83,25 @@ class ESPNAdapter implements SportsDataProvider {
         ) {
           normalizedStatus = "post";
         }
+
+        // ESPN exposes current period + clock + per-period linescores.
+        // Capture for the UI to render quarter / half-time / final
+        // breakdowns. linescores is an array of { value: number } per
+        // period in order; flatten to plain numbers.
+        const periodRaw = Number(comp.status?.period);
+        const period = Number.isFinite(periodRaw) && periodRaw > 0 ? periodRaw : null;
+        const displayClock = typeof comp.status?.displayClock === "string"
+          ? comp.status.displayClock
+          : null;
+        const flattenLinescores = (t: any): number[] | null => {
+          const arr = t?.linescores;
+          if (!Array.isArray(arr) || arr.length === 0) return null;
+          return arr
+            .map((ls: any) => {
+              const v = Number(ls?.value);
+              return Number.isFinite(v) ? v : 0;
+            });
+        };
 
         results.push({
           espnId: event.id,
@@ -90,6 +119,11 @@ class ESPNAdapter implements SportsDataProvider {
           scheduledAt: event.date ?? new Date().toISOString(),
           status: normalizedStatus,
           league: sport,
+          period,
+          displayClock,
+          homeLinescore: flattenLinescores(homeTeamData),
+          awayLinescore: flattenLinescores(awayTeamData),
+          isHalftime,
         });
       } catch {
         continue;
@@ -250,7 +284,7 @@ Deno.serve(async (req: Request) => {
 
         let query = supabase
           .from("games")
-          .select("id")
+          .select("id, metadata")
           .eq("home_team_id", homeTeamId)
           .eq("away_team_id", awayTeamId)
           .gte("scheduled_at", `${scheduledDate}T00:00:00Z`)
@@ -261,6 +295,22 @@ Deno.serve(async (req: Request) => {
         }
 
         const { data: existing } = await query.maybeSingle();
+
+        // Merge ESPN live-game fields into metadata WITHOUT clobbering
+        // pre-existing WC seed data (group, match_number, home/away
+        // placeholders from migration 006). On insert, existing.metadata
+        // is null → defaults to {}.
+        const mergedMetadata = {
+          ...(existing?.metadata && typeof existing.metadata === "object"
+            ? existing.metadata
+            : {}),
+          espn_id: game.espnId,
+          period: game.period,
+          display_clock: game.displayClock,
+          home_linescore: game.homeLinescore,
+          away_linescore: game.awayLinescore,
+          is_halftime: game.isHalftime,
+        };
 
         // games schema: venue_name (not venue); no espn_id / league columns
         // exist — drop them. dedup uses home/away/date so espn_id isn't
@@ -273,6 +323,7 @@ Deno.serve(async (req: Request) => {
           venue_name: game.venue,
           scheduled_at: game.scheduledAt,
           status: game.status,
+          metadata: mergedMetadata,
           ...(eventId ? { event_id: eventId } : {}),
         };
 

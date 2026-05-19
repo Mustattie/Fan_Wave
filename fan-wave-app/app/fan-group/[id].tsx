@@ -376,11 +376,13 @@ export default function FanGroupDetailScreen() {
 
       {/* Tab Content */}
       {activeTab === 'Chat' ? (
-        // NOTE: do NOT add marginBottom: keyboardHeight here. Android's
-        // softwareKeyboardLayoutMode=resize (set in app.json) already
-        // shrinks the activity when the keyboard opens; adding our own
-        // margin double-shrinks and pushes the input bar past the
-        // keyboard top. The OS resize handles this layer correctly.
+        // OS resize (softwareKeyboardLayoutMode=resize in app.json) isn't
+        // being honored on this user's device (likely an edge-to-edge +
+        // resize conflict on Samsung's One UI). Apply marginBottom on the
+        // INPUT BAR ONLY — not the whole chat container — so the bar
+        // lifts above the keyboard while the FlatList stays full-height
+        // (its content scrolls so newest messages stay visible above the
+        // keyboard).
         <View style={{ flex: 1 }}>
           {loadingMessages ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -414,11 +416,17 @@ export default function FanGroupDetailScreen() {
             />
           )}
 
-          {/* Input Bar — keyboard avoidance handled by parent marginBottom */}
+          {/* Input Bar — lifted above keyboard via marginBottom on the bar
+              itself (since OS resize isn't honored on this device). The
+              FlatList above stays at full height; its content scrolls so
+              the newest messages remain visible above the keyboard. */}
           <View
             style={[
               styles.inputBar,
-              { paddingBottom: 10 + (keyboardHeight > 0 ? 0 : insets.bottom) },
+              {
+                marginBottom: keyboardHeight,
+                paddingBottom: 10 + (keyboardHeight > 0 ? 0 : insets.bottom),
+              },
             ]}
           >
             <TouchableOpacity style={styles.inputAction}>

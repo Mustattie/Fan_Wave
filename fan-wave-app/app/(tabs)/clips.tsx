@@ -143,7 +143,7 @@ function ClipCard({
         <VideoView
           player={player}
           style={styles.video}
-          nativeControls={false}
+          nativeControls
           contentFit="cover"
         />
         {!isPlaying && (

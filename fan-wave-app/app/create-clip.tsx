@@ -239,10 +239,10 @@ export default function CreateClipScreen() {
           />
           <Text style={styles.counter}>{title.length}/{MAX_TITLE}</Text>
 
-          <Text style={[styles.label, { marginTop: 16 }]}>Description (optional)</Text>
+          <Text style={[styles.label, { marginTop: 16 }]}>Comment (optional)</Text>
           <TextInput
             style={[styles.input, styles.inputMultiline]}
-            placeholder="Add context, tag teams, etc."
+            placeholder="What just happened?"
             placeholderTextColor={C.textMuted}
             value={description}
             onChangeText={(t) => setDescription(t.slice(0, MAX_DESCRIPTION))}

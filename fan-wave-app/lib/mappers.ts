@@ -93,6 +93,10 @@ export interface GameDisplay {
   status?: string;
   homeScore?: number | null;
   awayScore?: number | null;
+  period?: number | null;
+  displayClock?: string | null;
+  homeLinescore?: number[] | null;
+  awayLinescore?: number[] | null;
 }
 
 export function mapGameToDisplay(row: any): GameDisplay {
@@ -103,6 +107,22 @@ export function mapGameToDisplay(row: any): GameDisplay {
     || row.league_name
     || row.event?.name
     || '';
+
+  // ESPN sync writes 'scheduled' / 'in' / 'post' to the DB. Translate to
+  // the friendlier 'scheduled' / 'live' / 'final' the UI was already
+  // designed for. Without this, GameCard's isLive check never matched
+  // and live games rendered as VS with no scores.
+  const rawStatus = row.status;
+  const status =
+    rawStatus === 'in' ? 'live'
+    : rawStatus === 'post' ? 'final'
+    : rawStatus;
+
+  // Live-game extras come from the ESPN function on the metadata column:
+  //   { period: 3, display_clock: '8:42', home_linescore: [21,14,9],
+  //     away_linescore: [14,7,10] }
+  // The UI renders these when status === 'live' or 'final'.
+  const meta = row.metadata || {};
 
   return {
     id: row.id,
@@ -117,9 +137,13 @@ export function mapGameToDisplay(row: any): GameDisplay {
     time: row.scheduled_at ? formatGameTime(row.scheduled_at) : 'TBD',
     league: leagueName,
     sport: sportName.toLowerCase(),
-    status: row.status,
+    status,
     homeScore: row.home_score,
     awayScore: row.away_score,
+    period: typeof meta.period === 'number' ? meta.period : null,
+    displayClock: typeof meta.display_clock === 'string' ? meta.display_clock : null,
+    homeLinescore: Array.isArray(meta.home_linescore) ? meta.home_linescore : null,
+    awayLinescore: Array.isArray(meta.away_linescore) ? meta.away_linescore : null,
   };
 }
 
