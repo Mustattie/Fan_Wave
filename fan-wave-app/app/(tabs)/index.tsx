@@ -29,7 +29,7 @@ export default function HomeScreen() {
 
   // Shared React Query hooks — data is deduplicated across screens
   const { data: city = '' } = useUserCity();
-  const { data: games = [], isLoading: gamesLoading } = useGames(10);
+  const { data: games = [], isLoading: gamesLoading } = useGames(30);
   const { data: watchParties = [], isLoading: partiesLoading } = useWatchParties(city, 3);
   const { data: groups = [], isLoading: groupsLoading } = useMyGroups(3);
 

@@ -17,6 +17,8 @@ import { uploadAsync, FileSystemUploadType } from 'expo-file-system/legacy';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
+import { SPORTS } from '@/constants/Sports';
+import { getMomentTypesForSport, type MomentType } from '@/constants/MomentTypes';
 
 const C = Colors.dark;
 const MAX_TITLE = 80;
@@ -33,6 +35,13 @@ export default function CreateClipScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [posting, setPosting] = useState(false);
+  // Mirrors the Post-a-Moment picker so clips get the same sport +
+  // moment-type tagging. Defaults to NFL — users can change before posting.
+  // Both are optional on the DB side (media_clips.sport_id / moment_type
+  // are NULLable), so existing clip posts continue to work unchanged.
+  const [sportId, setSportId] = useState<string>('nfl');
+  const [selectedMoment, setSelectedMoment] = useState<MomentType | null>(null);
+  const momentTypes = getMomentTypesForSport(sportId);
 
   const player = useVideoPlayer(videoUri || null, (p) => {
     p.loop = true;
@@ -136,6 +145,8 @@ export default function CreateClipScreen() {
         media_url: urlData.publicUrl,
         media_type: 'video',
         duration_seconds: durationSeconds,
+        sport_id: sportId,
+        moment_type: selectedMoment?.id ?? null,
       });
       if (insertError) throw insertError;
 
@@ -176,7 +187,48 @@ export default function CreateClipScreen() {
             </View>
           )}
 
-          <Text style={styles.label}>Caption</Text>
+          <Text style={[styles.label, { marginTop: 16 }]}>Sport</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.sportRow}
+          >
+            {SPORTS.map((s) => {
+              const active = s.id === sportId;
+              return (
+                <TouchableOpacity
+                  key={s.id}
+                  style={[styles.sportPill, active && { borderColor: s.color, backgroundColor: s.color + '22' }]}
+                  onPress={() => {
+                    setSportId(s.id);
+                    setSelectedMoment(null);
+                  }}
+                >
+                  <Text style={styles.sportPillEmoji}>{s.icon}</Text>
+                  <Text style={[styles.sportPillLabel, active && { color: s.color }]}>{s.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <Text style={[styles.label, { marginTop: 16 }]}>Moment Type (optional)</Text>
+          <View style={styles.momentGrid}>
+            {momentTypes.map((m) => {
+              const active = selectedMoment?.id === m.id;
+              return (
+                <TouchableOpacity
+                  key={m.id}
+                  style={[styles.momentChip, active && { borderColor: m.color, backgroundColor: m.color + '22' }]}
+                  onPress={() => setSelectedMoment(active ? null : m)}
+                >
+                  <Text style={styles.momentChipEmoji}>{m.emoji}</Text>
+                  <Text style={[styles.momentChipLabel, active && { color: m.color }]}>{m.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={[styles.label, { marginTop: 16 }]}>Caption</Text>
           <TextInput
             style={styles.input}
             placeholder="What's the highlight?"
@@ -288,6 +340,42 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginTop: 4,
   },
+  sportRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  sportPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  sportPillEmoji: { fontSize: 16 },
+  sportPillLabel: { fontSize: 13, color: C.text, fontWeight: '600' },
+  momentGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  momentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  momentChipEmoji: { fontSize: 16 },
+  momentChipLabel: { fontSize: 13, color: C.text, fontWeight: '600' },
   bottomBar: {
     paddingHorizontal: 16,
     paddingVertical: 12,

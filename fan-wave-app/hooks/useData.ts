@@ -26,11 +26,16 @@ const PAGE_SIZE = 20;
 
 // ─── Games ──────────────────────────────────────────────────
 
-export function useGames(limit = 10) {
+export function useGames(limit = 30) {
+  // Subkey on the cache so a bumped limit doesn't return a stale shorter
+  // list. Filter out finished ('post') games — Today's Games should only
+  // surface live + upcoming, otherwise late-tipping NBA playoffs get
+  // pushed below the limit by all-day MLB schedules.
+  const subkey = String(limit);
   return useQuery<GameDisplay[]>({
     queryKey: ['games', limit],
     queryFn: async () => {
-      const cached = await getCache<GameDisplay[]>('games');
+      const cached = await getCache<GameDisplay[]>('games', subkey);
       if (cached) return cached;
 
       try {
@@ -38,7 +43,10 @@ export function useGames(limit = 10) {
           () => supabase
             .from('games')
             .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
+            .in('status', ['scheduled', 'in'])
             .gte('scheduled_at', new Date().toISOString().split('T')[0])
+            // 'in' < 'scheduled' alphabetically → ASC puts live games first.
+            .order('status', { ascending: true })
             .order('scheduled_at', { ascending: true })
             .limit(limit),
           FETCH_TIMEOUT
@@ -46,10 +54,10 @@ export function useGames(limit = 10) {
 
         if (error) throw error;
         const mapped = (data || []).map(mapGameToDisplay);
-        await setCache('games', mapped);
+        await setCache('games', mapped, subkey);
         return mapped;
       } catch {
-        const stale = await getStaleCache<GameDisplay[]>('games');
+        const stale = await getStaleCache<GameDisplay[]>('games', subkey);
         return stale?.data ?? [];
       }
     },

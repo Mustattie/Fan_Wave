@@ -13,6 +13,7 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Search, Plus, X, Users, UserPlus } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
 import { Colors } from '@/constants/Colors';
@@ -36,6 +37,7 @@ const VISIBILITY_OPTIONS = [
 ];
 
 export default function GroupsScreen() {
+  const router = useRouter();
   const [joinedIds, setJoinedIds] = useState<Set<string>>(new Set());
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -442,7 +444,15 @@ export default function GroupsScreen() {
           </>
         }
         renderItem={({ item: group }: { item: any }) => (
-          <View style={styles.suggestedCard}>
+          // Wrap whole row in TouchableOpacity so tapping the card navigates
+          // to the fan-group detail screen. The nested Join button captures
+          // its own taps (RN bubbles touch events to the innermost
+          // responder), so pressing Join doesn't also fire navigation.
+          <TouchableOpacity
+            style={styles.suggestedCard}
+            activeOpacity={0.7}
+            onPress={() => router.push(`/fan-group/${group.id}`)}
+          >
             <View style={styles.suggestedHeader}>
               <View
                 style={[
@@ -479,7 +489,7 @@ export default function GroupsScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </TouchableOpacity>
         )}
         ListFooterComponent={<View style={styles.spacer} />}
       />

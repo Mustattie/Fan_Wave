@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { uploadAsync, FileSystemUploadType } from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { Video, Film, X, Share2, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
@@ -277,6 +278,7 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
     const submittedType = selectedType;
     const submittedComment = commentText.trim();
     const submittedClipUri = clipUri;
+    const submittedClipType = clipType;
     setSelectedType(null);
     setCommentText('');
     setClipUri(null);
@@ -292,6 +294,59 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
       return;
     }
 
+    // Upload the clip to Supabase Storage so it persists across sessions
+    // and devices. Without this step, the file:// URI from ImagePicker
+    // works only on the current device for the current session — Android
+    // can purge the picker's cache between launches, leaving moments with
+    // broken video. Falls back to the local URI on upload failure so the
+    // moment still posts.
+    let persistedMediaUrl: string | null = submittedClipUri;
+    if (submittedClipUri) {
+      try {
+        const ext = (submittedClipUri.split('.').pop() || (submittedClipType === 'video' ? 'mp4' : 'jpg')).toLowerCase();
+        // clips bucket RLS requires folder = auth.uid() — see migration 021.
+        const path = `${currentUserId}/moments/${Date.now()}.${ext}`;
+        const contentType =
+          submittedClipType === 'video'
+            ? ext === 'mp4' ? 'video/mp4' : `video/${ext}`
+            : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+        if (accessToken && supabaseUrl) {
+          // Native binary upload via expo-file-system — avoids the
+          // broken fetch(file://).blob() → storage.upload() path on
+          // Android RN that surfaces as "Network request failed".
+          const uploadResult = await uploadAsync(
+            `${supabaseUrl}/storage/v1/object/clips/${path}`,
+            submittedClipUri,
+            {
+              httpMethod: 'POST',
+              uploadType: FileSystemUploadType.BINARY_CONTENT,
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': contentType,
+                'x-upsert': 'false',
+              },
+            },
+          );
+          if (uploadResult.status >= 200 && uploadResult.status < 300) {
+            const { data: urlData } = supabase.storage
+              .from('clips')
+              .getPublicUrl(path);
+            persistedMediaUrl = urlData.publicUrl;
+          } else {
+            reportError(
+              new Error(`Moment clip upload failed (${uploadResult.status}): ${uploadResult.body}`),
+              { source: 'MomentsFeed:uploadClip', chatRoomId },
+            );
+          }
+        }
+      } catch (e) {
+        reportError(e, { source: 'MomentsFeed:uploadClip', chatRoomId });
+      }
+    }
+
     try {
       const { data, error } = await supabase
         .from('match_moments')
@@ -300,15 +355,22 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
           user_id: currentUserId,
           moment_type: submittedType.id,
           comment: submittedComment,
-          media_url: submittedClipUri,
+          media_url: persistedMediaUrl,
         })
         .select('id')
         .single();
       if (error) throw error;
       // Swap tempId for the real DB id so deletes target the right row.
+      // Also swap clipUri to the uploaded public URL so playback after
+      // post (before any reload) hits the persistent copy, not the local
+      // file that may be cleaned up.
       if (data?.id) {
         setMoments((prev) =>
-          prev.map((m) => (m.id === tempId ? { ...m, id: data.id } : m)),
+          prev.map((m) =>
+            m.id === tempId
+              ? { ...m, id: data.id, clipUri: persistedMediaUrl || m.clipUri }
+              : m,
+          ),
         );
       }
     } catch (e) {

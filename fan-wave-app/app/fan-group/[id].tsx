@@ -376,7 +376,12 @@ export default function FanGroupDetailScreen() {
 
       {/* Tab Content */}
       {activeTab === 'Chat' ? (
-        <View style={{ flex: 1, marginBottom: keyboardHeight }}>
+        // NOTE: do NOT add marginBottom: keyboardHeight here. Android's
+        // softwareKeyboardLayoutMode=resize (set in app.json) already
+        // shrinks the activity when the keyboard opens; adding our own
+        // margin double-shrinks and pushes the input bar past the
+        // keyboard top. The OS resize handles this layer correctly.
+        <View style={{ flex: 1 }}>
           {loadingMessages ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
               <ActivityIndicator size="large" color={Colors.dark.accent} />
