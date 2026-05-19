@@ -150,10 +150,16 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // ---- Authentication: require service role key ----
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    // ---- Authentication: require a shared secret distinct from the
+    // service-role JWT. We had to decouple because the project's
+    // SUPABASE_SERVICE_ROLE_KEY env (auto-injected, immutable per-deploy)
+    // diverged from the Dashboard's currently-displayed service-role key
+    // (looks like a JWT rotation happened) — cron callers couldn't match
+    // it. Using a custom CRON_SHARED_SECRET we set via `supabase secrets
+    // set` lets us guarantee both sides hold the same value. ----
+    const cronSecret = Deno.env.get("CRON_SHARED_SECRET");
     const authHeader = req.headers.get("authorization");
-    if (!authHeader || authHeader !== `Bearer ${supabaseServiceKey}`) {
+    if (!cronSecret || !authHeader || authHeader !== `Bearer ${cronSecret}`) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         {
@@ -163,8 +169,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ---- Supabase client ----
+    // ---- Supabase client uses the auto-injected service-role key for DB
+    // writes (bypasses RLS) — orthogonal to the auth check above. ----
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // ---- Query params with validation ----
