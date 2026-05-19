@@ -192,16 +192,25 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      const { data: activeEvent } = await supabase
-        .from("events")
+      // events.league_id → leagues.id (events has no `league` text column),
+      // and events has no created_at — order by start_date instead.
+      let eventId: string | null = null;
+      const { data: leagueRow } = await supabase
+        .from("leagues")
         .select("id")
-        .eq("league", sport)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(1)
+        .ilike("name", sport)
         .maybeSingle();
-
-      const eventId: string | null = activeEvent?.id ?? null;
+      if (leagueRow?.id) {
+        const { data: activeEvent } = await supabase
+          .from("events")
+          .select("id")
+          .eq("league_id", leagueRow.id)
+          .eq("is_active", true)
+          .order("start_date", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        eventId = activeEvent?.id ?? null;
+      }
 
       const teamNames = new Set<string>();
       for (const g of games) {
@@ -245,16 +254,17 @@ Deno.serve(async (req: Request) => {
 
         const { data: existing } = await query.maybeSingle();
 
+        // games schema: venue_name (not venue); no espn_id / league columns
+        // exist — drop them. dedup uses home/away/date so espn_id isn't
+        // needed for matching.
         const gameRow: Record<string, unknown> = {
           home_team_id: homeTeamId,
           away_team_id: awayTeamId,
           home_score: game.homeScore,
           away_score: game.awayScore,
-          venue: game.venue,
+          venue_name: game.venue,
           scheduled_at: game.scheduledAt,
           status: game.status,
-          espn_id: game.espnId,
-          league: sport,
           ...(eventId ? { event_id: eventId } : {}),
         };
 
