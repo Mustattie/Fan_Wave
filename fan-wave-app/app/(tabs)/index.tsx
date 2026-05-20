@@ -41,10 +41,14 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const unsubGames = subscribeToGames((updatedGame) => {
-        queryClient.setQueryData(['games', 10], (prev: any[] | undefined) =>
-          (prev || []).map((g) => (g.id === updatedGame.id ? mapGameToDisplay(updatedGame) : g))
-        );
+      const unsubGames = subscribeToGames((_updatedGame) => {
+        // Invalidate ALL ['games', limit] cache entries (we used to write
+        // straight to ['games', 10] but the home feed now requests
+        // useGames(30), so the previous setQueryData targeted a queryKey
+        // that doesn't exist and every live update was silently dropped).
+        // Invalidate triggers React Query to refetch with the actual
+        // current key — also clears AsyncStorage cache via the queryFn.
+        queryClient.invalidateQueries({ queryKey: ['games'] });
       });
 
       let unsubParties: (() => void) | undefined;

@@ -95,53 +95,55 @@ export interface GameDisplay {
   awayScore?: number | null;
   period?: number | null;
   displayClock?: string | null;
+  detail?: string | null;
   homeLinescore?: number[] | null;
   awayLinescore?: number[] | null;
 }
 
 export function mapGameToDisplay(row: any): GameDisplay {
-  const sportName = row.home_team?.league?.sport?.name
+  // Prefer the column we now write directly (migration 031). Fall back
+  // to the deep team→league→sport lookup for rows queried without
+  // sport_id selected, or seeded rows not yet backfilled.
+  const sport = (row.sport_id
+    || row.home_team?.league?.sport?.name
     || row.sport_name
-    || '';
+    || '').toString().toLowerCase();
   const leagueName = row.home_team?.league?.name
     || row.league_name
     || row.event?.name
     || '';
 
   // ESPN sync writes 'scheduled' / 'in' / 'post' to the DB. Translate to
-  // the friendlier 'scheduled' / 'live' / 'final' the UI was already
-  // designed for. Without this, GameCard's isLive check never matched
-  // and live games rendered as VS with no scores.
+  // the friendlier 'scheduled' / 'live' / 'final' the UI was designed
+  // for. Without this, GameCard's isLive check never matched.
   const rawStatus = row.status;
   const status =
     rawStatus === 'in' ? 'live'
     : rawStatus === 'post' ? 'final'
     : rawStatus;
 
-  // Live-game extras come from the ESPN function on the metadata column:
-  //   { period: 3, display_clock: '8:42', home_linescore: [21,14,9],
-  //     away_linescore: [14,7,10] }
-  // The UI renders these when status === 'live' or 'final'.
+  // Live-game extras stored on metadata by the ESPN function.
   const meta = row.metadata || {};
 
   return {
     id: row.id,
     homeTeam: {
       name: row.home_team?.name || 'TBD',
-      icon: row.home_team?.code ? getSportEmoji(sportName) : '🏟️',
+      icon: row.home_team?.code ? getSportEmoji(sport) : '🏟️',
     },
     awayTeam: {
       name: row.away_team?.name || 'TBD',
-      icon: row.away_team?.code ? getSportEmoji(sportName) : '🏟️',
+      icon: row.away_team?.code ? getSportEmoji(sport) : '🏟️',
     },
     time: row.scheduled_at ? formatGameTime(row.scheduled_at) : 'TBD',
     league: leagueName,
-    sport: sportName.toLowerCase(),
+    sport,
     status,
     homeScore: row.home_score,
     awayScore: row.away_score,
     period: typeof meta.period === 'number' ? meta.period : null,
     displayClock: typeof meta.display_clock === 'string' ? meta.display_clock : null,
+    detail: typeof meta.detail === 'string' ? meta.detail : null,
     homeLinescore: Array.isArray(meta.home_linescore) ? meta.home_linescore : null,
     awayLinescore: Array.isArray(meta.away_linescore) ? meta.away_linescore : null,
   };

@@ -6,7 +6,11 @@ interface CacheEntry<T> {
 }
 
 const TTL = {
-  games: 60 * 60 * 1000,         // 1 hour
+  // Games are live-updating via the ESPN cron (every 1 min while a game
+  // is in progress). Keep this TTL short or AsyncStorage will serve
+  // stale scores even after Realtime invalidates React Query — the
+  // queryFn checks AsyncStorage first and returns hits.
+  games: 30 * 1000,              // 30 seconds
   groups: 24 * 60 * 60 * 1000,   // 24 hours
   teams: 24 * 60 * 60 * 1000,    // 24 hours
   watchParties: 60 * 60 * 1000,  // 1 hour

@@ -38,10 +38,14 @@ interface ParsedGame {
   league: string;
   // Live-game extras for in-progress / final games. period is the
   // current quarter/period/inning (1-indexed). displayClock is ESPN's
-  // formatted clock string ("8:42", "Top 3rd", "HT"). linescores hold
-  // the per-period running scores so the UI can show a breakdown.
+  // formatted clock string ("8:42" for sports with a clock; "0:00" for
+  // MLB which has no clock). detail is the human-readable status
+  // ("Top 2nd", "Bottom 5th", "End of 3rd Inning") — meaningful for MLB
+  // where displayClock is useless. linescores hold per-period running
+  // scores so the UI can show a breakdown.
   period: number | null;
   displayClock: string | null;
+  detail: string | null;
   homeLinescore: number[] | null;
   awayLinescore: number[] | null;
   isHalftime: boolean;
@@ -93,6 +97,15 @@ class ESPNAdapter implements SportsDataProvider {
         const displayClock = typeof comp.status?.displayClock === "string"
           ? comp.status.displayClock
           : null;
+        // status.type.detail is "Top 2nd" / "Bottom 5th" for MLB,
+        // "End of 1st Quarter" for NFL, etc. — the most user-friendly
+        // single-string description of the current state. Capture it so
+        // the UI can show meaningful labels for sports without a clock.
+        const detail = typeof comp.status?.type?.detail === "string"
+          ? comp.status.type.detail
+          : typeof comp.status?.type?.shortDetail === "string"
+            ? comp.status.type.shortDetail
+            : null;
         const flattenLinescores = (t: any): number[] | null => {
           const arr = t?.linescores;
           if (!Array.isArray(arr) || arr.length === 0) return null;
@@ -121,6 +134,7 @@ class ESPNAdapter implements SportsDataProvider {
           league: sport,
           period,
           displayClock,
+          detail,
           homeLinescore: flattenLinescores(homeTeamData),
           awayLinescore: flattenLinescores(awayTeamData),
           isHalftime,
@@ -307,6 +321,7 @@ Deno.serve(async (req: Request) => {
           espn_id: game.espnId,
           period: game.period,
           display_clock: game.displayClock,
+          detail: game.detail,
           home_linescore: game.homeLinescore,
           away_linescore: game.awayLinescore,
           is_halftime: game.isHalftime,
@@ -314,7 +329,8 @@ Deno.serve(async (req: Request) => {
 
         // games schema: venue_name (not venue); no espn_id / league columns
         // exist — drop them. dedup uses home/away/date so espn_id isn't
-        // needed for matching.
+        // needed for matching. sport_id was added in migration 031 — the
+        // mapper reads it to pick the right per-sport period label.
         const gameRow: Record<string, unknown> = {
           home_team_id: homeTeamId,
           away_team_id: awayTeamId,
@@ -323,6 +339,7 @@ Deno.serve(async (req: Request) => {
           venue_name: game.venue,
           scheduled_at: game.scheduledAt,
           status: game.status,
+          sport_id: sport,
           metadata: mergedMetadata,
           ...(eventId ? { event_id: eventId } : {}),
         };

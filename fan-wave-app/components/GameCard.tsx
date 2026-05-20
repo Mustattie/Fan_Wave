@@ -8,13 +8,24 @@ interface GameCardProps {
   onPress?: () => void;
 }
 
-function formatPeriodLabel(sport: string, period: number | null | undefined, clock: string | null | undefined): string | null {
-  if (period == null) return null;
+function formatPeriodLabel(
+  sport: string,
+  period: number | null | undefined,
+  clock: string | null | undefined,
+  detail: string | null | undefined,
+): string | null {
   const s = sport?.toLowerCase() || '';
-  let periodLabel: string;
+  // For sports with no game clock (baseball), ESPN reports clock as "0:00"
+  // and the meaningful state lives in `detail` ("Top 2nd", "Bottom 5th",
+  // "End of 3rd Inning"). Use detail directly if available.
   if (s === 'mlb' || s === 'baseball') {
-    periodLabel = `Inn ${period}`;
-  } else if (s === 'soccer' || s === 'mls' || s === 'worldcup') {
+    if (detail) return detail;
+    if (period != null) return `Inn ${period}`;
+    return null;
+  }
+  if (period == null) return detail || null;
+  let periodLabel: string;
+  if (s === 'soccer' || s === 'mls' || s === 'worldcup') {
     periodLabel = period === 1 ? '1st' : period === 2 ? '2nd' : `${period}'`;
   } else if (s === 'nhl' || s === 'hockey') {
     periodLabel = period > 3 ? `OT${period - 3}` : `P${period}`;
@@ -22,14 +33,17 @@ function formatPeriodLabel(sport: string, period: number | null | undefined, clo
     // NFL / NBA / college etc — quarters
     periodLabel = period > 4 ? `OT${period - 4}` : `Q${period}`;
   }
-  return clock ? `${periodLabel} · ${clock}` : periodLabel;
+  // For clock-bearing sports, "0:00" is end-of-period, not useful as a
+  // running label — fall back to plain period.
+  if (clock && clock !== '0:00') return `${periodLabel} · ${clock}`;
+  return periodLabel;
 }
 
 export function GameCard({ game, onPress }: GameCardProps) {
   const isLive = game.status === 'live';
   const isFinal = game.status === 'final';
   const hasScore = game.homeScore != null && game.awayScore != null;
-  const periodLabel = formatPeriodLabel(game.sport, game.period, game.displayClock);
+  const periodLabel = formatPeriodLabel(game.sport, game.period, game.displayClock, game.detail);
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
