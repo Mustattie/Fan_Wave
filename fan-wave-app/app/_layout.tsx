@@ -20,6 +20,7 @@ import { AppQueryClientProvider } from '@/hooks/useQueryClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-reanimated';
 import { initErrorReporting, setUserContext, clearUserContext } from '@/lib/errorReporting';
+import { configureRevenueCat, useEntitlementsRealtime } from '@/lib/entitlements';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -41,6 +42,13 @@ const FanWaveDarkTheme = {
     primary: '#6c5ce7',
   },
 };
+
+// Subscribes to Realtime UPDATEs on the current user's row so entitlement
+// state flips in-app within ~1 second of a RevenueCat webhook write.
+function EntitlementsRealtimeBridge() {
+  useEntitlementsRealtime();
+  return null;
+}
 
 function NavigationGuard({
   session,
@@ -137,6 +145,9 @@ export default function RootLayout() {
       }
     }).catch(() => {});
 
+    // RevenueCat SDK init — safe no-op if API keys aren't configured yet.
+    configureRevenueCat().catch(() => {});
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session);
@@ -145,6 +156,8 @@ export default function RootLayout() {
           registerForPushNotifications();
           recordDailyActivity();
           startAnalyticsFlush();
+          // Tie the RevenueCat user to our auth.users.id so webhooks can map back.
+          configureRevenueCat(session.user.id).catch(() => {});
         } else if (event === 'SIGNED_OUT') {
           clearUserContext();
           clearPushToken();
@@ -192,6 +205,7 @@ export default function RootLayout() {
       <ThemeProvider value={FanWaveDarkTheme}>
         <StatusBar style="light" />
         <OfflineBanner />
+        <EntitlementsRealtimeBridge />
         <NavigationGuard session={session} onboardingComplete={onboardingComplete} hasSeenWelcome={hasSeenWelcome} />
         <Stack>
           <Stack.Screen name="(auth)" options={{ headerShown: false }} />
