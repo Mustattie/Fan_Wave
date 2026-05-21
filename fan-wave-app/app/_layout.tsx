@@ -20,7 +20,7 @@ import { AppQueryClientProvider } from '@/hooks/useQueryClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-reanimated';
 import { initErrorReporting, setUserContext, clearUserContext } from '@/lib/errorReporting';
-import { configureRevenueCat, useEntitlementsRealtime } from '@/lib/entitlements';
+import { configureRevenueCat, useEntitlementsRealtime, useSubscriptionState } from '@/lib/entitlements';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -62,14 +62,26 @@ function NavigationGuard({
   const segments = useSegments() as string[];
   const router = useRouter();
   const navigationState = useRootNavigationState();
+  // Entitlement state drives the new post-onboarding routing (FW-95).
+  // While loading, hold off on navigation decisions to avoid flashing the
+  // Choose Plan screen before we know the user's real status.
+  const { data: entState, isLoading: entLoading } = useSubscriptionState();
+  const subscriptionStatus = entState?.status ?? 'none';
 
   useEffect(() => {
     if (!navigationState?.key) return;
+    // Wait for entitlement state to load — otherwise a trial/active user
+    // would briefly route to Choose Plan based on the default 'none'.
+    if (session && entLoading) return;
 
     const inAuthGroup = segments[0] === '(auth)';
     const onOnboardingScreen =
       typeof segments[1] === 'string' && segments[1].startsWith('onboarding');
     const onWelcomeScreen = segments[1] === 'welcome';
+    const onPaymentScreen =
+      segments[1] === 'choose-plan' ||
+      segments[1] === 'wc-pass-offer' ||
+      segments[1] === 'resubscribe';
 
     if (!session && !inAuthGroup) {
       if (!hasSeenWelcome) {
@@ -77,14 +89,29 @@ function NavigationGuard({
       } else {
         router.replace('/(auth)/sign-in');
       }
-    } else if (session && inAuthGroup && !onOnboardingScreen && !onWelcomeScreen) {
+    } else if (session && inAuthGroup && !onOnboardingScreen && !onWelcomeScreen && !onPaymentScreen) {
+      // Authenticated user on a non-onboarding / non-welcome / non-payment
+      // auth screen — route by progression state.
       if (!onboardingComplete) {
         router.replace('/(auth)/onboarding-sports');
+      } else if (subscriptionStatus === 'none') {
+        router.replace('/(auth)/choose-plan');
+      } else if (subscriptionStatus === 'cancelled' || subscriptionStatus === 'expired') {
+        router.replace('/(auth)/resubscribe');
       } else {
         router.replace('/(tabs)');
       }
+    } else if (session && !inAuthGroup && onboardingComplete) {
+      // Authenticated user in main app — gate by subscription state. A
+      // user with 'none' (post-onboarding but pre-plan) gets routed to
+      // Choose Plan; cancelled/expired users go to Resubscribe.
+      if (subscriptionStatus === 'none') {
+        router.replace('/(auth)/choose-plan');
+      } else if (subscriptionStatus === 'cancelled' || subscriptionStatus === 'expired') {
+        router.replace('/(auth)/resubscribe');
+      }
     }
-  }, [session, segments, navigationState?.key, onboardingComplete, hasSeenWelcome]);
+  }, [session, segments, navigationState?.key, onboardingComplete, hasSeenWelcome, subscriptionStatus, entLoading]);
 
   return null;
 }
