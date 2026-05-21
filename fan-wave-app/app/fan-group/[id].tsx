@@ -31,6 +31,7 @@ import {
   type ChatMessageDisplay,
 } from '@/lib/mappers';
 import MomentsFeed from '@/components/MomentsFeed';
+import { PaywallGate } from '@/components/paywall/PaywallGate';
 
 type SubTab = 'Chat' | 'Highlights';
 const SUB_TABS: SubTab[] = ['Chat', 'Highlights'];
@@ -445,16 +446,18 @@ export default function FanGroupDetailScreen() {
               returnKeyType="send"
               maxLength={2000}
             />
-            <TouchableOpacity
-              style={[
-                styles.sendButton,
-                !message.trim() && styles.sendButtonDisabled,
-              ]}
-              onPress={handleSend}
-              disabled={!message.trim()}
-            >
-              <Send size={18} color={message.trim() ? '#fff' : Colors.dark.textMuted} />
-            </TouchableOpacity>
+            <PaywallGate require="premium">
+              <TouchableOpacity
+                style={[
+                  styles.sendButton,
+                  !message.trim() && styles.sendButtonDisabled,
+                ]}
+                onPress={handleSend}
+                disabled={!message.trim()}
+              >
+                <Send size={18} color={message.trim() ? '#fff' : Colors.dark.textMuted} />
+              </TouchableOpacity>
+            </PaywallGate>
           </View>
         </View>
       ) : (

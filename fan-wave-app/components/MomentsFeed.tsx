@@ -24,6 +24,7 @@ import type { MomentType } from '@/constants/MomentTypes';
 import { supabase } from '@/lib/supabase';
 import { formatRelativeTime } from '@/lib/mappers';
 import { reportError } from '@/lib/errorReporting';
+import { PaywallGate } from '@/components/paywall/PaywallGate';
 
 interface Reaction {
   emoji: string;
@@ -483,12 +484,17 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          <TouchableOpacity
-            style={styles.postButton}
-            onPress={() => setShowPostModal(true)}
-          >
-            <Text style={styles.postButtonText}>Post a Moment</Text>
-          </TouchableOpacity>
+          // WC fan groups (sportId='worldcup') gate behind WC Pass; all
+          // other groups gate behind Premium. RLS (FW-86) enforces the
+          // same on the server.
+          <PaywallGate require={sportId === 'worldcup' ? 'wc_pass' : 'premium'}>
+            <TouchableOpacity
+              style={styles.postButton}
+              onPress={() => setShowPostModal(true)}
+            >
+              <Text style={styles.postButtonText}>Post a Moment</Text>
+            </TouchableOpacity>
+          </PaywallGate>
         }
       />
 

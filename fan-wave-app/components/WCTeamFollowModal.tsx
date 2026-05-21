@@ -13,6 +13,7 @@ import {
 import { Colors } from '@/constants/Colors';
 import { WC_TEAMS, getTeamsByGroup, WCTeam } from '@/constants/WorldCupData';
 import { supabase } from '@/lib/supabase';
+import { PaywallGate } from '@/components/paywall/PaywallGate';
 
 const ALL_GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
 
@@ -166,23 +167,25 @@ export function WCTeamFollowModal({ visible, onClose, onUpdate }: WCTeamFollowMo
               <Text style={styles.confText}>{item.confederation}</Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={[
-              styles.followBtn,
-              isFollowing ? styles.followBtnActive : styles.followBtnInactive,
-            ]}
-            onPress={() => toggleFollow(item.code)}
-            activeOpacity={0.7}
-          >
-            <Text
+          <PaywallGate require="wc_pass">
+            <TouchableOpacity
               style={[
-                styles.followBtnText,
-                isFollowing ? styles.followBtnTextActive : styles.followBtnTextInactive,
+                styles.followBtn,
+                isFollowing ? styles.followBtnActive : styles.followBtnInactive,
               ]}
+              onPress={() => toggleFollow(item.code)}
+              activeOpacity={0.7}
             >
-              {isFollowing ? '\u2713 Following' : 'Follow'}
-            </Text>
-          </TouchableOpacity>
+              <Text
+                style={[
+                  styles.followBtnText,
+                  isFollowing ? styles.followBtnTextActive : styles.followBtnTextInactive,
+                ]}
+              >
+                {isFollowing ? '\u2713 Following' : 'Follow'}
+              </Text>
+            </TouchableOpacity>
+          </PaywallGate>
         </View>
       );
     },

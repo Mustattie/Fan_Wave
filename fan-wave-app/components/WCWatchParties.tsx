@@ -13,6 +13,7 @@ import { Search, Share2 } from 'lucide-react-native';
 import { shareWatchParty } from '@/lib/sharing';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { PaywallGate } from '@/components/paywall/PaywallGate';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -147,14 +148,16 @@ export default function WCWatchParties() {
           <View style={styles.sportBadge}>
             <Text style={styles.sportBadgeText}>⚽ WORLD CUP</Text>
           </View>
-          <TouchableOpacity
-            style={[styles.rsvpButton, isRsvp && styles.rsvpButtonActive]}
-            onPress={() => handleRsvp(item.id)}
-          >
-            <Text style={styles.rsvpButtonText}>
-              {isRsvp ? '✓ Going' : 'RSVP'}
-            </Text>
-          </TouchableOpacity>
+          <PaywallGate require="wc_pass">
+            <TouchableOpacity
+              style={[styles.rsvpButton, isRsvp && styles.rsvpButtonActive]}
+              onPress={() => handleRsvp(item.id)}
+            >
+              <Text style={styles.rsvpButtonText}>
+                {isRsvp ? '✓ Going' : 'RSVP'}
+              </Text>
+            </TouchableOpacity>
+          </PaywallGate>
         </View>
 
         <Text style={styles.title}>{item.title}</Text>
@@ -279,14 +282,16 @@ export default function WCWatchParties() {
         showsVerticalScrollIndicator={false}
       />
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => router.push('/create-watch-party' as any)}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
+      {/* FAB — WC watch parties require Pass */}
+      <PaywallGate require="wc_pass">
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => router.push('/create-watch-party' as any)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.fabText}>+</Text>
+        </TouchableOpacity>
+      </PaywallGate>
     </View>
   );
 }

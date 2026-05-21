@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reportError } from '@/lib/errorReporting';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { PaywallGate } from '@/components/paywall/PaywallGate';
 
 const WC_CREATED_GROUPS_KEY = 'wc_created_groups';
 
@@ -211,12 +212,14 @@ export default function WCFanGroups() {
               <Text style={styles.joinedBadgeText}>Joined</Text>
             </View>
           ) : (
-            <TouchableOpacity
-              style={styles.joinButton}
-              onPress={() => handleJoin(item.id)}
-            >
-              <Text style={styles.joinButtonText}>Join</Text>
-            </TouchableOpacity>
+            <PaywallGate require="wc_pass">
+              <TouchableOpacity
+                style={styles.joinButton}
+                onPress={() => handleJoin(item.id)}
+              >
+                <Text style={styles.joinButtonText}>Join</Text>
+              </TouchableOpacity>
+            </PaywallGate>
           )}
         </View>
 

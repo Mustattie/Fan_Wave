@@ -19,6 +19,7 @@ import { supabase } from '@/lib/supabase';
 import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { SPORTS } from '@/constants/Sports';
 import { getMomentTypesForSport, type MomentType } from '@/constants/MomentTypes';
+import { PaywallGate } from '@/components/paywall/PaywallGate';
 
 const C = Colors.dark;
 const MAX_TITLE = 80;
@@ -255,17 +256,19 @@ export default function CreateClipScreen() {
         </ScrollView>
 
         <View style={styles.bottomBar}>
-          <TouchableOpacity
-            style={[styles.postBtn, (posting || !title.trim()) && styles.postBtnDisabled]}
-            disabled={posting || !title.trim()}
-            onPress={handlePost}
-          >
-            {posting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.postBtnText}>Post Clip</Text>
-            )}
-          </TouchableOpacity>
+          <PaywallGate require="premium">
+            <TouchableOpacity
+              style={[styles.postBtn, (posting || !title.trim()) && styles.postBtnDisabled]}
+              disabled={posting || !title.trim()}
+              onPress={handlePost}
+            >
+              {posting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.postBtnText}>Post Clip</Text>
+              )}
+            </TouchableOpacity>
+          </PaywallGate>
         </View>
       </View>
     </SafeAreaView>
