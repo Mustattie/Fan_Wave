@@ -1744,6 +1744,548 @@ Nothing in the codebase creates a `public.users` row when a user signs up via Su
 
 ---
 
+# Phase 7: Monetization Launch (Sprints 16-18)
+
+> **Driver:** World Cup 2026 kickoff June 11. Premium subscription ($9.99/mo or $107.88/yr 10%-off annual) with mandatory 7-day free trial, plus separate $19.99 WC Pass. Trial captures card-on-file via Apple IAP / Google Play. Post-trial cancellation = read-only with carve-outs (watch parties hidden as ghost cards to prevent free-riders showing up uninvited).
+
+## EPIC: FW-E16 — Monetization Foundation (Premium + WC Pass)
+**Sprint 16-17 · 62 Points**
+
+---
+
+### FW-85: Entitlements Schema & RLS Functions
+**Type:** Story · **Points:** 5 · **Priority:** Highest
+**Assignee:** Backend Dev
+
+**Description:**
+Create the database tables and SQL functions that track Premium subscription and WC Pass entitlements. Source of truth for who has access to what; written only by the RevenueCat webhook (service_role).
+
+**Acceptance Criteria:**
+- [ ] Migration `032_entitlements.sql` created
+- [ ] `users.subscription_status TEXT DEFAULT 'none'` — values: `none | trial | active | cancelled | expired`
+- [ ] `users.premium_active_until TIMESTAMPTZ`
+- [ ] `users.wc_pass_active_until TIMESTAMPTZ`
+- [ ] `entitlements` table: `id, user_id, product_id, status, original_transaction_id UNIQUE, expires_at, raw_payload JSONB, created_at, updated_at`
+- [ ] `purchase_events` table: `id, event_id UNIQUE, user_id, event_type, payload JSONB, processed BOOL, created_at` — supports webhook idempotency
+- [ ] RLS: users SELECT own entitlements; INSERT/UPDATE/DELETE service_role only
+- [ ] SQL fn `public.has_premium_access(uid UUID) RETURNS BOOLEAN` (STABLE) — true when `subscription_status IN ('trial','active')` AND `premium_active_until > now()`
+- [ ] SQL fn `public.has_wc_access(uid UUID) RETURNS BOOLEAN` (STABLE) — true during trial OR when `wc_pass_active_until > now()`
+- [ ] Migration applied to remote via `supabase db push`
+
+---
+
+### FW-86: Paywall RLS Policies on Writes
+**Type:** Story · **Points:** 5 · **Priority:** Highest
+**Assignee:** Backend Dev
+
+**Description:**
+Layer entitlement checks on existing INSERT/UPDATE policies for the write surfaces that should be paid-only. Defence-in-depth: even if a client bypass exists, the database rejects.
+
+**Acceptance Criteria:**
+- [ ] Migration `033_paywall_policies.sql` created
+- [ ] `watch_parties` INSERT: requires `has_premium_access(auth.uid())`; additionally `has_wc_access` when `event_id` = WC event
+- [ ] `watch_party_rsvps` INSERT: requires `has_premium_access`; requires `has_wc_access` if linked party is WC
+- [ ] `chat_rooms` INSERT: requires `has_premium_access`; requires `has_wc_access` if `group_type = 'worldcup'`
+- [ ] `chat_room_members` INSERT: same constraint as parent room
+- [ ] `user_team_follows` INSERT: requires `has_premium_access`; requires `has_wc_access` when team.league_id = WC league
+- [ ] `match_moments` INSERT: requires `has_premium_access`; requires `has_wc_access` when parent chat_room is WC
+- [ ] `media_clips` INSERT: requires `has_premium_access`
+- [ ] `messages` INSERT: requires `has_premium_access` (gates chat for cancelled users)
+- [ ] Negative test query proves each policy denies a `none`-status user
+- [ ] Migration applied to remote
+
+---
+
+### FW-87: RevenueCat Webhook Edge Function
+**Type:** Story · **Points:** 5 · **Priority:** Highest
+**Assignee:** Backend Dev
+
+**Description:**
+Build the Supabase Edge Function that receives RevenueCat webhooks and writes entitlements. Idempotent on `event_id`; signature-verified; returns 200 fast.
+
+**Acceptance Criteria:**
+- [ ] `supabase/functions/revenuecat-webhook/index.ts` created (model on `supabase/functions/process-notification-queue/index.ts`)
+- [ ] Verifies RevenueCat signature header against Vault secret `fan_wave_revenuecat_webhook_secret`
+- [ ] Vault secret created via `vault.create_secret()` (one-time, documented in deploy notes)
+- [ ] Idempotency check: insert into `purchase_events` first with `ON CONFLICT (event_id) DO NOTHING`; if already exists, return 200 without re-processing
+- [ ] Handles event types: `INITIAL_PURCHASE`, `RENEWAL`, `CANCELLATION`, `EXPIRATION`, `NON_RENEWING_PURCHASE` (WC pass), `REFUND`, `BILLING_ISSUE`
+- [ ] Upserts `entitlements` row keyed on `original_transaction_id`
+- [ ] Denormalizes to `users.subscription_status`, `users.premium_active_until`, `users.wc_pass_active_until`
+- [ ] Returns HTTP 200 within 500ms (no blocking work after the upsert)
+- [ ] Deployed with `--no-verify-jwt` (RevenueCat sends signature header, not JWT)
+- [ ] Unit test fires sample payload for each event type and asserts correct DB state
+
+---
+
+### FW-88: App Store / Play Store Product Setup
+**Type:** Story · **Points:** 3 · **Priority:** Highest
+**Assignee:** Product Owner + Backend Dev
+
+**Description:**
+Configure the three IAP products in App Store Connect and Google Play Console, with the 7-day free trial intro offer on the auto-renewable subscriptions.
+
+**Acceptance Criteria:**
+- [ ] App Store Connect:
+  - [ ] `premium_monthly_999` auto-renewable subscription, $9.99/mo, 7-day free trial intro
+  - [ ] `premium_annual_10788` auto-renewable subscription, $107.88/yr, 7-day free trial intro
+  - [ ] `wc_pass_2026` non-consumable, $19.99 (no trial)
+- [ ] Google Play Console: same three products mirrored with equivalent pricing/trial
+- [ ] Apple Small Business Program enrollment submitted (15% fee — Fan Wave qualifies under $1M annual)
+- [ ] Banking + Tax & Agreements signed in App Store Connect
+- [ ] Sandbox testers configured (Apple) + license testers (Google)
+- [ ] Products visible in TestFlight / Internal Testing build
+
+---
+
+### FW-89: RevenueCat Dashboard Configuration
+**Type:** Story · **Points:** 2 · **Priority:** Highest
+**Assignee:** Backend Dev
+
+**Description:**
+Wire RevenueCat's entitlements and webhook destination to the products created in FW-88.
+
+**Acceptance Criteria:**
+- [ ] RevenueCat project created for Fan Wave
+- [ ] Entitlement `premium` linked to both `premium_monthly_999` and `premium_annual_10788`
+- [ ] Entitlement `wc_pass` linked to `wc_pass_2026`
+- [ ] Webhook URL points to Supabase Edge Function from FW-87
+- [ ] Shared secret stored both in RevenueCat dashboard and in Supabase Vault (matched)
+- [ ] App Store Connect + Play Console credentials uploaded to RevenueCat for receipt validation
+- [ ] Test event fired from RevenueCat dashboard → verified end-to-end in Supabase logs
+
+---
+
+### FW-90: Entitlements Client Hooks
+**Type:** Story · **Points:** 3 · **Priority:** Highest
+**Assignee:** Frontend Dev
+
+**Description:**
+Build the React hooks that the rest of the app uses to check entitlement state. Live-updating via Supabase Realtime so post-webhook entitlement changes propagate without app restart.
+
+**Acceptance Criteria:**
+- [ ] `lib/entitlements.ts` created
+- [ ] `useHasPremium()` returns boolean from current user's `subscription_status` + `premium_active_until`
+- [ ] `useHasWCAccess()` returns boolean from `wc_pass_active_until` OR active premium during trial
+- [ ] `useSubscriptionState()` returns object: `{ status, premiumUntil, wcUntil, isTrial, isCancelled }`
+- [ ] Subscribes to Realtime UPDATE on `users` table filtered to current user.id — entitlement flips live after webhook
+- [ ] Cached via React Query with 30s stale time
+- [ ] `react-native-purchases` SDK installed and configured in `app/_layout.tsx` with `Purchases.logIn(user.id)` on auth
+- [ ] Tests cover: trial → expired transition, cancellation, pass active vs expired
+
+---
+
+### FW-91: Premium Paywall Sheet
+**Type:** Story · **Points:** 5 · **Priority:** Highest
+**Assignee:** Frontend Dev
+
+**Description:**
+Bottom-sheet paywall component that presents the Premium subscription with the 7-day free trial offer. Required UX elements per Apple/Google review guidelines.
+
+**Acceptance Criteria:**
+- [ ] `components/paywall/PremiumPaywall.tsx` created
+- [ ] Monthly/Annual segment toggle (annual shows "Save 10%" badge)
+- [ ] "Start 7-Day Free Trial" CTA button (loads Apple/Google native purchase dialog)
+- [ ] Feature bullet list of what Premium unlocks (creator features, ad-free, unlimited groups, etc.)
+- [ ] "Restore Purchases" button (calls `Purchases.restorePurchases()`)
+- [ ] Footer copy: "Subscriptions auto-renew unless cancelled in App Store / Play Store"
+- [ ] Terms of Service + Privacy Policy links
+- [ ] Three states: pre-purchase, loading, success
+- [ ] Renders correctly with safe-area insets on Android 3-button nav
+- [ ] Dismiss on tap-outside or X button
+
+---
+
+### FW-92: WC Pass Paywall Sheet
+**Type:** Story · **Points:** 3 · **Priority:** Highest
+**Assignee:** Frontend Dev
+
+**Description:**
+Bottom-sheet for the one-time $19.99 WC Pass purchase. Triggered when a user without WC access taps a WC-tab CTA.
+
+**Acceptance Criteria:**
+- [ ] `components/paywall/WCPassPaywall.tsx` created
+- [ ] Title: "World Cup 2026 Pass"
+- [ ] Price: $19.99 one-time, "Valid June 1 – July 31, 2026"
+- [ ] Feature bullet list (join WC groups, RSVP WC parties, follow national teams, post WC moments)
+- [ ] "Buy Pass" CTA (one-time IAP via RevenueCat)
+- [ ] Restore Purchases button
+- [ ] Safe-area inset compliant
+
+---
+
+### FW-93: Choose Plan Onboarding Screen
+**Type:** Story · **Points:** 5 · **Priority:** Highest
+**Assignee:** Frontend Dev
+
+**Description:**
+First screen after account creation. User selects Monthly or Annual Premium, triggers the system trial flow.
+
+**Acceptance Criteria:**
+- [ ] Route `app/(auth)/choose-plan.tsx` created
+- [ ] Two large cards: "Premium Monthly $9.99/mo" and "Premium Annual $107.88/yr (Save 10%)"
+- [ ] Both cards lead with "7-day Free Trial" badge
+- [ ] Selecting either triggers RevenueCat purchase flow (system dialog handles card capture)
+- [ ] Required disclosure copy below CTAs: trial length, auto-renew terms, cancel anywhere in App Store / Play Store
+- [ ] No "Skip" option — choosing a plan is mandatory to enter the app
+- [ ] On successful purchase, navigates to `wc-pass-offer` screen
+- [ ] On user-initiated cancel of the system dialog, returns to this screen (no auto-progression)
+
+---
+
+### FW-94: Optional WC Pass Add-On Screen
+**Type:** Story · **Points:** 3 · **Priority:** High
+**Assignee:** Frontend Dev
+
+**Description:**
+Post-Premium-trial-start screen offering the WC Pass as an optional add-on. Skippable.
+
+**Acceptance Criteria:**
+- [ ] Route `app/(auth)/wc-pass-offer.tsx` created
+- [ ] Hero copy: "Get the World Cup 2026 Pass — $19.99"
+- [ ] Feature list mirroring FW-92
+- [ ] "Add WC Pass" button (triggers IAP)
+- [ ] "Skip — Maybe Later" button (proceeds to tabs without purchase)
+- [ ] On successful purchase, navigates to `(tabs)` with success toast
+- [ ] On skip, navigates to `(tabs)` directly — user can buy later from Settings
+
+---
+
+### FW-95: NavigationGuard Subscription Routing
+**Type:** Story · **Points:** 3 · **Priority:** Highest
+**Assignee:** Frontend Dev
+
+**Description:**
+Extend the existing NavigationGuard in `app/_layout.tsx` to route signed-in users based on their subscription state. Two routing branches: no plan chosen → Choose Plan; cancelled/expired → Resubscribe landing screen (no main-app access).
+
+**Acceptance Criteria:**
+- [ ] `app/_layout.tsx` NavigationGuard updated
+- [ ] When `session` is present and `subscription_status === 'none'` → redirect to `/(auth)/choose-plan`
+- [ ] When `subscription_status === 'trial' | 'active'` → allow full app access
+- [ ] When `subscription_status === 'cancelled' | 'expired'` → redirect to `/(auth)/resubscribe` (FW-113); main app routes refuse to render
+- [ ] Loading state during entitlement fetch — no paywall flash before data arrives
+- [ ] No infinite redirect loop (test edge cases: session + still-loading entitlements)
+- [ ] Push notifications still fire for cancelled users (re-engagement hook outside the app); tapping a notification lands them on the Resubscribe screen, not the app
+
+---
+
+### FW-96: PaywallGate Wrapper
+**Type:** Story · **Points:** 3 · **Priority:** Highest
+**Assignee:** Frontend Dev
+
+**Description:**
+Reusable wrapper that gates any CTA behind an entitlement check. Triggers the appropriate paywall sheet when an unentitled user taps a wrapped element. (Originally included a GhostCard component for cancelled-user read-only states; that's no longer needed since cancelled users are routed straight to the Resubscribe screen and never see app surfaces.)
+
+**Acceptance Criteria:**
+- [ ] `components/paywall/PaywallGate.tsx` — props: `{ require: 'premium' | 'wc_pass', children }`
+- [ ] If `require='premium'` and `useHasPremium()` is false → tapping child triggers PremiumPaywall sheet
+- [ ] If `require='wc_pass'` and `useHasWCAccess()` is false → tapping triggers WCPassPaywall sheet
+- [ ] If entitled, renders child untouched (passes-through props)
+- [ ] Supports both single-element wrapping and a `disabled-overlay` style for whole sections
+
+---
+
+### FW-97: Apply Premium Gates Across App
+**Type:** Story · **Points:** 5 · **Priority:** Highest
+**Assignee:** Frontend Dev
+
+**Description:**
+Wrap every Premium-only CTA with PaywallGate. Trial-paying and active-paying users see everything; cancelled users never reach these surfaces (they're stuck on the Resubscribe screen per FW-95). The remaining wrap-with-paywall scope handles the WC Pass case for paying-but-no-pass users and trial users hitting Premium-gated upgrade surfaces.
+
+**Acceptance Criteria:**
+- [ ] Post clip CTA in `app/create-clip.tsx` — wrapped (premium)
+- [ ] Post moment CTA in `components/MomentsFeed.tsx` — wrapped (premium)
+- [ ] Message send in `app/fan-group/[id].tsx:handleSend` — gate at function entry (premium); show paywall on attempt
+- [ ] RSVP buttons in watch party detail screens — wrapped (premium)
+- [ ] Create watch party / create group flows — wrapped at entry (premium)
+- [ ] Follow team CTA in `WCTeamFollowModal` and team follow surfaces — wrapped (premium)
+- [ ] All gates tested against `subscription_status='cancelled'` user manually (should never see them — confirms FW-95 routes correctly)
+
+---
+
+### FW-98: Apply WC Pass Gates to World Cup Tab
+**Type:** Story · **Points:** 5 · **Priority:** Highest
+**Assignee:** Frontend Dev
+
+**Description:**
+Gate the engagement actions on the World Cup tab behind the WC Pass entitlement. Browsing schedule stays open to all Premium users so they see the value before paying.
+
+**Acceptance Criteria:**
+- [ ] `app/(tabs)/world-cup.tsx` — schedule view remains visible to all Premium users
+- [ ] RSVP/create CTAs in `WCWatchParties` — wrapped (wc_pass)
+- [ ] Join/create CTAs in `WCFanGroups` — wrapped (wc_pass)
+- [ ] Follow action in `WCTeamFollowModal` — wrapped (wc_pass) when team is WC team
+- [ ] Post Moment button in WC fan group highlights — wrapped (wc_pass)
+- [ ] During the 7-day trial: WC tab fully unlocked (trial grants both premium AND wc_access)
+- [ ] After trial conversion (no Pass purchased): WC engagement triggers WCPassPaywall
+- [ ] WC tab hidden entirely for cancelled-status users (not just gated)
+
+---
+
+### FW-99: Settings — Subscription Screen
+**Type:** Story · **Points:** 3 · **Priority:** High
+**Assignee:** Frontend Dev
+
+**Description:**
+A subscription management screen accessible from Profile / Settings. Shows current state and provides Restore + manage links per platform policy.
+
+**Acceptance Criteria:**
+- [ ] Route `app/subscription.tsx` (or under settings) created
+- [ ] Displays: current subscription status, plan (monthly/annual), renewal date, WC Pass active until (if owned)
+- [ ] "Restore Purchases" button — calls `Purchases.restorePurchases()`
+- [ ] "Manage Subscription" deep-link button — opens App Store / Play Store subscription management (platform-specific URL)
+- [ ] "Add WC Pass" button visible when no pass owned, during the WC window
+- [ ] Disclosure copy meets Apple/Google requirements
+- [ ] Accessible via Profile tab → settings → Subscription
+
+---
+
+### FW-112: "Trial Ending Tomorrow" Push Notification
+**Type:** Story · **Points:** 1 · **Priority:** Highest
+**Assignee:** Backend Dev
+
+**Description:**
+Send a push notification ~24 hours before a user's free trial converts to a paid subscription. Single most-effective lever to reduce refund requests, 1-star reviews, and customer-service load — without weakening the auto-charge model's conversion rate. Trial-aware users either cancel (legitimately) or convert with eyes open; the surprise-charge cohort disappears.
+
+**Acceptance Criteria:**
+- [ ] Migration `035_trial_reminder_cron.sql` created
+- [ ] pg_cron job runs hourly: selects users where `subscription_status='trial'` AND `premium_active_until` falls in the next 23–25h window
+- [ ] For each, enqueues a row in `notification_queue` (from migration 018) with `payload` containing title + body
+- [ ] Title: "Your free trial ends tomorrow"
+- [ ] Body: "Your 7-day Fan Wave trial ends tomorrow. We'll automatically charge $9.99/mo. Cancel anytime in Settings → Subscription."
+- [ ] Deduplication: each user only gets ONE trial-end reminder per trial cycle (idempotent — `purchase_events` or a dedicated `trial_reminders_sent` table tracks)
+- [ ] `process-notification-queue` Edge Function (existing) picks up the row and delivers via Expo Push API
+- [ ] Tap on notification opens Settings → Subscription screen (FW-99)
+- [ ] Tested with sandbox tester: starts trial, advances clock to T-24h, verifies push fires once
+
+---
+
+### FW-113: Resubscribe Landing Screen for Cancelled Users
+**Type:** Story · **Points:** 3 · **Priority:** Highest
+**Assignee:** Frontend Dev
+
+**Description:**
+Single landing screen shown to users whose subscription has been cancelled or expired. Replaces "read-only main app" — cancelled users do not see app surfaces. Page acts as re-conversion landing: value-prop hero, Resubscribe CTA, optional teaser of what they're missing.
+
+**Acceptance Criteria:**
+- [ ] Route `app/(auth)/resubscribe.tsx` created
+- [ ] Hero copy: "Welcome back to Fan Wave — your subscription has ended"
+- [ ] Status line: shows when subscription was cancelled / expired
+- [ ] Feature bullet list reminding what Premium unlocks (top 4 features only)
+- [ ] Optional teaser block: "Your 3 followed teams have games this week" — static text, not a tap target
+- [ ] Primary CTA "Resubscribe ($9.99/mo)" — opens PremiumPaywall sheet (FW-91)
+- [ ] Secondary CTA "Manage in App Store / Play Store" — deep-links to platform settings
+- [ ] No way to bypass to the main app from this screen (NavigationGuard from FW-95 enforces)
+- [ ] Sign Out button at the bottom (so cancelled user can switch accounts)
+- [ ] Successful re-subscribe → entitlement updates via Realtime → user is routed to main app automatically
+
+---
+
+## EPIC: FW-E17 — Storage Hardening for WC Scale
+**Sprint 17 · 22 Points**
+
+---
+
+### FW-100: Client-Side Pre-Upload Validation
+**Type:** Story · **Points:** 3 · **Priority:** Highest
+**Assignee:** Frontend Dev
+
+**Description:**
+Reject oversized clips and overlong videos on the client before they touch Supabase Storage. Currently uploads bigger than the 50MB bucket cap fail after the upload attempt, wasting bandwidth and user trust.
+
+**Acceptance Criteria:**
+- [ ] `app/create-clip.tsx` validates: video duration ≤ 30 seconds AND file size ≤ 25 MB before calling `uploadAsync`
+- [ ] `components/MomentsFeed.tsx` same validation on `pickClip` + `recordClip`
+- [ ] On rejection, show friendly Alert: "Clip too long" or "Clip too large — please trim to 30s and try again"
+- [ ] File size obtained via `expo-file-system`'s `getInfoAsync`
+- [ ] Duration obtained from `ImagePicker.launchImageLibraryAsync` asset metadata
+- [ ] Loading indicator shows during upload (replaces silent wait)
+
+---
+
+### FW-101: Unify Clip Duration to 30s
+**Type:** Story · **Points:** 1 · **Priority:** High
+**Assignee:** Frontend Dev
+
+**Description:**
+The Clips tab currently allows 60s recordings but moment clips are capped at 30s. Standardize on 30s everywhere for storage/bandwidth efficiency.
+
+**Acceptance Criteria:**
+- [ ] `app/(tabs)/clips.tsx` — `videoMaxDuration` set to 30
+- [ ] No mention of 60s anywhere in clip-recording flows
+- [ ] DB CHECK constraint or trigger optionally enforces clip duration ≤ 30s
+
+---
+
+### FW-102: Wire `check_rate_limit()` RPC Into Mutating Flows
+**Type:** Story · **Points:** 5 · **Priority:** Highest
+**Assignee:** Backend Dev + Frontend Dev
+
+**Description:**
+The `check_rate_limit()` Postgres function was added in migration 018 but is never called from app code. Wire it up to gate the high-volume mutating flows so abuse or runaway clients don't degrade the database.
+
+**Acceptance Criteria:**
+- [ ] Clip post in `app/create-clip.tsx` calls `check_rate_limit(user.id, 'clip_post', 5, 3600)` before upload — 5 per hour
+- [ ] Moment post in `components/MomentsFeed.tsx` calls `check_rate_limit(user.id, 'moment_post', 10, 3600)` — 10 per hour per user
+- [ ] Chat message send in `app/fan-group/[id].tsx:handleSend` calls `check_rate_limit(user.id, 'message_send', 60, 60)` — 60 per minute
+- [ ] RSVP in watch party detail calls `check_rate_limit(user.id, 'rsvp', 20, 86400)` — 20 per day
+- [ ] On rate-limit hit, show friendly toast: "Slow down — you're posting too quickly. Try again in a moment."
+- [ ] Smoke test: post 6 clips in an hour — 6th is rejected before reaching Storage
+
+---
+
+### FW-103: Lower Clips Bucket File Size Limit
+**Type:** Story · **Points:** 1 · **Priority:** High
+**Assignee:** Backend Dev
+
+**Description:**
+Tighten the server-side hard reject on clip upload size, in lockstep with the client validation from FW-100.
+
+**Acceptance Criteria:**
+- [ ] Migration `034_storage_limits.sql` created
+- [ ] `clips` bucket `file_size_limit` set to 26214400 (25 MB) — was 52428800 (50 MB)
+- [ ] Manual test: upload >25 MB file → server returns 413 Payload Too Large
+- [ ] Migration applied to remote
+
+---
+
+### FW-104: Storage Provider Abstraction
+**Type:** Story · **Points:** 3 · **Priority:** Medium
+**Assignee:** Backend Dev + Frontend Dev
+
+**Description:**
+Extract upload logic into a single function so the future Cloudinary migration (FW-E18) is a one-file swap instead of touching 3+ surfaces.
+
+**Acceptance Criteria:**
+- [ ] `lib/storage.ts` created
+- [ ] Single function `uploadClip(uri: string, opts: { contentType: string; subpath: string }): Promise<{ publicUrl: string }>`
+- [ ] Implementation reads `EXPO_PUBLIC_STORAGE_PROVIDER` env (default `supabase`)
+- [ ] Provider-switch architecture: switch case in body; only Supabase path implemented now
+- [ ] `app/create-clip.tsx` calls `uploadClip(...)` (replaces inline `uploadAsync`)
+- [ ] `components/MomentsFeed.tsx` same replacement for moment-clip uploads
+- [ ] Type-safe interface ready for Cloudinary provider in FW-109
+
+---
+
+### FW-105: Supabase Egress Bandwidth Alerts
+**Type:** Story · **Points:** 1 · **Priority:** Medium
+**Assignee:** DevOps / Backend Dev
+
+**Description:**
+Set up dashboard alerts so we have early warning before exhausting the Supabase plan's monthly bandwidth quota during WC.
+
+**Acceptance Criteria:**
+- [ ] Alert configured at 70% of monthly bandwidth → notify on-call
+- [ ] Alert configured at 90% → notify on-call + product owner
+- [ ] Runbook entry in `docs/runbooks.md` documenting the response (upgrade plan, or accelerate Cloudinary migration)
+
+---
+
+### FW-106: Payment Flow Integration & E2E Tests
+**Type:** Story · **Points:** 5 · **Priority:** Highest
+**Assignee:** QA + Backend Dev
+
+**Description:**
+End-to-end test the full lifecycle: trial start → active → cancellation → re-subscribe → refund → WC Pass purchase. Both happy and negative paths.
+
+**Acceptance Criteria:**
+- [ ] Sandbox tester (Apple) goes through: signup → choose plan → trial starts → full app access (incl. WC tab) → advance time 7 days → auto-charge → WC tab gates with paywall
+- [ ] Buy WC Pass via sandbox → WC tab re-opens
+- [ ] Cancel Premium in App Store Settings → on next "Renew" date, entitlement revoked → ghost cards appear on watch parties + suggested groups → post clip blocked client-side AND server-side
+- [ ] Apple-side refund fires webhook → entitlement revoked within 1 minute
+- [ ] Fresh install on same Apple ID → Restore Purchases re-grants entitlement
+- [ ] Rate-limit smoke: 6 consecutive clip posts in an hour → 6th gets rejected
+- [ ] Webhook idempotency: fire same event_id twice → only one entitlement update
+- [ ] Each test logged and signed off before submission
+
+---
+
+### FW-107: App Store + Play Store Submission
+**Type:** Story · **Points:** 3 · **Priority:** Highest
+**Assignee:** Product Owner + Frontend Dev
+
+**Description:**
+Submit the WC Pass + Premium subscription build to both stores and clear review before kickoff.
+
+**Acceptance Criteria:**
+- [ ] App Store screenshots updated to show paywall + WC Pass
+- [ ] App Store metadata updated: subscription pricing disclosed in description
+- [ ] Play Store screenshots + metadata updated similarly
+- [ ] Production EAS build submitted with version code increment
+- [ ] App Review notes: explain subscription model, sandbox test account credentials for reviewers
+- [ ] **Hard deadline: submit by June 4, 2026** (5 days before kickoff to absorb 3–5-day review)
+- [ ] Live in production by June 6, 2026
+
+---
+
+## EPIC: FW-E18 — Cloudinary Media Migration (Post-WC, Deferred)
+**Sprint 18+ (Post-WC) · 12 Points**
+
+---
+
+### FW-108: Cloudinary Account Setup
+**Type:** Story · **Points:** 2 · **Priority:** Medium
+**Assignee:** Product Owner + DevOps
+
+**Description:**
+Sign up for Cloudinary and scope the right paid tier based on actual WC traffic data.
+
+**Acceptance Criteria:**
+- [ ] Cloudinary account created
+- [ ] Plan selected based on WC bandwidth metrics (likely Plus $89/mo or Advanced $224/mo)
+- [ ] `cloud_name`, `api_key`, `api_secret` stored in Supabase Vault
+- [ ] Upload preset configured (auto-transcode, HLS streaming, eager thumbnail)
+- [ ] Billing alerts configured at 70% / 90% of plan quota
+
+---
+
+### FW-109: Cloudinary Provider Implementation
+**Type:** Story · **Points:** 3 · **Priority:** Medium
+**Assignee:** Backend Dev + Frontend Dev
+
+**Description:**
+Add a Cloudinary implementation to the `lib/storage.ts` abstraction built in FW-104.
+
+**Acceptance Criteria:**
+- [ ] Cloudinary upload path implemented in `lib/storage.ts` switch
+- [ ] Signed upload URLs generated server-side via Edge Function (don't expose API secret to client)
+- [ ] `uploadClip()` returns Cloudinary public CDN URL when provider is `cloudinary`
+- [ ] Existing playback code works unchanged with Cloudinary URLs (just a different domain)
+- [ ] Tested with sandbox account before flipping env var in production
+
+---
+
+### FW-110: Switch New Uploads to Cloudinary
+**Type:** Story · **Points:** 2 · **Priority:** Medium
+**Assignee:** DevOps
+
+**Description:**
+Flip the storage provider env var in production. New uploads route to Cloudinary; existing clips stay in Supabase Storage (no migration needed).
+
+**Acceptance Criteria:**
+- [ ] `EXPO_PUBLIC_STORAGE_PROVIDER=cloudinary` set on production EAS profile
+- [ ] New EAS build cut and submitted
+- [ ] Monitor egress on Supabase vs Cloudinary for 1 week post-launch
+- [ ] Document rollback procedure (flip env var back to `supabase`)
+
+---
+
+### FW-111: (Optional) Backfill Existing Clips to Cloudinary
+**Type:** Story · **Points:** 5 · **Priority:** Low
+**Assignee:** Backend Dev
+
+**Description:**
+One-time migration script to move clips uploaded to Supabase Storage before the Cloudinary switch. Optional — Supabase Storage can keep serving them indefinitely.
+
+**Acceptance Criteria:**
+- [ ] Background script reads all `media_clips` rows with `media_url` matching the Supabase Storage pattern
+- [ ] Downloads each clip, re-uploads to Cloudinary
+- [ ] Updates `media_clips.media_url` with the new Cloudinary URL
+- [ ] Rate-limited to avoid hammering either provider
+- [ ] Run during a low-traffic window
+- [ ] Verify playback continues working through the migration
+
+---
+
 ## Updated Summary
 
 | Phase | Epic | Sprint | Points | Key Deliverable |
@@ -1758,9 +2300,12 @@ Nothing in the codebase creates a `public.users` row when a user signs up via Su
 | Phase 3 | FW-E8 WC Mode | Sprint 8 | 20 | WC data, schedule, team following, theme |
 | Phase 3 | FW-E9 WC Features | Sprint 9 | 16 | WC watch parties, fan groups, QA |
 | Phase 4 | FW-E10 Follow Tiers | Sprint 10 | 26 | Per-team follow tiers, filtered feeds, upsell |
-| **Phase 5** | **FW-E11 Seed & Notifications** | **Sprint 11** | **21** | **Seed data, push notification system** |
-| **Phase 5** | **FW-E12 Sharing & Creators** | **Sprint 12** | **24** | **Social sharing, creator profiles, edit profile** |
-| **Phase 6** | **FW-E13 Gamification** | **Sprint 13** | **21** | **Badges, streaks, trending, reusable components** |
-| **Phase 6** | **FW-E14 Accessibility** | **Sprint 14** | **18** | **A11y labels, i18n, offline mode, contrast** |
-| **Phase 6** | **FW-E15 Brand & Growth** | **Sprint 15** | **20** | **Welcome flow, invites, deep links, app store** |
-| **Grand Total** | **15 Epics** | **15 Sprints** | **328** | |
+| Phase 5 | FW-E11 Seed & Notifications | Sprint 11 | 21 | Seed data, push notification system |
+| Phase 5 | FW-E12 Sharing & Creators | Sprint 12 | 24 | Social sharing, creator profiles, edit profile |
+| Phase 6 | FW-E13 Gamification | Sprint 13 | 21 | Badges, streaks, trending, reusable components |
+| Phase 6 | FW-E14 Accessibility | Sprint 14 | 18 | A11y labels, i18n, offline mode, contrast |
+| Phase 6 | FW-E15 Brand & Growth | Sprint 15 | 20 | Welcome flow, invites, deep links, app store |
+| **Phase 7** | **FW-E16 Monetization Foundation** | **Sprint 16-17** | **62** | **Entitlements, paywalls, choose-plan, RevenueCat webhook, trial reminder, resubscribe screen** |
+| **Phase 7** | **FW-E17 Storage Hardening** | **Sprint 17** | **22** | **Upload validation, rate limiting, E2E payment tests, store submission** |
+| **Phase 7** | **FW-E18 Cloudinary (Post-WC)** | **Sprint 18+** | **12** | **Storage provider migration after tournament** |
+| **Grand Total** | **18 Epics** | **18 Sprints** | **424** | |
