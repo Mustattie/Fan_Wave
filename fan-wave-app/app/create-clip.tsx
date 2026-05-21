@@ -13,13 +13,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { uploadAsync, FileSystemUploadType } from 'expo-file-system/legacy';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { SPORTS } from '@/constants/Sports';
 import { getMomentTypesForSport, type MomentType } from '@/constants/MomentTypes';
 import { PaywallGate } from '@/components/paywall/PaywallGate';
+import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
 
 const C = Colors.dark;
 const MAX_TITLE = 80;
@@ -65,11 +65,37 @@ export default function CreateClipScreen() {
       return;
     }
 
+    // Client-side pre-upload validation (FW-100). Reject oversized /
+    // overlong clips before any bandwidth is spent.
+    try {
+      const durationSec = durationMs ? Number(durationMs) / 1000 : undefined;
+      await validateClip(videoUri, { durationSec });
+    } catch (e) {
+      if (e instanceof UploadValidationError) {
+        Alert.alert('Clip too large', e.message);
+        return;
+      }
+      // Unknown validation error — let the server reject.
+    }
+
     setPosting(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         Alert.alert('Not signed in', 'Please sign in again.');
+        setPosting(false);
+        return;
+      }
+
+      // Rate limiter (FW-102): 5 clips per hour per user.
+      const { data: allowed } = await supabase.rpc('check_rate_limit', {
+        p_user_id: user.id,
+        p_action: 'clip_post',
+        p_max_count: 5,
+        p_window_seconds: 3600,
+      });
+      if (allowed === false) {
+        Alert.alert('Slow down', "You're posting clips quickly. Try again in a few minutes.");
         setPosting(false);
         return;
       }
@@ -98,42 +124,11 @@ export default function CreateClipScreen() {
       if (!profileId) throw new Error('Profile not found');
 
       const ext = (videoUri.split('.').pop() || 'mp4').toLowerCase();
-      // Folder must be auth.uid() to satisfy the clips bucket RLS policy
-      // (see migrations/021_clips_storage_bucket.sql). The media_clips row
-      // still references the public.users.id (profileId).
-      const path = `${user.id}/${Date.now()}.${ext}`;
       const contentType = ext === 'mp4' ? 'video/mp4' : `video/${ext}`;
-
-      // Native binary upload via expo-file-system — avoids the broken
-      // fetch(file://).blob() → supabase.storage.upload() path on Android RN,
-      // which surfaces as a generic "Network request failed".
-      const { data: { session } } = await supabase.auth.getSession();
-      const accessToken = session?.access_token;
-      if (!accessToken) throw new Error('Not signed in');
-
-      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-      const uploadResult = await uploadAsync(
-        `${supabaseUrl}/storage/v1/object/clips/${path}`,
-        videoUri,
-        {
-          httpMethod: 'POST',
-          uploadType: FileSystemUploadType.BINARY_CONTENT,
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': contentType,
-            'x-upsert': 'false',
-          },
-        }
-      );
-      if (uploadResult.status < 200 || uploadResult.status >= 300) {
-        throw new Error(
-          `Upload failed (${uploadResult.status}): ${uploadResult.body}`
-        );
-      }
-
-      const { data: urlData } = supabase.storage
-        .from('clips')
-        .getPublicUrl(path);
+      const { publicUrl } = await uploadClip(videoUri, {
+        contentType,
+        subpath: `${Date.now()}.${ext}`,
+      });
 
       const durationSeconds = durationMs
         ? Math.round(Number(durationMs) / 1000)
@@ -143,7 +138,7 @@ export default function CreateClipScreen() {
         user_id: user.id,
         title: title.trim(),
         description: description.trim(),
-        media_url: urlData.publicUrl,
+        media_url: publicUrl,
         media_type: 'video',
         duration_seconds: durationSeconds,
         sport_id: sportId,

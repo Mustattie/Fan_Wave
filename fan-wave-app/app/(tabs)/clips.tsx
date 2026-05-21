@@ -547,7 +547,7 @@ export default function ClipsScreen() {
             }
             const result = await ImagePicker.launchCameraAsync({
               mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-              videoMaxDuration: 60,
+              videoMaxDuration: 30,
               quality: 0.8,
             });
             if (!result.canceled && result.assets[0]?.uri) {

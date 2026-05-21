@@ -239,6 +239,24 @@ export default function WatchPartyDetailScreen() {
 
   const handleRsvp = async (status: RsvpStatus) => {
     const newStatus = rsvpStatus === status ? null : status;
+
+    // Rate limiter (FW-102): 20 RSVP toggles per day.
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: allowed } = await supabase.rpc('check_rate_limit', {
+          p_user_id: user.id,
+          p_action: 'rsvp',
+          p_max_count: 20,
+          p_window_seconds: 86400,
+        });
+        if (allowed === false) return;
+      }
+    } catch {
+      // If the rate-limit RPC itself fails, fall through — don't block a
+      // user from RSVPing because of an infra hiccup.
+    }
+
     setRsvpStatus(newStatus);
 
     try {

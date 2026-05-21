@@ -15,8 +15,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { uploadAsync, FileSystemUploadType } from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
+import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
 import { Video, Film, X, Share2, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { getMomentTypesForSport, REACTION_EMOJIS } from '@/constants/MomentTypes';
@@ -295,54 +295,44 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
       return;
     }
 
-    // Upload the clip to Supabase Storage so it persists across sessions
-    // and devices. Without this step, the file:// URI from ImagePicker
-    // works only on the current device for the current session — Android
-    // can purge the picker's cache between launches, leaving moments with
-    // broken video. Falls back to the local URI on upload failure so the
-    // moment still posts.
+    // Rate limiter (FW-102): 10 moments per hour per user.
+    const { data: allowed } = await supabase.rpc('check_rate_limit', {
+      p_user_id: currentUserId,
+      p_action: 'moment_post',
+      p_max_count: 10,
+      p_window_seconds: 3600,
+    });
+    if (allowed === false) {
+      Alert.alert('Slow down', "You're posting moments quickly. Try again in a few minutes.");
+      return;
+    }
+
+    // Upload the clip to Storage (Supabase or Cloudinary depending on
+    // EXPO_PUBLIC_STORAGE_PROVIDER, via lib/storage.ts) so it persists
+    // across sessions/devices. Falls back to the local URI on upload
+    // failure so the moment still posts.
     let persistedMediaUrl: string | null = submittedClipUri;
     if (submittedClipUri) {
       try {
+        // Pre-upload validation — reject oversized clips early
+        await validateClip(submittedClipUri, {});
+      } catch (e) {
+        if (e instanceof UploadValidationError) {
+          Alert.alert('Clip too large', e.message);
+          return;
+        }
+      }
+      try {
         const ext = (submittedClipUri.split('.').pop() || (submittedClipType === 'video' ? 'mp4' : 'jpg')).toLowerCase();
-        // clips bucket RLS requires folder = auth.uid() — see migration 021.
-        const path = `${currentUserId}/moments/${Date.now()}.${ext}`;
         const contentType =
           submittedClipType === 'video'
             ? ext === 'mp4' ? 'video/mp4' : `video/${ext}`
             : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
-        const { data: { session } } = await supabase.auth.getSession();
-        const accessToken = session?.access_token;
-        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-        if (accessToken && supabaseUrl) {
-          // Native binary upload via expo-file-system — avoids the
-          // broken fetch(file://).blob() → storage.upload() path on
-          // Android RN that surfaces as "Network request failed".
-          const uploadResult = await uploadAsync(
-            `${supabaseUrl}/storage/v1/object/clips/${path}`,
-            submittedClipUri,
-            {
-              httpMethod: 'POST',
-              uploadType: FileSystemUploadType.BINARY_CONTENT,
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-                'Content-Type': contentType,
-                'x-upsert': 'false',
-              },
-            },
-          );
-          if (uploadResult.status >= 200 && uploadResult.status < 300) {
-            const { data: urlData } = supabase.storage
-              .from('clips')
-              .getPublicUrl(path);
-            persistedMediaUrl = urlData.publicUrl;
-          } else {
-            reportError(
-              new Error(`Moment clip upload failed (${uploadResult.status}): ${uploadResult.body}`),
-              { source: 'MomentsFeed:uploadClip', chatRoomId },
-            );
-          }
-        }
+        const { publicUrl } = await uploadClip(submittedClipUri, {
+          contentType,
+          subpath: `moments/${Date.now()}.${ext}`,
+        });
+        persistedMediaUrl = publicUrl;
       } catch (e) {
         reportError(e, { source: 'MomentsFeed:uploadClip', chatRoomId });
       }

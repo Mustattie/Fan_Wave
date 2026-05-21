@@ -193,6 +193,21 @@ export default function FanGroupDetailScreen() {
   const handleSend = async () => {
     if (!message.trim() || !id) return;
 
+    // Rate limiter (FW-102): 60 messages per minute per user.
+    if (currentUserId) {
+      const { data: allowed } = await supabase.rpc('check_rate_limit', {
+        p_user_id: currentUserId,
+        p_action: 'message_send',
+        p_max_count: 60,
+        p_window_seconds: 60,
+      });
+      if (allowed === false) {
+        // Silent throttle — feedback would interrupt typing. The rate
+        // matches Slack/Discord's ceiling so legitimate users never hit it.
+        return;
+      }
+    }
+
     const newMsg: ChatMessageDisplay = {
       id: `m-${Date.now()}`,
       user: 'You',
