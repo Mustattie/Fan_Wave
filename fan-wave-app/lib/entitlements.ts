@@ -191,3 +191,59 @@ export async function restorePurchases(): Promise<boolean> {
     return false;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Purchase entry points — used by PremiumPaywall + WCPassPaywall.
+//
+// Both routes hit the RevenueCat native SDK. In Expo Go / dev builds
+// without a configured API key, the call fails — there is no dev
+// shortcut, because migration 040 locks entitlement columns to
+// service_role writes. To render-walk the trial / WC-pass flow in dev,
+// grant yourself via the SQL editor (see migration 040 for the snippet).
+// ---------------------------------------------------------------------------
+
+export type PurchaseResult =
+  | { kind: 'success' }
+  | { kind: 'pending' } // dialog closed, awaiting receipt validation
+  | { kind: 'cancelled' }
+  | { kind: 'error'; error: unknown };
+
+const PREMIUM_PRODUCT_IDS: Record<'monthly' | 'annual', string> = {
+  monthly: 'premium_monthly_999',
+  annual: 'premium_annual_10788',
+};
+const WC_PASS_PRODUCT_ID = 'wc_pass_2026';
+
+export async function purchasePremium(plan: 'monthly' | 'annual'): Promise<PurchaseResult> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const Purchases = require('react-native-purchases').default;
+    const result = await Purchases.purchaseProduct(PREMIUM_PRODUCT_IDS[plan]);
+    if (result?.customerInfo?.entitlements?.active?.premium) {
+      return { kind: 'success' };
+    }
+    return { kind: 'pending' };
+  } catch (e: any) {
+    if (e?.userCancelled || /cancel/i.test(e?.message ?? '')) {
+      return { kind: 'cancelled' };
+    }
+    return { kind: 'error', error: e };
+  }
+}
+
+export async function purchaseWCPass(): Promise<PurchaseResult> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const Purchases = require('react-native-purchases').default;
+    const result = await Purchases.purchaseProduct(WC_PASS_PRODUCT_ID);
+    if (result?.customerInfo?.entitlements?.active?.wc_pass) {
+      return { kind: 'success' };
+    }
+    return { kind: 'pending' };
+  } catch (e: any) {
+    if (e?.userCancelled || /cancel/i.test(e?.message ?? '')) {
+      return { kind: 'cancelled' };
+    }
+    return { kind: 'error', error: e };
+  }
+}

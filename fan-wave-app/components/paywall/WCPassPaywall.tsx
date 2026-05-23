@@ -12,12 +12,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, X, Star } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { restorePurchases } from '@/lib/entitlements';
+import { purchaseWCPass, restorePurchases } from '@/lib/entitlements';
 import { reportError } from '@/lib/errorReporting';
 
 type State = 'idle' | 'purchasing' | 'success';
-
-const WC_PASS_PRODUCT = 'wc_pass_2026';
 
 const FEATURES = [
   'Join World Cup fan groups',
@@ -39,29 +37,22 @@ export function WCPassPaywall({ visible, onClose, onSuccess }: Props) {
 
   const handlePurchase = async () => {
     setState('purchasing');
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const Purchases = require('react-native-purchases').default;
-      const result = await Purchases.purchaseProduct(WC_PASS_PRODUCT);
-      if (result?.customerInfo?.entitlements?.active?.wc_pass) {
-        setState('success');
-        setTimeout(() => {
-          setState('idle');
-          onSuccess?.();
-          onClose();
-        }, 1200);
-      } else {
-        // Receipt pending validation — webhook will catch up
+    const result = await purchaseWCPass();
+    if (result.kind === 'success') {
+      setState('success');
+      setTimeout(() => {
         setState('idle');
         onSuccess?.();
         onClose();
-      }
-    } catch (e: any) {
-      if (e?.userCancelled || /cancel/i.test(e?.message ?? '')) {
-        setState('idle');
-        return;
-      }
-      reportError(e, { source: 'WCPassPaywall:purchase' });
+      }, 1200);
+    } else if (result.kind === 'pending') {
+      setState('idle');
+      onSuccess?.();
+      onClose();
+    } else if (result.kind === 'cancelled') {
+      setState('idle');
+    } else {
+      reportError(result.error, { source: 'WCPassPaywall:purchase' });
       setState('idle');
     }
   };

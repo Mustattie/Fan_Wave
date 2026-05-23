@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, X } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { restorePurchases } from '@/lib/entitlements';
+import { purchasePremium, restorePurchases } from '@/lib/entitlements';
 import { reportError } from '@/lib/errorReporting';
 
 type Plan = 'monthly' | 'annual';
@@ -25,11 +25,6 @@ const FEATURES = [
   'Follow your favorite teams',
   'Ad-free experience',
 ];
-
-const PRODUCT_IDS = {
-  monthly: 'premium_monthly_999',
-  annual: 'premium_annual_10788',
-};
 
 const PRICES = {
   monthly: { display: '$9.99/mo', period: 'month' },
@@ -52,35 +47,24 @@ export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'mon
 
   const handlePurchase = async () => {
     setState('purchasing');
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const Purchases = require('react-native-purchases').default;
-      // RevenueCat's purchaseProduct uses the platform product ID; the SDK
-      // returns when the OS dialog closes (success or user-cancel).
-      const result = await Purchases.purchaseProduct(PRODUCT_IDS[plan]);
-      if (result?.customerInfo?.entitlements?.active?.premium) {
-        setState('success');
-        // Brief success flash, then dismiss + entitlement Realtime fires.
-        setTimeout(() => {
-          setState('idle');
-          onSuccess?.();
-          onClose();
-        }, 1200);
-      } else {
-        // User completed the dialog but no entitlement granted — likely
-        // pending receipt validation. Treat as success; webhook will
-        // catch up.
+    const result = await purchasePremium(plan);
+    if (result.kind === 'success') {
+      setState('success');
+      // Brief success flash, then dismiss + entitlement Realtime fires.
+      setTimeout(() => {
         setState('idle');
         onSuccess?.();
         onClose();
-      }
-    } catch (e: any) {
-      // User-cancellation is not an error; just reset state.
-      if (e?.userCancelled || /cancel/i.test(e?.message ?? '')) {
-        setState('idle');
-        return;
-      }
-      reportError(e, { source: 'PremiumPaywall:purchase', plan });
+      }, 1200);
+    } else if (result.kind === 'pending') {
+      // Dialog closed, receipt pending — webhook will catch up.
+      setState('idle');
+      onSuccess?.();
+      onClose();
+    } else if (result.kind === 'cancelled') {
+      setState('idle');
+    } else {
+      reportError(result.error, { source: 'PremiumPaywall:purchase', plan });
       setState('idle');
     }
   };
