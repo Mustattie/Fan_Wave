@@ -39,19 +39,28 @@ export function useGames(limit = 30) {
       if (cached) return cached;
 
       try {
-        // Live games always show. Scheduled games show only if they haven't
-        // started yet, with a 4-hour grace window so games that have tipped
-        // off but haven't been promoted to status='in' yet (ESPN sync lag)
-        // still appear. Compares against a precise timestamp — the old
-        // `.gte(date_string)` let yesterday's late-ET games leak in as
-        // "today" because their UTC time was past midnight today.
-        const cutoff = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+        // Carousel composition:
+        //   * status='in'        always show (live game)
+        //   * status='scheduled' show if not yet started; 4h grace covers
+        //     ESPN sync lag so a freshly-tipped game that's still 'scheduled'
+        //     in our DB still appears
+        //   * status='post'      show if it ended in the last ~24h — fans
+        //     check scores after the buzzer; ESPN itself keeps yesterday's
+        //     results visible into the next day
+        // Ordering: 'in' < 'post' < 'scheduled' alphabetically, so ASC puts
+        // live first, then today's finals, then upcoming. Within each group,
+        // chronological.
+        const upcomingCutoff = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+        const finishedCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const { data, error } = await withTimeout(
           () => supabase
             .from('games')
             .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
-            .or(`status.eq.in,and(status.eq.scheduled,scheduled_at.gte.${cutoff})`)
-            // 'in' < 'scheduled' alphabetically → ASC puts live games first.
+            .or(
+              `status.eq.in,` +
+              `and(status.eq.scheduled,scheduled_at.gte.${upcomingCutoff}),` +
+              `and(status.eq.post,scheduled_at.gte.${finishedCutoff})`,
+            )
             .order('status', { ascending: true })
             .order('scheduled_at', { ascending: true })
             .limit(limit),

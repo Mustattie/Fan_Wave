@@ -151,11 +151,19 @@ class ESPNAdapter implements SportsDataProvider {
     const mapping = SPORT_LEAGUE_MAP[sport];
     if (!mapping) return [];
 
+    // Start window 1 day in the past so ESPN still includes yesterday's
+    // finished games (ESPN drops completed games from "today's scoreboard"
+    // relatively quickly; widening the window catches STATUS_FINAL events
+    // we'd otherwise miss). Combined with espn_id upsert, this means any
+    // game still in our DB at status='in' or 'scheduled' from yesterday
+    // gets its final score written when this fires.
     const now = new Date();
+    const start = new Date(now);
+    start.setUTCDate(start.getUTCDate() - 1);
     const end = new Date(now);
-    end.setDate(end.getDate() + days);
+    end.setUTCDate(end.getUTCDate() + days);
 
-    const dateRange = `${now.toISOString().slice(0, 10).replace(/-/g, "")}-${end.toISOString().slice(0, 10).replace(/-/g, "")}`;
+    const dateRange = `${start.toISOString().slice(0, 10).replace(/-/g, "")}-${end.toISOString().slice(0, 10).replace(/-/g, "")}`;
 
     const url = `${this.baseUrl}/${mapping.sport}/${mapping.league}/scoreboard?dates=${dateRange}`;
 
@@ -238,18 +246,22 @@ Deno.serve(async (req: Request) => {
     const sports = sportParam ? [sportParam] : ALL_SPORTS;
 
     const provider: SportsDataProvider = new ESPNAdapter();
-    const syncResults: Record<string, number> = {};
+    const syncResults: Record<
+      string,
+      { upserted: number; unmatched_teams: string[]; errors: string[] }
+    > = {};
     let totalSynced = 0;
 
     for (const sport of sports) {
       const games = await provider.getUpcomingGames(sport, daysParam);
+      const result = { upserted: 0, unmatched_teams: [] as string[], errors: [] as string[] };
       if (games.length === 0) {
-        syncResults[sport] = 0;
+        syncResults[sport] = result;
         continue;
       }
 
-      // events.league_id → leagues.id (events has no `league` text column),
-      // and events has no created_at — order by start_date instead.
+      // Active event id for this league (still set on the row for joins/
+      // analytics; no longer used for row matching — espn_id is the key).
       let eventId: string | null = null;
       const { data: leagueRow } = await supabase
         .from("leagues")
@@ -284,40 +296,40 @@ Deno.serve(async (req: Request) => {
         teamMap.set(row.name, row.id);
       }
 
-      let sportCount = 0;
+      // Batch-fetch existing metadata for all the games we're about to
+      // upsert so we can merge ESPN keys onto any pre-existing data
+      // (WC seed rows etc.) without clobbering. One query instead of N.
+      const espnIds = games.map((g) => g.espnId);
+      const { data: existingRows } = await supabase
+        .from("games")
+        .select("espn_id, metadata")
+        .in("espn_id", espnIds);
+
+      const existingMeta = new Map<string, Record<string, unknown>>();
+      for (const row of existingRows ?? []) {
+        if (row.espn_id) {
+          existingMeta.set(
+            row.espn_id,
+            (row.metadata && typeof row.metadata === "object")
+              ? row.metadata as Record<string, unknown>
+              : {},
+          );
+        }
+      }
 
       for (const game of games) {
         const homeTeamId = teamMap.get(game.homeTeam) ?? null;
         const awayTeamId = teamMap.get(game.awayTeam) ?? null;
 
         if (!homeTeamId || !awayTeamId) {
+          result.unmatched_teams.push(
+            `${game.homeTeam} vs ${game.awayTeam} (${game.espnId})`,
+          );
           continue;
         }
 
-        const scheduledDate = game.scheduledAt.slice(0, 10);
-
-        let query = supabase
-          .from("games")
-          .select("id, metadata")
-          .eq("home_team_id", homeTeamId)
-          .eq("away_team_id", awayTeamId)
-          .gte("scheduled_at", `${scheduledDate}T00:00:00Z`)
-          .lte("scheduled_at", `${scheduledDate}T23:59:59Z`);
-
-        if (eventId) {
-          query = query.eq("event_id", eventId);
-        }
-
-        const { data: existing } = await query.maybeSingle();
-
-        // Merge ESPN live-game fields into metadata WITHOUT clobbering
-        // pre-existing WC seed data (group, match_number, home/away
-        // placeholders from migration 006). On insert, existing.metadata
-        // is null → defaults to {}.
         const mergedMetadata = {
-          ...(existing?.metadata && typeof existing.metadata === "object"
-            ? existing.metadata
-            : {}),
+          ...(existingMeta.get(game.espnId) ?? {}),
           espn_id: game.espnId,
           period: game.period,
           display_clock: game.displayClock,
@@ -327,11 +339,8 @@ Deno.serve(async (req: Request) => {
           is_halftime: game.isHalftime,
         };
 
-        // games schema: venue_name (not venue); no espn_id / league columns
-        // exist — drop them. dedup uses home/away/date so espn_id isn't
-        // needed for matching. sport_id was added in migration 031 — the
-        // mapper reads it to pick the right per-sport period label.
         const gameRow: Record<string, unknown> = {
+          espn_id: game.espnId,
           home_team_id: homeTeamId,
           away_team_id: awayTeamId,
           home_score: game.homeScore,
@@ -344,24 +353,23 @@ Deno.serve(async (req: Request) => {
           ...(eventId ? { event_id: eventId } : {}),
         };
 
-        if (existing?.id) {
-          const { error } = await supabase
-            .from("games")
-            .update(gameRow)
-            .eq("id", existing.id);
+        // Single atomic upsert keyed on espn_id (UNIQUE constraint from
+        // migration 044). Replaces the old SELECT-then-INSERT/UPDATE which
+        // could silently fail and create duplicates when the multi-column
+        // match query missed.
+        const { error } = await supabase
+          .from("games")
+          .upsert(gameRow, { onConflict: "espn_id" });
 
-          if (error) continue;
-        } else {
-          const { error } = await supabase.from("games").insert(gameRow);
-
-          if (error) continue;
+        if (error) {
+          result.errors.push(`${game.espnId}: ${error.message}`);
+          continue;
         }
-
-        sportCount++;
+        result.upserted++;
       }
 
-      syncResults[sport] = sportCount;
-      totalSynced += sportCount;
+      syncResults[sport] = result;
+      totalSynced += result.upserted;
     }
 
     return new Response(
