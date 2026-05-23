@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import type { GameDisplay } from '@/lib/mappers';
+import { TeamBadge } from '@/components/TeamBadge';
 
 interface GameCardProps {
   game: GameDisplay;
@@ -49,7 +50,7 @@ export function GameCard({ game, onPress }: GameCardProps) {
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
       <View style={styles.teams}>
         <View style={styles.team}>
-          <Text style={styles.teamEmoji}>{game.homeTeam.icon}</Text>
+          <TeamBadge team={game.homeTeam} />
           <Text style={styles.teamName}>{game.homeTeam.name}</Text>
         </View>
         {(isLive || isFinal) && hasScore ? (
@@ -69,7 +70,7 @@ export function GameCard({ game, onPress }: GameCardProps) {
           <Text style={styles.vs}>VS</Text>
         )}
         <View style={styles.team}>
-          <Text style={styles.teamEmoji}>{game.awayTeam.icon}</Text>
+          <TeamBadge team={game.awayTeam} />
           <Text style={styles.teamName}>{game.awayTeam.name}</Text>
         </View>
       </View>
@@ -154,7 +155,7 @@ const styles = StyleSheet.create({
   },
   time: {
     fontSize: 12,
-    color: Colors.dark.accent,
+    color: Colors.dark.text,
     fontWeight: '600',
     textAlign: 'center',
   },

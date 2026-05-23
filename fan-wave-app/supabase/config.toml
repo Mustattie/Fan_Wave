@@ -326,6 +326,15 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+# Functions invoked by pg_cron use a custom CRON_SHARED_SECRET bearer (not a
+# Supabase JWT). The platform gateway must skip JWT validation for them, or
+# every cron call 401s before reaching our auth check. Mirrors the prod
+# setting that was originally applied to sync-game-schedules via the
+# Dashboard / --no-verify-jwt flag — capturing it here so future deploys
+# don't silently regress.
+[functions.sync-team-logos]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

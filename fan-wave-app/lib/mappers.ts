@@ -83,10 +83,18 @@ export function formatRelativeTime(dateStr: string): string {
 
 // ─── Game Mapper ─────────────────────────────────────────────
 
+export interface TeamDisplay {
+  name: string;
+  icon: string;
+  code: string | null;
+  logoUrl: string | null;
+  primaryColor: string | null;
+}
+
 export interface GameDisplay {
   id: string;
-  homeTeam: { name: string; icon: string };
-  awayTeam: { name: string; icon: string };
+  homeTeam: TeamDisplay;
+  awayTeam: TeamDisplay;
   time: string;
   league: string;
   sport: string;
@@ -98,6 +106,16 @@ export interface GameDisplay {
   detail?: string | null;
   homeLinescore?: number[] | null;
   awayLinescore?: number[] | null;
+}
+
+function mapTeamDisplay(row: any, sport: string): TeamDisplay {
+  return {
+    name: row?.name || 'TBD',
+    icon: row?.code ? getSportEmoji(sport) : '🏟️',
+    code: row?.code ?? null,
+    logoUrl: row?.logo_url ?? null,
+    primaryColor: row?.colors?.primary ?? null,
+  };
 }
 
 export function mapGameToDisplay(row: any): GameDisplay {
@@ -127,14 +145,8 @@ export function mapGameToDisplay(row: any): GameDisplay {
 
   return {
     id: row.id,
-    homeTeam: {
-      name: row.home_team?.name || 'TBD',
-      icon: row.home_team?.code ? getSportEmoji(sport) : '🏟️',
-    },
-    awayTeam: {
-      name: row.away_team?.name || 'TBD',
-      icon: row.away_team?.code ? getSportEmoji(sport) : '🏟️',
-    },
+    homeTeam: mapTeamDisplay(row.home_team, sport),
+    awayTeam: mapTeamDisplay(row.away_team, sport),
     time: row.scheduled_at ? formatGameTime(row.scheduled_at) : 'TBD',
     league: leagueName,
     sport,
