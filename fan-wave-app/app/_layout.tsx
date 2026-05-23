@@ -21,6 +21,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-reanimated';
 import { initErrorReporting, setUserContext, clearUserContext } from '@/lib/errorReporting';
 import { configureRevenueCat, useEntitlementsRealtime, useSubscriptionState } from '@/lib/entitlements';
+import { useGamesRealtime } from '@/lib/realtime';
+import { useAppStateFocus } from '@/lib/appState';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -47,6 +49,22 @@ const FanWaveDarkTheme = {
 // state flips in-app within ~1 second of a RevenueCat webhook write.
 function EntitlementsRealtimeBridge() {
   useEntitlementsRealtime();
+  return null;
+}
+
+// Subscribes to Realtime UPDATEs on the games table so the Today's Games
+// carousel refreshes within ~1 second of the live cron writing a new
+// score / status. Debounced 500ms inside the hook so burst writes (17 MLB
+// rows at once) coalesce into one refetch.
+function GamesRealtimeBridge() {
+  useGamesRealtime();
+  return null;
+}
+
+// Bridges React Native AppState into React Query's focusManager so queries
+// with refetchOnWindowFocus refetch when the user returns from background.
+function AppStateFocusBridge() {
+  useAppStateFocus();
   return null;
 }
 
@@ -233,6 +251,8 @@ export default function RootLayout() {
         <StatusBar style="light" />
         <OfflineBanner />
         <EntitlementsRealtimeBridge />
+        <GamesRealtimeBridge />
+        <AppStateFocusBridge />
         <NavigationGuard session={session} onboardingComplete={onboardingComplete} hasSeenWelcome={hasSeenWelcome} />
         <Stack>
           <Stack.Screen name="(auth)" options={{ headerShown: false }} />

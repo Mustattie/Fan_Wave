@@ -39,12 +39,18 @@ export function useGames(limit = 30) {
       if (cached) return cached;
 
       try {
+        // Live games always show. Scheduled games show only if they haven't
+        // started yet, with a 4-hour grace window so games that have tipped
+        // off but haven't been promoted to status='in' yet (ESPN sync lag)
+        // still appear. Compares against a precise timestamp — the old
+        // `.gte(date_string)` let yesterday's late-ET games leak in as
+        // "today" because their UTC time was past midnight today.
+        const cutoff = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
         const { data, error } = await withTimeout(
           () => supabase
             .from('games')
             .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
-            .in('status', ['scheduled', 'in'])
-            .gte('scheduled_at', new Date().toISOString().split('T')[0])
+            .or(`status.eq.in,and(status.eq.scheduled,scheduled_at.gte.${cutoff})`)
             // 'in' < 'scheduled' alphabetically → ASC puts live games first.
             .order('status', { ascending: true })
             .order('scheduled_at', { ascending: true })
@@ -62,6 +68,11 @@ export function useGames(limit = 30) {
       }
     },
     staleTime: 60 * 1000,
+    // Realtime invalidations (lib/realtime.ts useGamesRealtime) drive the
+    // common case. This catches the background → foreground gap where the
+    // WebSocket suspends and missed events aren't replayed on reconnect.
+    // useAppStateFocus in _layout.tsx bridges RN AppState → focusManager.
+    refetchOnWindowFocus: true,
   });
 }
 

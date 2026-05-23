@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { reportError } from './errorReporting';
@@ -161,4 +163,45 @@ export function subscribeToMessages(
     (payload) => onInsert(payload.new),
     `chat_room_id=eq.${chatRoomId}`,
   );
+}
+
+// ─── React Query bridges ─────────────────────────────────────
+
+const GAMES_INVALIDATION_DEBOUNCE_MS = 500;
+
+/**
+ * useGamesRealtime — subscribes to UPDATE events on the games table and
+ * invalidates the ['games'] React Query cache so Today's Games re-renders
+ * within ~1s of a sync write. The live cron writes a burst of rows in a
+ * tight loop (up to 17 MLB games during peak hours), so a 500ms debounce
+ * coalesces the burst into a single invalidation — one refetch + one
+ * render instead of one per row.
+ *
+ * No status filter: Realtime evaluates filters against the NEW row state
+ * only, so a status transition 'in' → 'post' (game ending) would not match
+ * `status=eq.in` and the LIVE badge would never come off. UPDATE volume on
+ * games is small (~1 update/min/live game), so subscribing to all UPDATEs
+ * is cheaper than the bug risk.
+ *
+ * Mount once at the root layout (mirrors useEntitlementsRealtime).
+ */
+export function useGamesRealtime() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const unsubscribe = subscribeToGames(() => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['games'] });
+        timer = null;
+      }, GAMES_INVALIDATION_DEBOUNCE_MS);
+    });
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [queryClient]);
 }
