@@ -97,7 +97,7 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Fan Wave 🌊</Text>
+          <Text style={styles.title}>Fan Sphere 🌐</Text>
           <Text style={styles.subtitle}>
             📍 {city} ·{' '}
             <Text

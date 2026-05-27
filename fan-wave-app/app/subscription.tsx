@@ -73,7 +73,7 @@ export default function SubscriptionScreen() {
             ) : (
               <AlertCircle size={20} color={Colors.dark.textMuted} />
             )}
-            <Text style={styles.cardTitle}>Fan Wave Premium</Text>
+            <Text style={styles.cardTitle}>Fan Sphere Premium</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Status</Text>

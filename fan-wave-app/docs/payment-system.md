@@ -1,4 +1,4 @@
-# Fan Wave — Payment & Subscription System Design
+# Fan Sphere — Payment & Subscription System Design
 
 > **Status**: Design captured for future implementation. Not building now.
 > **Action on approval**: Copy this file to `fan-wave-app/docs/payment-system.md` for project-local reference, then return to other work.
@@ -7,7 +7,7 @@
 
 ## Context
 
-Fan Wave needs to monetize before the FIFA World Cup 2026 kickoff (June 11, 2026 — 25 days from 2026-05-17). The product owner wants two SKUs:
+Fan Sphere needs to monetize before the FIFA World Cup 2026 kickoff (June 11, 2026 — 25 days from 2026-05-17). The product owner wants two SKUs:
 
 1. **Pro subscription** — $12.99/mo or annual, year-round access to premium features
 2. **World Cup Pass** — $19.99 one-time, unlocks the World Cup tab for the duration of the tournament (June 11 – July 19, 2026)
@@ -33,7 +33,7 @@ The framing "Stripe vs Apple Pay/Google Pay" has a critical misconception worth 
 - iOS: Apple IAP required for in-app digital subscriptions. External-link allowance (US, 2025) lets you point to Stripe on web, but you must still offer in-app IAP. Stripe-only = rejection.
 - Android: Alternative billing (Stripe) legal in US from Jan 28, 2026; Google service fee still applies; rest of world still requires Play Billing.
 - Native IAP requires a custom dev client / EAS build — **Expo Go cannot test IAP**. Payment screens require EAS dev build; rest of app stays on Expo Go.
-- RevenueCat: 1% fee above $2.5k MTR; handles receipt validation, renewals, refunds, grace periods, family sharing, and emits webhooks. Apple/Google fee: 30% year 1, 15% year 2+ on subscriptions; 30% on one-time IAPs. Apple Small Business Program (<$1M annual) = 15% from day one — Fan Wave qualifies.
+- RevenueCat: 1% fee above $2.5k MTR; handles receipt validation, renewals, refunds, grace periods, family sharing, and emits webhooks. Apple/Google fee: 30% year 1, 15% year 2+ on subscriptions; 30% on one-time IAPs. Apple Small Business Program (<$1M annual) = 15% from day one — Fan Sphere qualifies.
 
 ### Database Engineer
 - Source of truth: a new `entitlements` table written **only** by the webhook handler (service_role). User table holds denormalized columns (`subscription_tier`, `wc_pass_active_until`) for query-time RLS speed.
@@ -136,7 +136,7 @@ The framing "Stripe vs Apple Pay/Google Pay" has a critical misconception worth 
 - `fan-wave-app/supabase/migrations/001_base_schema.sql` lines 10–18 — users table to extend
 - `fan-wave-app/supabase/migrations/006_world_cup_2026.sql` — WC league/event UUIDs to reference in RLS
 - `fan-wave-app/supabase/functions/process-notification-queue/index.ts` — webhook handler pattern to model
-- `fan-wave-app/app.json` — bundle IDs `com.fanwave.app` for IAP product setup
+- `fan-wave-app/app.json` — bundle IDs `com.fansphere.app` for IAP product setup
 - `fan-wave-app/eas.json` — build profiles; production already configured
 
 **Key constants:**

@@ -5,17 +5,17 @@ export default function TermsOfServiceScreen() {
     <LegalDocument
       title="Terms of Service"
       effectiveDate="May 13, 2026"
-      intro="These Terms of Service govern your use of the Fan Wave mobile application. By creating an account or using Fan Wave, you agree to these terms. This is a draft pending legal review. Before launching publicly, please replace this copy with attorney-reviewed text appropriate for your jurisdiction(s)."
+      intro="These Terms of Service govern your use of the Fan Sphere mobile application. By creating an account or using Fan Sphere, you agree to these terms. This is a draft pending legal review. Before launching publicly, please replace this copy with attorney-reviewed text appropriate for your jurisdiction(s)."
       sections={[
         {
           heading: 'Eligibility',
           body:
-            'You must be at least 13 years old to use Fan Wave. By using the app you represent that you meet this age requirement.',
+            'You must be at least 13 years old to use Fan Sphere. By using the app you represent that you meet this age requirement.',
         },
         {
           heading: 'Your Account',
           body:
-            'You are responsible for keeping your account credentials secure and for activity on your account. Notify us immediately at support@fanwave.app if you suspect unauthorised access.',
+            'You are responsible for keeping your account credentials secure and for activity on your account. Notify us immediately at support@fansphere.app if you suspect unauthorised access.',
         },
         {
           heading: 'Acceptable Use',
@@ -25,7 +25,7 @@ export default function TermsOfServiceScreen() {
         {
           heading: 'Your Content',
           body:
-            'You retain ownership of content you create (watch parties, posts, clips, comments). By posting, you grant Fan Wave a worldwide, royalty-free licence to host, display, and distribute that content within the app. You are responsible for ensuring you have the rights to anything you upload.',
+            'You retain ownership of content you create (watch parties, posts, clips, comments). By posting, you grant Fan Sphere a worldwide, royalty-free licence to host, display, and distribute that content within the app. You are responsible for ensuring you have the rights to anything you upload.',
         },
         {
           heading: 'Reporting and Moderation',
@@ -40,17 +40,17 @@ export default function TermsOfServiceScreen() {
         {
           heading: 'Disclaimer of Warranties',
           body:
-            'Fan Wave is provided "as is" without warranties of any kind, express or implied. We do not guarantee uninterrupted service.',
+            'Fan Sphere is provided "as is" without warranties of any kind, express or implied. We do not guarantee uninterrupted service.',
         },
         {
           heading: 'Limitation of Liability',
           body:
-            'To the maximum extent permitted by law, Fan Wave is not liable for indirect, incidental, or consequential damages arising from your use of the service.',
+            'To the maximum extent permitted by law, Fan Sphere is not liable for indirect, incidental, or consequential damages arising from your use of the service.',
         },
         {
           heading: 'Termination',
           body:
-            'You may stop using Fan Wave at any time. We may suspend or terminate your account if you violate these terms.',
+            'You may stop using Fan Sphere at any time. We may suspend or terminate your account if you violate these terms.',
         },
         {
           heading: 'Changes to These Terms',
@@ -60,7 +60,7 @@ export default function TermsOfServiceScreen() {
         {
           heading: 'Governing Law',
           body:
-            'These terms are governed by the laws of the jurisdiction in which Fan Wave is incorporated. (Replace with specific governing-law clause during legal review.)',
+            'These terms are governed by the laws of the jurisdiction in which Fan Sphere is incorporated. (Replace with specific governing-law clause during legal review.)',
         },
       ]}
     />

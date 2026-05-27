@@ -178,7 +178,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const displayName = profile?.display_name || 'Fan Wave User';
+  const displayName = profile?.display_name || 'Fan Sphere User';
   const handle = profile?.email
     ? `@${profile.email.split('@')[0]}`
     : '';

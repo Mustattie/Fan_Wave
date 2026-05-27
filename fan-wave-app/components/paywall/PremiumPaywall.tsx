@@ -99,7 +99,7 @@ export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'mon
       <View style={styles.overlay}>
         <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.header}>
-            <Text style={styles.title}>Fan Wave Premium</Text>
+            <Text style={styles.title}>Fan Sphere Premium</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <X size={22} color={Colors.dark.textMuted} />
             </TouchableOpacity>
@@ -149,13 +149,13 @@ export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'mon
 
             <View style={styles.linkRow}>
               <TouchableOpacity
-                onPress={() => Linking.openURL('https://fanwave.app/terms').catch(() => {})}
+                onPress={() => Linking.openURL('https://fansphere.app/terms').catch(() => {})}
               >
                 <Text style={styles.linkText}>Terms</Text>
               </TouchableOpacity>
               <Text style={styles.linkDivider}>·</Text>
               <TouchableOpacity
-                onPress={() => Linking.openURL('https://fanwave.app/privacy').catch(() => {})}
+                onPress={() => Linking.openURL('https://fansphere.app/privacy').catch(() => {})}
               >
                 <Text style={styles.linkText}>Privacy</Text>
               </TouchableOpacity>

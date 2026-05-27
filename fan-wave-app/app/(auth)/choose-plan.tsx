@@ -33,7 +33,7 @@ export default function ChoosePlanScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.heroSection}>
-          <Text style={styles.eyebrow}>Welcome to Fan Wave</Text>
+          <Text style={styles.eyebrow}>Welcome to Fan Sphere</Text>
           <Text style={styles.title}>Start your 7-day free trial</Text>
           <Text style={styles.subtitle}>
             Try everything for a week. Cancel any time in your App Store / Google Play settings.

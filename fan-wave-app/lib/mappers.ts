@@ -314,7 +314,7 @@ export function mapClipToDisplay(row: any): ClipDisplay {
     id: row.id,
     title: row.title || 'Untitled Clip',
     poster: row.user?.display_name ? `@${row.user.display_name}` : (row.poster || '@unknown'),
-    group: row.chat_room?.name || row.group_name || 'Fan Wave',
+    group: row.chat_room?.name || row.group_name || 'Fan Sphere',
     time: row.created_at ? formatRelativeTime(row.created_at) : 'recently',
     sport: sportName.toLowerCase(),
     sportIcon: getSportEmoji(sportName),

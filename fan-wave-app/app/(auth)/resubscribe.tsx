@@ -56,7 +56,7 @@ export default function ResubscribeScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.heroSection}>
           <Text style={styles.eyebrow}>Welcome back</Text>
-          <Text style={styles.title}>Your Fan Wave subscription has ended</Text>
+          <Text style={styles.title}>Your Fan Sphere subscription has ended</Text>
           {expiredDate && (
             <Text style={styles.subtitle}>
               {status === 'cancelled' ? 'Cancelled' : 'Expired'} on {expiredDate}

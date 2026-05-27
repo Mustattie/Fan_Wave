@@ -1,8 +1,8 @@
 import { Share, Platform } from 'react-native';
 import { trackEvent } from './analytics';
 
-const DEEP_LINK_BASE = 'https://fanwave.app';
-const APP_SCHEME = 'fanwave://';
+const DEEP_LINK_BASE = 'https://fansphere.app';
+const APP_SCHEME = 'fansphere://';
 
 interface ShareOptions {
   title: string;
@@ -51,7 +51,7 @@ export async function shareClip(clip: {
       const Sharing = await import('expo-sharing');
       if (await Sharing.isAvailableAsync()) {
         const FS = await import('expo-file-system/legacy');
-        const localPath = `${FS.cacheDirectory}fanwave_share_${clip.id}.mp4`;
+        const localPath = `${FS.cacheDirectory}fansphere_share_${clip.id}.mp4`;
         const download = await FS.downloadAsync(clip.mediaUrl, localPath);
         if (download.status === 200) {
           await Sharing.shareAsync(download.uri, {
@@ -71,7 +71,7 @@ export async function shareClip(clip: {
   return shareContent(
     {
       title: clip.title,
-      message: `${clip.title}${clip.description ? `\n${clip.description}` : ''}\n\nWatch on Fan Wave!`,
+      message: `${clip.title}${clip.description ? `\n${clip.description}` : ''}\n\nWatch on Fan Sphere!`,
       url: deepLink,
     },
     'clip',
@@ -87,7 +87,7 @@ export async function shareMoment(moment: { id: string; comment: string; momentT
   return shareContent(
     {
       title: `${moment.momentType} Moment`,
-      message: `${moment.comment}\n\nCatch the action on Fan Wave!`,
+      message: `${moment.comment}\n\nCatch the action on Fan Sphere!`,
       url: deepLink,
     },
     'moment',
@@ -113,7 +113,7 @@ export async function shareWatchParty(party: {
   return shareContent(
     {
       title: party.title,
-      message: `Join me for ${party.title}${venue}${city}${date}\n\nRSVP on Fan Wave!`,
+      message: `Join me for ${party.title}${venue}${city}${date}\n\nRSVP on Fan Sphere!`,
       url: deepLink,
     },
     'watch_party',
@@ -135,7 +135,7 @@ export async function shareGroup(group: {
   return shareContent(
     {
       title: group.name,
-      message: `Join ${group.name}${members} on Fan Wave!\n\nYour crew, any city, every game.`,
+      message: `Join ${group.name}${members} on Fan Sphere!\n\nYour crew, any city, every game.`,
       url: deepLink,
     },
     'fan_group',
@@ -153,8 +153,8 @@ export async function shareAppInvite(referralCode?: string): Promise<boolean> {
 
   return shareContent(
     {
-      title: 'Fan Wave',
-      message: `Join me on Fan Wave! Your crew, any city, every game.`,
+      title: 'Fan Sphere',
+      message: `Join me on Fan Sphere! Your crew, any city, every game.`,
       url: link,
     },
     'app_invite',

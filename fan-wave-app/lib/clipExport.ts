@@ -17,7 +17,7 @@ export async function exportClipToGallery(clip: {
   try {
     // Download the file first — works regardless of media-library permissions.
     const ext = clip.mediaType === 'video' ? 'mp4' : 'jpg';
-    const localUri = `${cacheDirectory}fanwave_${clip.id}.${ext}`;
+    const localUri = `${cacheDirectory}fansphere_${clip.id}.${ext}`;
 
     const download = await downloadAsync(clip.mediaUrl, localUri);
     if (download.status !== 200) {
@@ -33,9 +33,9 @@ export async function exportClipToGallery(clip: {
       if (status !== 'granted') throw new Error('permission-denied');
 
       const asset = await MediaLibrary.createAssetAsync(download.uri);
-      let album = await MediaLibrary.getAlbumAsync('Fan Wave');
+      let album = await MediaLibrary.getAlbumAsync('Fan Sphere');
       if (!album) {
-        await MediaLibrary.createAlbumAsync('Fan Wave', asset, false);
+        await MediaLibrary.createAlbumAsync('Fan Sphere', asset, false);
       } else {
         await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
       }
@@ -45,7 +45,7 @@ export async function exportClipToGallery(clip: {
         type: clip.mediaType,
         method: 'media_library',
       });
-      Alert.alert('Saved!', `${clip.title} saved to your Fan Wave album.`);
+      Alert.alert('Saved!', `${clip.title} saved to your Fan Sphere album.`);
       return true;
     } catch {
       if (!(await Sharing.isAvailableAsync())) {

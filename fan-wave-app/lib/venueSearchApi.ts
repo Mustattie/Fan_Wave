@@ -167,7 +167,7 @@ export async function searchAddress(
     }
 
     const response = await fetch(url, {
-      headers: { 'User-Agent': 'FanWave/1.0' },
+      headers: { 'User-Agent': 'FanSphere/1.0' },
     });
 
     if (!response.ok) throw new Error('Nominatim error');
@@ -236,7 +236,7 @@ export async function geocodeCity(
     )}&limit=1&addressdetails=1&countrycodes=us,ca,mx`;
 
     const response = await fetch(url, {
-      headers: { 'User-Agent': 'FanWave/1.0' },
+      headers: { 'User-Agent': 'FanSphere/1.0' },
     });
 
     if (!response.ok) throw new Error('Nominatim geocode error');

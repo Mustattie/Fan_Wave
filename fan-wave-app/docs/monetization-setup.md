@@ -10,10 +10,10 @@
 
 ### Apple App Store Connect
 
-1. **Sign in** to [App Store Connect](https://appstoreconnect.apple.com) with the Apple Developer account that owns `com.fanwave.app`.
-2. **Apple Small Business Program** — go to Agreements, Tax & Banking → enroll. Reduces fee from 30% to 15% (Fan Wave qualifies under $1M annual). Allow 1–2 days to verify banking.
+1. **Sign in** to [App Store Connect](https://appstoreconnect.apple.com) with the Apple Developer account that owns `com.fansphere.app`.
+2. **Apple Small Business Program** — go to Agreements, Tax & Banking → enroll. Reduces fee from 30% to 15% (Fan Sphere qualifies under $1M annual). Allow 1–2 days to verify banking.
 3. **Banking + Tax & Agreements** — must be signed before products go live.
-4. **Create Subscription Group** (e.g. "Fan Wave Premium").
+4. **Create Subscription Group** (e.g. "Fan Sphere Premium").
 5. **Create products** inside the group:
    - **`premium_monthly_999`** — auto-renewable subscription, $9.99/mo, **7-day intro free trial offer**
    - **`premium_annual_10788`** — auto-renewable subscription, $107.88/yr, **7-day intro free trial offer**
@@ -36,8 +36,8 @@
 
 ## FW-89 — RevenueCat Dashboard Configuration
 
-1. **Create project** at [app.revenuecat.com](https://app.revenuecat.com) — name "Fan Wave".
-2. **Add apps**: iOS bundle `com.fanwave.app`, Android package `com.fanwave.app`.
+1. **Create project** at [app.revenuecat.com](https://app.revenuecat.com) — name "Fan Sphere".
+2. **Add apps**: iOS bundle `com.fansphere.app`, Android package `com.fansphere.app`.
 3. **Entitlements** (under "Entitlements" tab):
    - Create `premium` → attach products `premium_monthly_999` and `premium_annual_10788`
    - Create `wc_pass` → attach product `wc_pass_2026`

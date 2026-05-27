@@ -40,7 +40,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
 
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
-        name: 'Fan Wave',
+        name: 'Fan Sphere',
         importance: Notifications.AndroidImportance?.HIGH ?? 4,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#6c5ce7',

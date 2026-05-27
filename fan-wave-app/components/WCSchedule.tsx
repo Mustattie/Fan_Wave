@@ -404,7 +404,7 @@ export function WCSchedule() {
             onPress={() => {
               const score = match.home_score != null ? `${match.home_score}-${match.away_score}` : 'upcoming';
               Share.share({
-                message: `${homeName} vs ${awayName} (${score})\n${match.venue_name || 'TBD'} · ${formatMatchDate(match.scheduled_at)}\n\nFollow on Fan Wave!`,
+                message: `${homeName} vs ${awayName} (${score})\n${match.venue_name || 'TBD'} · ${formatMatchDate(match.scheduled_at)}\n\nFollow on Fan Sphere!`,
               });
             }}
           >

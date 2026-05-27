@@ -62,7 +62,7 @@ export default function OnboardingCityScreen() {
           try {
             const res = await fetch(
               `https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`,
-              { headers: { 'User-Agent': 'FanWave/1.0' } }
+              { headers: { 'User-Agent': 'FanSphere/1.0' } }
             );
             const data = await res.json();
             const city = data.address?.city || data.address?.town || data.address?.village || 'Unknown';
@@ -108,7 +108,7 @@ export default function OnboardingCityScreen() {
         const res = await fetch(
           `https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&limit=5&addressdetails=1&countrycodes=us,ca,mx`,
           {
-            headers: { 'User-Agent': 'FanWave/1.0' },
+            headers: { 'User-Agent': 'FanSphere/1.0' },
           }
         );
         const data: NominatimResult[] = await res.json();

@@ -125,6 +125,6 @@ export function parseAuthError(error: unknown): AuthErrorInfo {
   return {
     kind: 'network',
     title: 'Connection problem',
-    message: 'Could not reach Fan Wave. Please check your internet connection and try again.',
+    message: 'Could not reach Fan Sphere. Please check your internet connection and try again.',
   };
 }

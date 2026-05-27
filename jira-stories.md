@@ -1,4 +1,4 @@
-# Fan Wave - Jira Stories
+# Fan Sphere - Jira Stories
 
 > Project Key: **FW**
 > Total Story Points: **198**
@@ -274,7 +274,7 @@ Create the watch party tables, RSVP system, and moderation tables. Generalized f
 Port the venue search functionality from the SkyConnect WC export. Uses Overpass API to find bars/restaurants near a location and Nominatim for geocoding.
 
 **Acceptance Criteria:**
-- [ ] `venueSearchApi.ts` utility ported from `worldCupApi.ts` (rename User-Agent to "FanWave")
+- [ ] `venueSearchApi.ts` utility ported from `worldCupApi.ts` (rename User-Agent to "FanSphere")
 - [ ] `searchVenues(lat, lon, radius)` → queries Overpass for amenity=bar/pub/restaurant with sport-related tags
 - [ ] `geocodeCity(cityName)` → uses Nominatim to convert city name to lat/lon
 - [ ] `calculateDistance(lat1, lon1, lat2, lon2)` → Haversine formula for distance display
@@ -359,7 +359,7 @@ Build the full watch party detail screen with map, RSVP actions, attendee list, 
 Build the main Home screen with personalized content sections.
 
 **Acceptance Criteria:**
-- [ ] Header: "Fan Wave" logo, city indicator with change link, notification bell icon
+- [ ] Header: "Fan Sphere" logo, city indicator with change link, notification bell icon
 - [ ] "Today's Games" horizontal carousel: game cards for user's followed teams playing today, from `games` table
 - [ ] Game card: team emojis/logos, team names, game time, league label
 - [ ] "Watch Parties Near You" section: 2-3 nearest upcoming parties (reuses `WatchPartyCard`)
@@ -594,13 +594,13 @@ Build the dedicated Clips tab with a vertical scrollable feed of sports highligh
 **Assignee:** Full Stack
 
 **Description:**
-Allow users to share clips outside the app with Fan Wave branding.
+Allow users to share clips outside the app with Fan Sphere branding.
 
 **Acceptance Criteria:**
 - [ ] Share button on clip cards opens native share sheet
-- [ ] Shared content includes: clip title, "Posted on Fan Wave" tagline, deep link URL
-- [ ] For image clips: branded watermark overlay ("Fan Wave" + wave emoji, bottom corner)
-- [ ] Deep link format: `fanwave.app/clip/{id}` (falls back to app store if app not installed)
+- [ ] Shared content includes: clip title, "Posted on Fan Sphere" tagline, deep link URL
+- [ ] For image clips: branded watermark overlay ("Fan Sphere" + wave emoji, bottom corner)
+- [ ] Deep link format: `fansphere.app/clip/{id}` (falls back to app store if app not installed)
 - [ ] Expo Linking configured for deep link handling
 - [ ] Shared clip opens directly in app if installed
 - [ ] Track share count on `media_clips.share_count` column
@@ -1232,10 +1232,10 @@ Enable sharing clips and moments to external platforms (Instagram, TikTok, Twitt
 
 **Acceptance Criteria:**
 - [ ] Share button on every clip card opens native share sheet
-- [ ] Share payload includes: clip title, description, deep link URL (`fanwave://clip/{id}`)
+- [ ] Share payload includes: clip title, description, deep link URL (`fansphere://clip/{id}`)
 - [ ] Share button on moments opens native share sheet with moment text + deep link
 - [ ] Watch party cards have share button → shares party details + deep link
-- [ ] Fan group cards have invite share → "Join [Group Name] on Fan Wave!" + deep link
+- [ ] Fan group cards have invite share → "Join [Group Name] on Fan Sphere!" + deep link
 - [ ] Track share events in analytics: `content_shared` with type, id, platform
 - [ ] Share sheet includes "Copy Link" option
 - [ ] Deep links resolve correctly when app is installed (Expo Linking config)
@@ -1247,12 +1247,12 @@ Enable sharing clips and moments to external platforms (Instagram, TikTok, Twitt
 **Assignee:** Frontend Dev
 
 **Description:**
-Export clips as video files with Fan Wave branding overlay for sharing to TikTok/Instagram Reels. Make every shared clip a marketing vehicle.
+Export clips as video files with Fan Sphere branding overlay for sharing to TikTok/Instagram Reels. Make every shared clip a marketing vehicle.
 
 **Acceptance Criteria:**
 - [ ] "Export Clip" button on clip detail/viewer
-- [ ] Exported video includes Fan Wave watermark (bottom-right corner, semi-transparent)
-- [ ] Exported video includes caption overlay: clip title + "@FanWave" handle
+- [ ] Exported video includes Fan Sphere watermark (bottom-right corner, semi-transparent)
+- [ ] Exported video includes caption overlay: clip title + "@FanSphere" handle
 - [ ] Export respects platform aspect ratios: 9:16 for TikTok/Reels, 1:1 for feed
 - [ ] Export saves to device camera roll via `expo-media-library`
 - [ ] Loading indicator during export processing
@@ -1429,7 +1429,7 @@ Add error boundaries around major screen groups and implement consistent error h
 **Assignee:** Frontend Dev
 
 **Description:**
-Make Fan Wave accessible to users with disabilities. Add proper accessibility labels, roles, and ensure minimum touch target sizes throughout the app.
+Make Fan Sphere accessible to users with disabilities. Add proper accessibility labels, roles, and ensure minimum touch target sizes throughout the app.
 
 **Acceptance Criteria:**
 - [ ] All `TouchableOpacity` components have `accessibilityLabel` describing the action
@@ -1512,7 +1512,7 @@ Implement basic offline support so the app doesn't go blank when connectivity dr
 **Assignee:** Frontend Dev
 
 **Description:**
-Add a welcome screen before sign-up that communicates the Fan Wave value proposition. Hook users in the first 5 seconds.
+Add a welcome screen before sign-up that communicates the Fan Sphere value proposition. Hook users in the first 5 seconds.
 
 **Acceptance Criteria:**
 - [ ] New screen `app/(auth)/welcome.tsx` — first screen before sign-in/sign-up
@@ -1537,10 +1537,10 @@ Make it easy for users to invite friends. Every user should be a growth channel.
 
 **Acceptance Criteria:**
 - [ ] "Invite Friends" button on Profile screen and empty states
-- [ ] Share message: "Join me on Fan Wave! Your crew, any city, every game. [deep link]"
+- [ ] Share message: "Join me on Fan Sphere! Your crew, any city, every game. [deep link]"
 - [ ] Referral tracking: `users.referred_by UUID` column + `referral_code TEXT UNIQUE`
 - [ ] Each user gets a unique referral code on sign-up
-- [ ] Deep link includes referral code: `fanwave://invite/{code}`
+- [ ] Deep link includes referral code: `fansphere://invite/{code}`
 - [ ] On sign-up via referral link, `referred_by` set to referrer's user ID
 - [ ] "Recruiter" badge earned after 3 successful referrals
 - [ ] Profile shows "X friends invited" count
@@ -1556,9 +1556,9 @@ Enable group admins and members to invite others directly into a specific fan gr
 
 **Acceptance Criteria:**
 - [ ] "Invite to Group" button in fan group detail header
-- [ ] Generates shareable link: `fanwave://group/{id}` with group name in share text
+- [ ] Generates shareable link: `fansphere://group/{id}` with group name in share text
 - [ ] "Share Party" button on watch party detail screen
-- [ ] Generates shareable link: `fanwave://party/{id}` with party details in share text
+- [ ] Generates shareable link: `fansphere://party/{id}` with party details in share text
 - [ ] Deep links open correct screen when app is installed
 - [ ] If app not installed, deep link redirects to App Store / Play Store (Expo Linking)
 - [ ] Invite tracking in analytics: `invite_shared`, `invite_opened`
@@ -1611,8 +1611,8 @@ Add subtle haptic feedback and micro-interactions to make the app feel polished 
 Prepare all assets and metadata needed for App Store and Google Play Store submission.
 
 **Acceptance Criteria:**
-- [ ] App icon (1024x1024 + all required sizes) — Fan Wave branding
-- [ ] Splash screen with Fan Wave logo and tagline
+- [ ] App icon (1024x1024 + all required sizes) — Fan Sphere branding
+- [ ] Splash screen with Fan Sphere logo and tagline
 - [ ] 6 App Store screenshots (iPhone 15 Pro Max + iPhone SE sizes)
 - [ ] 6 Google Play Store screenshots (phone + tablet)
 - [ ] App Store description (short + long) with keywords
@@ -1830,7 +1830,7 @@ Configure the three IAP products in App Store Connect and Google Play Console, w
   - [ ] `premium_annual_10788` auto-renewable subscription, $107.88/yr, 7-day free trial intro
   - [ ] `wc_pass_2026` non-consumable, $19.99 (no trial)
 - [ ] Google Play Console: same three products mirrored with equivalent pricing/trial
-- [ ] Apple Small Business Program enrollment submitted (15% fee — Fan Wave qualifies under $1M annual)
+- [ ] Apple Small Business Program enrollment submitted (15% fee — Fan Sphere qualifies under $1M annual)
 - [ ] Banking + Tax & Agreements signed in App Store Connect
 - [ ] Sandbox testers configured (Apple) + license testers (Google)
 - [ ] Products visible in TestFlight / Internal Testing build
@@ -1845,7 +1845,7 @@ Configure the three IAP products in App Store Connect and Google Play Console, w
 Wire RevenueCat's entitlements and webhook destination to the products created in FW-88.
 
 **Acceptance Criteria:**
-- [ ] RevenueCat project created for Fan Wave
+- [ ] RevenueCat project created for Fan Sphere
 - [ ] Entitlement `premium` linked to both `premium_monthly_999` and `premium_annual_10788`
 - [ ] Entitlement `wc_pass` linked to `wc_pass_2026`
 - [ ] Webhook URL points to Supabase Edge Function from FW-87
@@ -2051,7 +2051,7 @@ Send a push notification ~24 hours before a user's free trial converts to a paid
 - [ ] pg_cron job runs hourly: selects users where `subscription_status='trial'` AND `premium_active_until` falls in the next 23–25h window
 - [ ] For each, enqueues a row in `notification_queue` (from migration 018) with `payload` containing title + body
 - [ ] Title: "Your free trial ends tomorrow"
-- [ ] Body: "Your 7-day Fan Wave trial ends tomorrow. We'll automatically charge $9.99/mo. Cancel anytime in Settings → Subscription."
+- [ ] Body: "Your 7-day Fan Sphere trial ends tomorrow. We'll automatically charge $9.99/mo. Cancel anytime in Settings → Subscription."
 - [ ] Deduplication: each user only gets ONE trial-end reminder per trial cycle (idempotent — `purchase_events` or a dedicated `trial_reminders_sent` table tracks)
 - [ ] `process-notification-queue` Edge Function (existing) picks up the row and delivers via Expo Push API
 - [ ] Tap on notification opens Settings → Subscription screen (FW-99)
@@ -2068,7 +2068,7 @@ Single landing screen shown to users whose subscription has been cancelled or ex
 
 **Acceptance Criteria:**
 - [ ] Route `app/(auth)/resubscribe.tsx` created
-- [ ] Hero copy: "Welcome back to Fan Wave — your subscription has ended"
+- [ ] Hero copy: "Welcome back to Fan Sphere — your subscription has ended"
 - [ ] Status line: shows when subscription was cancelled / expired
 - [ ] Feature bullet list reminding what Premium unlocks (top 4 features only)
 - [ ] Optional teaser block: "Your 3 followed teams have games this week" — static text, not a tap target

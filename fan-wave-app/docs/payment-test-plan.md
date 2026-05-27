@@ -72,7 +72,7 @@
 ## Cancellation Path
 
 ### T5: Trial cancellation mid-trial
-- [ ] In iOS Settings → Apple ID → Subscriptions → Fan Wave Premium → Cancel Subscription
+- [ ] In iOS Settings → Apple ID → Subscriptions → Fan Sphere Premium → Cancel Subscription
 - [ ] Verify `CANCELLATION` event:
   ```sql
   SELECT event_type FROM purchase_events ORDER BY created_at DESC LIMIT 1;

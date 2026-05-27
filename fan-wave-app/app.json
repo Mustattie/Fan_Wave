@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Fan Wave",
-    "slug": "fan-wave-app",
+    "name": "Fan Sphere",
+    "slug": "fan-sphere-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "fanwave",
+    "scheme": "fansphere",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -15,12 +15,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.fanwave.app",
+      "bundleIdentifier": "com.fansphere.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "Fan Wave needs camera access to record highlights and update your profile photo.",
-        "NSPhotoLibraryUsageDescription": "Fan Wave needs photo access to share highlights and set your profile photo.",
-        "NSLocationWhenInUseUsageDescription": "Fan Wave uses your location to find watch parties and fan groups near you.",
-        "NSContactsUsageDescription": "Fan Wave uses your contacts so you can quickly invite friends to private watch parties."
+        "NSCameraUsageDescription": "Fan Sphere needs camera access to record highlights and update your profile photo.",
+        "NSPhotoLibraryUsageDescription": "Fan Sphere needs photo access to share highlights and set your profile photo.",
+        "NSLocationWhenInUseUsageDescription": "Fan Sphere uses your location to find watch parties and fan groups near you.",
+        "NSContactsUsageDescription": "Fan Sphere uses your contacts so you can quickly invite friends to private watch parties."
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -33,7 +33,7 @@
       },
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
-      "package": "com.fanwave.app",
+      "package": "com.fansphere.app",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",

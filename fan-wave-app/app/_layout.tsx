@@ -33,7 +33,7 @@ export const unstable_settings = {
 SplashScreen.preventAutoHideAsync();
 initErrorReporting();
 
-const FanWaveDarkTheme = {
+const FanSphereDarkTheme = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
@@ -247,7 +247,7 @@ export default function RootLayout() {
 
   return (
     <AppQueryClientProvider>
-      <ThemeProvider value={FanWaveDarkTheme}>
+      <ThemeProvider value={FanSphereDarkTheme}>
         <StatusBar style="light" />
         <OfflineBanner />
         <EntitlementsRealtimeBridge />

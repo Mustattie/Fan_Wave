@@ -93,8 +93,8 @@ export default function WelcomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.logo}>Fan Wave</Text>
-        <Text style={styles.wave}>🌊</Text>
+        <Text style={styles.logo}>Fan Sphere</Text>
+        <Text style={styles.wave}>🌐</Text>
       </View>
 
       <FlatList

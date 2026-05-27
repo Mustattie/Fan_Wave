@@ -60,7 +60,7 @@ export default function EditProfileScreen() {
   const pickAvatar = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Allow Fan Wave to access your photos.');
+      Alert.alert('Permission Required', 'Allow Fan Sphere to access your photos.');
       return;
     }
 

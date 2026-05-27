@@ -1,4 +1,4 @@
-# Fan Wave Incident Runbooks
+# Fan Sphere Incident Runbooks
 
 ## SLOs
 - API response time: p50 < 200ms, p99 < 2s

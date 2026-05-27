@@ -31,7 +31,7 @@ export function setupAuthDeepLinkHandler(): () => void {
   const handleUrl = async (event: { url: string }) => {
     const url = event.url;
     if (!url) return;
-    if (!url.startsWith('fanwave://')) return; // Ignore unrelated deep links
+    if (!url.startsWith('fansphere://')) return; // Ignore unrelated deep links
 
     // Supabase may return an auth error in the fragment instead of tokens.
     const hashIndex = url.indexOf('#');
