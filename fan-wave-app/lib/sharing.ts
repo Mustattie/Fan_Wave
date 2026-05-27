@@ -1,7 +1,7 @@
 import { Share, Platform } from 'react-native';
 import { trackEvent } from './analytics';
 
-const DEEP_LINK_BASE = 'https://fansphere.app';
+const DEEP_LINK_BASE = 'https://fansphere.org';
 const APP_SCHEME = 'fansphere://';
 
 interface ShareOptions {

@@ -10,7 +10,7 @@
 
 ### Apple App Store Connect
 
-1. **Sign in** to [App Store Connect](https://appstoreconnect.apple.com) with the Apple Developer account that owns `com.fansphere.app`.
+1. **Sign in** to [App Store Connect](https://appstoreconnect.apple.com) with the Apple Developer account that owns `org.fansphere.app`.
 2. **Apple Small Business Program** — go to Agreements, Tax & Banking → enroll. Reduces fee from 30% to 15% (Fan Sphere qualifies under $1M annual). Allow 1–2 days to verify banking.
 3. **Banking + Tax & Agreements** — must be signed before products go live.
 4. **Create Subscription Group** (e.g. "Fan Sphere Premium").
@@ -37,7 +37,7 @@
 ## FW-89 — RevenueCat Dashboard Configuration
 
 1. **Create project** at [app.revenuecat.com](https://app.revenuecat.com) — name "Fan Sphere".
-2. **Add apps**: iOS bundle `com.fansphere.app`, Android package `com.fansphere.app`.
+2. **Add apps**: iOS bundle `org.fansphere.app`, Android package `org.fansphere.app`.
 3. **Entitlements** (under "Entitlements" tab):
    - Create `premium` → attach products `premium_monthly_999` and `premium_annual_10788`
    - Create `wc_pass` → attach product `wc_pass_2026`

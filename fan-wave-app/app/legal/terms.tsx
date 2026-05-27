@@ -15,7 +15,7 @@ export default function TermsOfServiceScreen() {
         {
           heading: 'Your Account',
           body:
-            'You are responsible for keeping your account credentials secure and for activity on your account. Notify us immediately at support@fansphere.app if you suspect unauthorised access.',
+            'You are responsible for keeping your account credentials secure and for activity on your account. Notify us immediately at support@fansphere.org if you suspect unauthorised access.',
         },
         {
           heading: 'Acceptable Use',

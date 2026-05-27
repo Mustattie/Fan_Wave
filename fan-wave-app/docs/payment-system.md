@@ -136,7 +136,7 @@ The framing "Stripe vs Apple Pay/Google Pay" has a critical misconception worth 
 - `fan-wave-app/supabase/migrations/001_base_schema.sql` lines 10–18 — users table to extend
 - `fan-wave-app/supabase/migrations/006_world_cup_2026.sql` — WC league/event UUIDs to reference in RLS
 - `fan-wave-app/supabase/functions/process-notification-queue/index.ts` — webhook handler pattern to model
-- `fan-wave-app/app.json` — bundle IDs `com.fansphere.app` for IAP product setup
+- `fan-wave-app/app.json` — bundle IDs `org.fansphere.app` for IAP product setup
 - `fan-wave-app/eas.json` — build profiles; production already configured
 
 **Key constants:**

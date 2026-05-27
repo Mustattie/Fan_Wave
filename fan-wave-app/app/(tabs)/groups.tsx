@@ -272,7 +272,7 @@ export default function GroupsScreen() {
       // Dispatch SMS invites for private groups — uses the device's native
       // SMS composer so the user reviews and sends. No DB invite table yet.
       if (selectedVisibility === 'private' && invitedFriends.length > 0) {
-        const inviteLink = `https://fansphere.app/group/${room.id}`;
+        const inviteLink = `https://fansphere.org/group/${room.id}`;
         const body = encodeURIComponent(
           `Join my Fan Sphere group "${newGroupName.trim()}": ${inviteLink}`,
         );

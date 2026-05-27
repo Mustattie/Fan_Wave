@@ -600,7 +600,7 @@ Allow users to share clips outside the app with Fan Sphere branding.
 - [ ] Share button on clip cards opens native share sheet
 - [ ] Shared content includes: clip title, "Posted on Fan Sphere" tagline, deep link URL
 - [ ] For image clips: branded watermark overlay ("Fan Sphere" + wave emoji, bottom corner)
-- [ ] Deep link format: `fansphere.app/clip/{id}` (falls back to app store if app not installed)
+- [ ] Deep link format: `fansphere.org/clip/{id}` (falls back to app store if app not installed)
 - [ ] Expo Linking configured for deep link handling
 - [ ] Shared clip opens directly in app if installed
 - [ ] Track share count on `media_clips.share_count` column

@@ -118,7 +118,7 @@ export function WCPassPaywall({ visible, onClose, onSuccess }: Props) {
 
             <View style={styles.linkRow}>
               <TouchableOpacity
-                onPress={() => Linking.openURL('https://fansphere.app/terms').catch(() => {})}
+                onPress={() => Linking.openURL('https://fansphere.org/terms').catch(() => {})}
               >
                 <Text style={styles.linkText}>Terms</Text>
               </TouchableOpacity>

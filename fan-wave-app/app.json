@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.fansphere.app",
+      "bundleIdentifier": "org.fansphere.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Fan Sphere needs camera access to record highlights and update your profile photo.",
         "NSPhotoLibraryUsageDescription": "Fan Sphere needs photo access to share highlights and set your profile photo.",
@@ -33,7 +33,7 @@
       },
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
-      "package": "com.fansphere.app",
+      "package": "org.fansphere.app",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",

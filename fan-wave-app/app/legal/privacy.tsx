@@ -30,17 +30,17 @@ export default function PrivacyPolicyScreen() {
         {
           heading: 'Data Retention and Deletion',
           body:
-            'You can delete your account at any time from Profile → Sign Out → Delete Account (coming soon — until then, email support@fansphere.app and we will delete your account within 30 days). Deletion removes your profile, posts, clips, RSVPs, and group memberships. Aggregated analytics may be retained in anonymised form.',
+            'You can delete your account at any time from Profile → Sign Out → Delete Account (coming soon — until then, email support@fansphere.org and we will delete your account within 30 days). Deletion removes your profile, posts, clips, RSVPs, and group memberships. Aggregated analytics may be retained in anonymised form.',
         },
         {
           heading: 'Children',
           body:
-            'Fan Sphere is intended for users 13 and older. We do not knowingly collect information from children under 13. If you believe a child has provided us information, contact support@fansphere.app.',
+            'Fan Sphere is intended for users 13 and older. We do not knowingly collect information from children under 13. If you believe a child has provided us information, contact support@fansphere.org.',
         },
         {
           heading: 'Your Rights',
           body:
-            'Depending on your jurisdiction, you may have rights to access, correct, port, or delete your personal data. To exercise these rights, contact support@fansphere.app.',
+            'Depending on your jurisdiction, you may have rights to access, correct, port, or delete your personal data. To exercise these rights, contact support@fansphere.org.',
         },
         {
           heading: 'Changes to This Policy',

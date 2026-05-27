@@ -44,7 +44,7 @@ export function LegalDocument({
         ))}
 
         <Text style={styles.contact}>
-          Questions? Email us at support@fansphere.app.
+          Questions? Email us at support@fansphere.org.
         </Text>
         <View style={{ height: 40 }} />
       </ScrollView>

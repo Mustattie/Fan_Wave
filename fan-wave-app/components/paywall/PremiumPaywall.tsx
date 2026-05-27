@@ -149,13 +149,13 @@ export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'mon
 
             <View style={styles.linkRow}>
               <TouchableOpacity
-                onPress={() => Linking.openURL('https://fansphere.app/terms').catch(() => {})}
+                onPress={() => Linking.openURL('https://fansphere.org/terms').catch(() => {})}
               >
                 <Text style={styles.linkText}>Terms</Text>
               </TouchableOpacity>
               <Text style={styles.linkDivider}>·</Text>
               <TouchableOpacity
-                onPress={() => Linking.openURL('https://fansphere.app/privacy').catch(() => {})}
+                onPress={() => Linking.openURL('https://fansphere.org/privacy').catch(() => {})}
               >
                 <Text style={styles.linkText}>Privacy</Text>
               </TouchableOpacity>
