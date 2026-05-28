@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Fan Sphere",
-    "slug": "fan-sphere-app",
+    "slug": "fan-wave-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
