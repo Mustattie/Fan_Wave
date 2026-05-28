@@ -14,3 +14,7 @@ Desktop.ini
 # Local asset-generation workspaces (intermediate SVG/HTML, screencaps)
 /tmp-icon-gen/
 /tmp-screencaps/
+
+# Build artifacts (EAS keeps them remotely; too large for git)
+*.aab
+*.apk
