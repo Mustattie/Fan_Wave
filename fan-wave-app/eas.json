@@ -30,6 +30,13 @@
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF6a215bXhkanlsbWt5dHJ2eWZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzNDYwMTAsImV4cCI6MjA5MDkyMjAxMH0.9PwIvZFTVPkU97kdRBxhTEIij3HfGyJrZ7GQ1b5K5gc"
       }
     },
+    "playstore-preview": {
+      "extends": "preview",
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "ios": {

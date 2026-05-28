@@ -10,3 +10,7 @@ Desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# Local asset-generation workspaces (intermediate SVG/HTML, screencaps)
+/tmp-icon-gen/
+/tmp-screencaps/
