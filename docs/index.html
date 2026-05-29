@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fan Sphere - Sports Watch Parties, Clips &amp; Community</title>
+    <meta name="description" content="Fan Sphere is the social home for sports fans. Public &amp; private watch parties, live chat, game clips, and team-by-team coverage across NBA, NFL, MLB, soccer, World Cup and more.">
+    <meta property="og:title" content="Fan Sphere - Sports Watch Parties, Clips &amp; Community">
+    <meta property="og:description" content="Watch every game with friends. Public &amp; private watch parties, live chat, clips, and personalized coverage across every sport you love.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://fansphere.org/">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #1a1a2e;
+            line-height: 1.6;
+            background: #fafafe;
+        }
+        .hero {
+            background: linear-gradient(135deg, #1a0b2e 0%, #2d1b4e 40%, #6c5ce7 100%);
+            color: #fff;
+            padding: 80px 24px 100px;
+            text-align: center;
+        }
+        .hero h1 {
+            font-size: clamp(36px, 6vw, 64px);
+            font-weight: 900;
+            letter-spacing: -1.5px;
+            margin-bottom: 16px;
+            line-height: 1.1;
+        }
+        .hero .tagline {
+            font-size: clamp(18px, 2.5vw, 24px);
+            opacity: 0.92;
+            max-width: 640px;
+            margin: 0 auto 36px;
+        }
+        .cta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            justify-content: center;
+            margin-top: 8px;
+        }
+        .cta {
+            display: inline-block;
+            padding: 14px 28px;
+            border-radius: 999px;
+            font-weight: 700;
+            text-decoration: none;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .cta-primary { background: #fff; color: #2d1b4e; }
+        .cta-secondary { background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.4); }
+        .cta:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.18); }
+        .container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+        section { padding: 72px 0; }
+        h2 {
+            font-size: clamp(28px, 4vw, 40px);
+            font-weight: 800;
+            color: #2d1b4e;
+            margin-bottom: 32px;
+            letter-spacing: -0.5px;
+        }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 24px;
+        }
+        .feature {
+            background: #fff;
+            border: 1px solid #ebe9f3;
+            border-radius: 16px;
+            padding: 28px 24px;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .feature:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(108,92,231,0.12); }
+        .feature h3 { font-size: 18px; font-weight: 700; color: #2d1b4e; margin-bottom: 8px; }
+        .feature p { font-size: 15px; color: #595770; }
+        .icon { font-size: 32px; margin-bottom: 12px; }
+        .pricing { background: #f4f1fb; }
+        .price-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+            max-width: 880px;
+            margin: 0 auto;
+        }
+        .plan {
+            background: #fff;
+            border-radius: 18px;
+            padding: 32px 28px;
+            text-align: left;
+            border: 2px solid transparent;
+        }
+        .plan.featured { border-color: #6c5ce7; }
+        .plan h3 { font-size: 20px; margin-bottom: 6px; color: #2d1b4e; }
+        .plan .price { font-size: 32px; font-weight: 900; color: #6c5ce7; margin: 12px 0; }
+        .plan .price small { font-size: 14px; color: #595770; font-weight: 500; }
+        .plan ul { list-style: none; margin-top: 16px; }
+        .plan li { padding: 8px 0; color: #595770; font-size: 15px; }
+        .plan li::before { content: "✓  "; color: #6c5ce7; font-weight: 700; }
+        footer {
+            background: #1a0b2e;
+            color: #c4c1d4;
+            padding: 48px 24px 32px;
+            text-align: center;
+        }
+        footer .links {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        footer a { color: #c4c1d4; text-decoration: none; font-size: 15px; }
+        footer a:hover { color: #fff; }
+        footer .copy { font-size: 13px; opacity: 0.6; }
+        footer .copy a { color: inherit; text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <header class="hero">
+        <div class="container">
+            <h1>Fan Sphere</h1>
+            <p class="tagline">The social home for sports fans. Watch parties, live chat, clips, and the community that loves the game as much as you do.</p>
+            <div class="cta-row">
+                <a class="cta cta-primary" href="https://play.google.com/store/apps/details?id=org.fansphere.app">Get on Google Play</a>
+                <a class="cta cta-secondary" href="#features">See features</a>
+            </div>
+        </div>
+    </header>
+
+    <section id="features">
+        <div class="container">
+            <h2>Built for every fan, every sport, all year round</h2>
+            <div class="features">
+                <div class="feature">
+                    <div class="icon">📺</div>
+                    <h3>Public &amp; Private Watch Parties</h3>
+                    <p>RSVP to public parties for any game, or create private ones for your crew. Live chat included.</p>
+                </div>
+                <div class="feature">
+                    <div class="icon">🎬</div>
+                    <h3>Capture &amp; Share Clips</h3>
+                    <p>Record game-day moments and post directly to TikTok and Instagram with one tap.</p>
+                </div>
+                <div class="feature">
+                    <div class="icon">🏆</div>
+                    <h3>Multi-Sport Coverage</h3>
+                    <p>NBA, NFL, MLB, soccer leagues, college sports, and FIFA World Cup 2026. Pick the teams you follow.</p>
+                </div>
+                <div class="feature">
+                    <div class="icon">👥</div>
+                    <h3>Fan Groups</h3>
+                    <p>Unlimited groups for any team or interest. Live chat with fellow fans anytime.</p>
+                </div>
+                <div class="feature">
+                    <div class="icon">🔔</div>
+                    <h3>Personalized Alerts</h3>
+                    <p>Game-time reminders, scores, and clips for the teams you actually care about.</p>
+                </div>
+                <div class="feature">
+                    <div class="icon">🤝</div>
+                    <h3>Follow Each Other</h3>
+                    <p>Build a social graph around sport. Follow creators, friends, and fellow fans of your teams.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="pricing">
+        <div class="container">
+            <h2 style="text-align: center;">Free to start. Premium when you're ready.</h2>
+            <div class="price-grid">
+                <div class="plan">
+                    <h3>Free</h3>
+                    <div class="price">$0<small></small></div>
+                    <ul>
+                        <li>Join public watch parties</li>
+                        <li>Limited fan groups</li>
+                        <li>Follow teams &amp; users</li>
+                        <li>Basic clip sharing</li>
+                    </ul>
+                </div>
+                <div class="plan featured">
+                    <h3>Premium</h3>
+                    <div class="price">$9.99<small> / month</small></div>
+                    <ul>
+                        <li>7-day free trial</li>
+                        <li>Unlimited watch parties</li>
+                        <li>Unlimited fan groups</li>
+                        <li>Advanced clip tools</li>
+                        <li>World Cup 2026 tab</li>
+                        <li>Or $107.88/yr (save 10%)</li>
+                    </ul>
+                </div>
+                <div class="plan">
+                    <h3>World Cup Pass</h3>
+                    <div class="price">$19.99<small> / one-time</small></div>
+                    <ul>
+                        <li>Full World Cup 2026 tab</li>
+                        <li>All match watch parties</li>
+                        <li>Tournament clips &amp; highlights</li>
+                        <li>Valid through final</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="links">
+            <a href="/privacy.html">Privacy Policy</a>
+            <a href="/terms.html">Terms of Service</a>
+            <a href="/delete-account.html">Delete Account</a>
+            <a href="mailto:support@thabtech.com">Support</a>
+        </div>
+        <div class="copy">
+            &copy; 2026 Thabtech LLC. Fan Sphere is a Thabtech LLC product.<br>
+            Questions? <a href="mailto:support@thabtech.com">support@thabtech.com</a>
+        </div>
+    </footer>
+</body>
+</html>
