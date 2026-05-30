@@ -28,7 +28,7 @@ const FEATURES = [
 
 const PRICES = {
   monthly: { display: '$9.99/mo', period: 'month' },
-  annual: { display: '$107.88/yr', period: 'year', savingsBadge: 'Save 10%' },
+  annual: { display: '$107.99/yr', period: 'year', savingsBadge: 'Save 10%' },
 };
 
 interface Props {
