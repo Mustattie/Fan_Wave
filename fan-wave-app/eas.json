@@ -56,9 +56,11 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "your-apple-id@example.com",
-        "ascAppId": "your-app-store-connect-app-id",
-        "appleTeamId": "YOUR_TEAM_ID"
+        "ascAppId": "6774325670",
+        "appleTeamId": "D887TLA6L9",
+        "ascApiKeyPath": "./AuthKey.p8",
+        "ascApiKeyId": "DP56C6TV9V",
+        "ascApiKeyIssuerId": "e60d3fc7-a3e5-4eb4-8fcf-1e2c155ff7a4"
       },
       "android": {
         "serviceAccountKeyPath": "./play-store-key.json",

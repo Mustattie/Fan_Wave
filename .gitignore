@@ -18,3 +18,8 @@ Desktop.ini
 # Build artifacts (EAS keeps them remotely; too large for git)
 *.aab
 *.apk
+
+# iOS signing secrets — App Store Connect API Key
+# Stored locally only, referenced by eas.json submit profile
+**/AuthKey*.p8
+fan-wave-app/AuthKey.p8
