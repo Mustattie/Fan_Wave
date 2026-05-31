@@ -169,8 +169,13 @@ Deno.serve(async (req: Request) => {
   }
 
   const productId = event.product_id ?? "";
-  const isPremium = PREMIUM_PRODUCTS.has(productId);
-  const isWcPass = WC_PASS_PRODUCTS.has(productId);
+  // Android subscriptions arrive as "subscriptionId:basePlanId"
+  // (e.g., "premium_monthly_999:monthly"); iOS sends just "subscriptionId".
+  // Normalize for the entitlement-family lookup, but persist the raw ID
+  // so we can tell stores apart later if needed.
+  const baseProductId = productId.split(":")[0];
+  const isPremium = PREMIUM_PRODUCTS.has(baseProductId);
+  const isWcPass = WC_PASS_PRODUCTS.has(baseProductId);
 
   // Upsert the entitlement row keyed on original_transaction_id.
   if (event.original_transaction_id) {
