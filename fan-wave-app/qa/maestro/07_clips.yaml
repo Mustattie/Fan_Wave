@@ -1,0 +1,155 @@
+appId: org.fansphere.app
+name: "D5 — Clip upload, like, share, export"
+tags:
+  - day5
+  - clips
+---
+# Sign in → Clips tab → upload from gallery → like 3 → share 1 → export 1.
+# Fires: clip_uploaded, clip_liked x3, clip_shared, clip_exported.
+
+- launchApp:
+    clearState: false
+    stopApp: true
+
+- runFlow: flows/_sign_in.yaml
+
+- tapOn:
+    text: "Clips"
+
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 10000
+
+- takeScreenshot: screenshots/01_clips_feed
+
+# ─── Upload a clip ─────────────────────────────────────────────────
+- tapOn:
+    text: "+"
+    optional: true
+- tapOn:
+    id: "create-clip"
+    optional: true
+- tapOn:
+    text: "Upload"
+    optional: true
+- tapOn:
+    text: "New"
+    optional: true
+
+- takeScreenshot: screenshots/02_create_clip_form
+
+- tapOn:
+    text: ".*[Gg]allery.*"
+    optional: true
+- tapOn:
+    text: ".*[Pp]hotos.*"
+    optional: true
+
+# Use the photo at index 0 (we pre-load a fixture via adb push)
+- tapOn:
+    index: 0
+
+- tapOn:
+    text: "Next"
+    optional: true
+
+- inputText: "QA upload — D5 test"
+    optional: true
+
+- tapOn:
+    text: "Post"
+    optional: true
+- tapOn:
+    text: "Share"
+    optional: true
+
+- takeScreenshot: screenshots/03_clip_uploaded
+
+# Wait for upload to complete + return to feed
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 30000
+
+- pressKey: "Back"
+
+# ─── Like 3 clips ──────────────────────────────────────────────────
+- tapOn:
+    text: "Clips"
+
+- doubleTapOn:
+    index: 0
+    optional: true
+- tapOn:
+    id: "like-button"
+    optional: true
+    index: 0
+
+- swipe:
+    direction: UP
+
+- doubleTapOn:
+    index: 0
+    optional: true
+- tapOn:
+    id: "like-button"
+    optional: true
+    index: 0
+
+- swipe:
+    direction: UP
+
+- doubleTapOn:
+    index: 0
+    optional: true
+- tapOn:
+    id: "like-button"
+    optional: true
+    index: 0
+
+- takeScreenshot: screenshots/04_clips_liked
+
+# ─── Share 1 clip ──────────────────────────────────────────────────
+- tapOn:
+    text: "Share"
+    optional: true
+    index: 0
+- tapOn:
+    id: "share-clip"
+    optional: true
+    index: 0
+
+- takeScreenshot: screenshots/05_share_sheet
+
+# Dismiss the native share sheet
+- pressKey: "Back"
+
+# ─── Export own clip ───────────────────────────────────────────────
+- tapOn:
+    text: "Profile"
+
+- tapOn:
+    text: ".*[Mm]y.*[Cc]lips.*"
+    optional: true
+- tapOn:
+    text: "Clips"
+    optional: true
+    index: 0
+
+- tapOn:
+    index: 0   # tap into the just-uploaded clip
+
+- tapOn:
+    text: "Export"
+    optional: true
+- tapOn:
+    text: ".*[Ss]ave.*"
+    optional: true
+- tapOn:
+    text: "Download"
+    optional: true
+
+- takeScreenshot: screenshots/06_clip_exported
+
+- pressKey: "Back"

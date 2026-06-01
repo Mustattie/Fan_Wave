@@ -1,0 +1,112 @@
+appId: org.fansphere.app
+name: "D4 AM — Browse + RSVP to existing watch parties"
+tags:
+  - day4
+  - watch_parties
+  - rsvp
+---
+# Sign in → Watch Parties → filter Soccer/WC → RSVP to 2 existing parties →
+# open one to view chat → leave a comment. Fires: watch_party_rsvp x2,
+# message_sent.
+
+- launchApp:
+    clearState: false
+    stopApp: true
+
+- runFlow: flows/_sign_in.yaml
+
+# Watch parties can live on Home (Today's Games card) OR a dedicated tab.
+- tapOn:
+    text: "Home"
+
+- extendedWaitUntil:
+    visible:
+      text: ".*[Ww]atch.*[Pp]art.*"
+    timeout: 15000
+
+- takeScreenshot: screenshots/01_watch_parties_section
+
+# Tap "See all" if present
+- tapOn:
+    text: "See All"
+    optional: true
+
+# ─── Filter to Soccer / WC ─────────────────────────────────────────
+- tapOn:
+    text: "Soccer"
+    optional: true
+- tapOn:
+    text: "World Cup"
+    optional: true
+
+- takeScreenshot: screenshots/02_filtered_soccer
+
+# ─── RSVP #1 ───────────────────────────────────────────────────────
+- tapOn:
+    text: "RSVP"
+    index: 0
+
+- takeScreenshot: screenshots/03_rsvp_1
+
+# Some apps confirm with a modal — dismiss if present
+- tapOn:
+    text: "Confirm"
+    optional: true
+- tapOn:
+    text: "OK"
+    optional: true
+
+# ─── RSVP #2 ───────────────────────────────────────────────────────
+- swipe:
+    direction: UP
+
+- tapOn:
+    text: "RSVP"
+    index: 0   # next available — list shifts
+
+- takeScreenshot: screenshots/04_rsvp_2
+
+- tapOn:
+    text: "Confirm"
+    optional: true
+- tapOn:
+    text: "OK"
+    optional: true
+
+# ─── Open one party, view chat, leave comment ──────────────────────
+- tapOn:
+    text: ".*[Vv]iew.*"
+    optional: true
+    index: 0
+- tapOn:
+    text: ".*[Dd]etails.*"
+    optional: true
+    index: 0
+
+- extendedWaitUntil:
+    visible:
+      text: ".*[Cc]hat.*"
+    timeout: 10000
+
+- tapOn:
+    text: "Chat"
+    optional: true
+
+- tapOn:
+    text: "Type a message"
+    optional: true
+- tapOn:
+    text: "Message"
+    optional: true
+
+- inputText: "Looking forward to it — see you there!"
+
+- tapOn:
+    text: "Send"
+    optional: true
+- pressKey: "Enter"
+    optional: true
+
+- takeScreenshot: screenshots/05_party_chat_commented
+
+- pressKey: "Back"

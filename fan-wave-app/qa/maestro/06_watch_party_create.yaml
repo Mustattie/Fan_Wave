@@ -1,0 +1,93 @@
+appId: org.fansphere.app
+name: "D4 PM — Create your own watch party"
+tags:
+  - day4
+  - watch_parties
+  - create
+---
+# Sign in → Watch Parties → Create → pick a WC match → set venue + privacy
+# → confirm → share invite. Fires: watch_party_created, invite_shared.
+
+- launchApp:
+    clearState: false
+    stopApp: true
+
+- runFlow: flows/_sign_in.yaml
+
+- tapOn:
+    text: "Home"
+
+- tapOn:
+    text: "Create Watch Party"
+    optional: true
+- tapOn:
+    text: "+"
+    optional: true
+- tapOn:
+    id: "create-party"
+    optional: true
+
+- takeScreenshot: screenshots/01_create_form
+
+# ─── Fill the create form ──────────────────────────────────────────
+- tapOn:
+    text: ".*[Mm]atch.*"
+    optional: true
+- tapOn:
+    text: ".*[Gg]ame.*"
+    optional: true
+
+# Pick the first available WC match
+- tapOn:
+    index: 0
+    optional: true
+
+- takeScreenshot: screenshots/02_match_picked
+
+# Venue
+- tapOn:
+    text: "Venue"
+    optional: true
+- tapOn:
+    text: ".*[Bb]ar.*"
+    optional: true
+- tapOn:
+    text: ".*[Pp]ublic.*"
+    optional: true
+
+- inputText: "The Pitch Sports Bar"
+    optional: true
+
+# Max attendees
+- tapOn:
+    text: "Max attendees"
+    optional: true
+- inputText: "30"
+    optional: true
+
+# Privacy toggle — leave default (public)
+- takeScreenshot: screenshots/03_form_filled
+
+- tapOn:
+    text: "Create"
+
+- extendedWaitUntil:
+    visible:
+      text: ".*[Cc]reated.*"
+    timeout: 15000
+
+- takeScreenshot: screenshots/04_party_created
+
+# ─── Share invite ──────────────────────────────────────────────────
+- tapOn:
+    text: "Share"
+    optional: true
+- tapOn:
+    text: "Invite"
+    optional: true
+
+- takeScreenshot: screenshots/05_share_sheet
+
+# Dismiss the native share sheet (we just need invite_shared to fire)
+- pressKey: "Back"
+- pressKey: "Back"

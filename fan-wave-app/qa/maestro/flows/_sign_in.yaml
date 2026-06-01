@@ -1,0 +1,42 @@
+appId: org.fansphere.app
+name: "shared sign-in flow"
+---
+# Reusable sign-in steps. Other scenarios runFlow this so we don't repeat
+# email/password entry. Assumes the QA user is already registered (run
+# 01_signup_onboarding.yaml first).
+
+- assertVisible:
+    text: ".*[Ww]elcome.*|.*[Ss]ign [Ii]n.*"
+    optional: true
+
+- tapOn:
+    text: "Sign In"
+    optional: true
+- tapOn:
+    text: "Log In"
+    optional: true
+
+- extendedWaitUntil:
+    visible:
+      text: ".*[Ee]mail.*"
+    timeout: 15000
+
+- tapOn:
+    text: "Email"
+- inputText: "qa.fansphere.android@gmail.com"
+
+- tapOn:
+    text: "Password"
+- inputText: "Replace-Me-Before-Running-1!"
+
+- tapOn:
+    text: "Sign In"
+    optional: true
+- tapOn:
+    text: "Log In"
+    optional: true
+
+- extendedWaitUntil:
+    visible:
+      text: ".*[Tt]oday.*|.*[Hh]ome.*"
+    timeout: 20000

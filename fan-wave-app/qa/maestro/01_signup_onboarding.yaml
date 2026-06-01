@@ -1,0 +1,157 @@
+appId: org.fansphere.app
+name: "D1 — Sign up + onboarding + tab tour"
+tags:
+  - day1
+  - onboarding
+  - auth
+---
+# Scenario goal: cold launch → sign up a fresh QA account → complete the
+# onboarding wizard (sports, teams, city) → land on Home → visit every tab
+# at least once. Fires: app_open, sign_up, onboarding_complete, screen_viewed x6.
+#
+# IMPORTANT: replace the email/password below with the actual QA Gmail
+# defined in qa/maestro/config.yaml before running.
+
+- launchApp:
+    clearState: true
+    stopApp: true
+
+- takeScreenshot: screenshots/01_launch
+
+# ─── Welcome carousel ──────────────────────────────────────────────
+- assertVisible:
+    text: ".*[Ss]ign [Uu]p.*"
+    optional: false
+
+- tapOn:
+    text: "Sign Up"
+
+- takeScreenshot: screenshots/02_signup_form
+
+# ─── Sign-up form ──────────────────────────────────────────────────
+# Fan Sphere's sign-up form has 4 fields: Display Name, Email, Password,
+# Confirm Password. We rely on placeholder/label text to locate each.
+- tapOn:
+    text: "Display Name"
+- inputText: "QA Claude (Android)"
+
+- tapOn:
+    text: "Email"
+- inputText: "qa.fansphere.android@gmail.com"
+
+- tapOn:
+    text: "Password"
+    index: 0
+- inputText: "Replace-Me-Before-Running-1!"
+
+- tapOn:
+    text: "Confirm Password"
+- inputText: "Replace-Me-Before-Running-1!"
+
+- takeScreenshot: screenshots/03_signup_filled
+
+- tapOn:
+    text: "Create Account"
+
+- takeScreenshot: screenshots/04_post_signup
+
+# ─── Onboarding: sports ────────────────────────────────────────────
+# After confirming email + signing in, the user lands on the sports
+# selection screen. We pick Soccer (matters for WC) and Basketball.
+- extendedWaitUntil:
+    visible:
+      text: ".*[Pp]ick.*[Ss]port.*"
+    timeout: 20000
+
+- tapOn:
+    text: "Soccer"
+- tapOn:
+    text: "Basketball"
+
+- takeScreenshot: screenshots/05_sports_picked
+
+- tapOn:
+    text: "Continue"
+
+# ─── Onboarding: teams ─────────────────────────────────────────────
+- extendedWaitUntil:
+    visible:
+      text: ".*[Tt]eam.*"
+    timeout: 15000
+
+# Pick at least one team that's in WC 2026 — USA, England, Brazil.
+- tapOn:
+    text: "USA"
+    index: 0
+- tapOn:
+    text: "England"
+- tapOn:
+    text: "Brazil"
+
+- takeScreenshot: screenshots/06_teams_picked
+
+- tapOn:
+    text: "Continue"
+
+# ─── Onboarding: home city ─────────────────────────────────────────
+- extendedWaitUntil:
+    visible:
+      text: ".*[Cc]ity.*"
+    timeout: 15000
+
+- tapOn:
+    text: "Search city"
+    optional: true
+
+- inputText: "Dallas"
+
+- tapOn:
+    text: "Dallas"
+    index: 0
+
+- takeScreenshot: screenshots/07_city_picked
+
+- tapOn:
+    text: "Continue"
+
+# ─── Land on Home + tour 6 tabs ────────────────────────────────────
+- extendedWaitUntil:
+    visible:
+      text: ".*Today.*[Gg]ames.*"
+    timeout: 20000
+
+- takeScreenshot: screenshots/08_home
+
+- tapOn:
+    text: "Discover"
+- takeScreenshot: screenshots/09_discover
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Clips"
+- takeScreenshot: screenshots/10_clips
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "World Cup"
+- takeScreenshot: screenshots/11_world_cup
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Groups"
+- takeScreenshot: screenshots/12_groups
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Profile"
+- takeScreenshot: screenshots/13_profile
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Home"
+- takeScreenshot: screenshots/14_back_to_home
+
+# Maestro auto-flushes analytics on app background; trigger one explicitly
+# so the events land in Supabase before the scenario ends.
+- pressKey: "Back"
+- pressKey: "Back"

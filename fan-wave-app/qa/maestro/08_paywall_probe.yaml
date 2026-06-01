@@ -1,0 +1,118 @@
+appId: org.fansphere.app
+name: "D6 — Paywall probe (Premium + WC Pass)"
+tags:
+  - day6
+  - paywall
+  - iap
+---
+# Sign in → Profile → Subscription → tap Premium → reach paywall sheet →
+# tap Annual → reach Apple/Google purchase dialog → CANCEL. Also probe
+# the WC Pass paywall path. Fires: screen_viewed (paywall_premium, paywall_wc_pass),
+# plus a purchase_events row from RC sandbox for each surfaced product.
+#
+# CRITICAL: this scenario must NEVER complete a real-money purchase.
+# Always cancel at the Google Play purchase dialog.
+
+- launchApp:
+    clearState: false
+    stopApp: true
+
+- runFlow: flows/_sign_in.yaml
+
+- tapOn:
+    text: "Profile"
+
+- tapOn:
+    text: ".*[Ss]ubscription.*"
+    optional: true
+- tapOn:
+    text: "Premium"
+    optional: true
+- tapOn:
+    text: "Upgrade"
+    optional: true
+
+- extendedWaitUntil:
+    visible:
+      text: ".*Fan Sphere Premium.*"
+    timeout: 15000
+
+- takeScreenshot: screenshots/01_premium_paywall
+
+# ─── Tap the Annual plan card ──────────────────────────────────────
+- tapOn:
+    text: "Annual"
+    optional: true
+- tapOn:
+    text: "107.99"
+    optional: true
+
+- takeScreenshot: screenshots/02_annual_selected
+
+# ─── Tap "Start 7-Day Free Trial" CTA ──────────────────────────────
+- tapOn:
+    text: "Start 7-Day Free Trial"
+    optional: true
+- tapOn:
+    text: "Continue"
+    optional: true
+- tapOn:
+    text: "Subscribe"
+    optional: true
+
+- takeScreenshot: screenshots/03_purchase_dialog
+
+# CRITICAL: cancel before any real charge. Google Play purchase dialog
+# typically has a "Cancel" button or you can press Back.
+- pressKey: "Back"
+
+- takeScreenshot: screenshots/04_dialog_cancelled
+
+# Close the Premium paywall
+- tapOn:
+    id: "close-paywall"
+    optional: true
+- tapOn:
+    text: "Close"
+    optional: true
+- pressKey: "Back"
+
+# ─── WC Pass paywall (if surfaced separately) ──────────────────────
+- tapOn:
+    text: "World Cup"
+- tapOn:
+    text: ".*[Pp]ass.*"
+    optional: true
+- tapOn:
+    text: "Buy"
+    optional: true
+- tapOn:
+    text: "Get Pass"
+    optional: true
+- tapOn:
+    text: "Unlock"
+    optional: true
+
+- extendedWaitUntil:
+    visible:
+      text: ".*World Cup.*[Pp]ass.*"
+    timeout: 10000
+    optional: true
+
+- takeScreenshot: screenshots/05_wc_paywall
+
+- tapOn:
+    text: "19.99"
+    optional: true
+- tapOn:
+    text: ".*[Bb]uy.*"
+    optional: true
+
+- takeScreenshot: screenshots/06_wc_purchase_dialog
+
+# CRITICAL: cancel again
+- pressKey: "Back"
+
+- takeScreenshot: screenshots/07_wc_cancelled
+
+- pressKey: "Back"

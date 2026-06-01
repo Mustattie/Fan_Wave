@@ -1,0 +1,102 @@
+appId: org.fansphere.app
+name: "D7–D14 — Sustained daily engagement"
+tags:
+  - sustained
+  - daily
+---
+# Lightweight daily run for days 7-14. Fires: app_open, message_sent,
+# clip_liked x2, screen_viewed (Home + World Cup + group). On D10 add
+# an invite_shared.
+#
+# Run this once per day for 8 days. Schedule via Windows Task Scheduler
+# or kick off manually each session.
+
+- launchApp:
+    clearState: false
+    stopApp: true
+
+- runFlow: flows/_sign_in.yaml
+
+# ─── Check Home ────────────────────────────────────────────────────
+- tapOn:
+    text: "Home"
+
+- extendedWaitUntil:
+    visible:
+      text: ".*[Tt]oday.*"
+    timeout: 10000
+
+- takeScreenshot: screenshots/01_home
+
+- swipe:
+    direction: UP
+
+- swipe:
+    direction: UP
+
+# ─── World Cup tab (always — daily during tournament) ──────────────
+- tapOn:
+    text: "World Cup"
+
+- takeScreenshot: screenshots/02_world_cup
+
+- swipe:
+    direction: UP
+
+# ─── Pop into one of our joined groups ─────────────────────────────
+- tapOn:
+    text: "Groups"
+
+- extendedWaitUntil:
+    visible:
+      text: "QA Test Group"
+    timeout: 10000
+    optional: true
+
+- tapOn:
+    text: "QA Test Group"
+    optional: true
+- tapOn:
+    index: 0
+    optional: true  # fall back to whatever group is first
+
+- takeScreenshot: screenshots/03_group_opened
+
+# Send one message
+- tapOn:
+    text: "Type a message"
+    optional: true
+- tapOn:
+    text: "Message"
+    optional: true
+
+- inputText: "Daily check-in 👋"
+
+- tapOn:
+    text: "Send"
+    optional: true
+- pressKey: "Enter"
+    optional: true
+
+- takeScreenshot: screenshots/04_daily_msg_sent
+
+- pressKey: "Back"
+
+# ─── Like 2 clips ──────────────────────────────────────────────────
+- tapOn:
+    text: "Clips"
+
+- doubleTapOn:
+    index: 0
+    optional: true
+
+- swipe:
+    direction: UP
+
+- doubleTapOn:
+    index: 0
+    optional: true
+
+- takeScreenshot: screenshots/05_clips_liked
+
+- pressKey: "Back"

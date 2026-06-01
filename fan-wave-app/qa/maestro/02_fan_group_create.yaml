@@ -1,0 +1,77 @@
+appId: org.fansphere.app
+name: "D2 AM — Create a fan group"
+tags:
+  - day2
+  - groups
+  - create
+---
+# Sign in → Groups tab → tap Create → name the group → set sport/team →
+# confirm. Fires: app_open, sign_in, group_created.
+
+- launchApp:
+    clearState: false
+    stopApp: true
+
+- runFlow: flows/_sign_in.yaml
+
+- tapOn:
+    text: "Groups"
+
+- extendedWaitUntil:
+    visible:
+      text: ".*[Cc]reate.*"
+    timeout: 15000
+
+- takeScreenshot: screenshots/01_groups_tab
+
+# Most app shells use a "+" floating action button OR a "Create Group"
+# pill at the top. Try both.
+- tapOn:
+    text: "Create Group"
+    optional: true
+
+- tapOn:
+    text: "+"
+    optional: true
+
+- takeScreenshot: screenshots/02_create_form
+
+# ─── Fill the create form ──────────────────────────────────────────
+- tapOn:
+    text: "Group Name"
+- inputText: "QA Test Group — USA Soccer Fans"
+
+- tapOn:
+    text: "Description"
+    optional: true
+- inputText: "Automated QA group for World Cup 2026 testing."
+
+# Pick the sport
+- tapOn:
+    text: "Soccer"
+    optional: true
+
+# Pick a team
+- tapOn:
+    text: "USA"
+    index: 0
+    optional: true
+
+# Toggle public if there's a toggle
+- tapOn:
+    text: "Public"
+    optional: true
+
+- takeScreenshot: screenshots/03_create_filled
+
+- tapOn:
+    text: "Create"
+
+- extendedWaitUntil:
+    visible:
+      text: "QA Test Group"
+    timeout: 15000
+
+- takeScreenshot: screenshots/04_group_created
+
+- pressKey: "Back"

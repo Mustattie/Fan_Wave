@@ -1,0 +1,21 @@
+# Shared Maestro config. Each scenario references the QA test user and
+# tester metadata defined here so we only update credentials in one place.
+#
+# The QA Gmail must:
+#   1. Exist as a real Google account (used to install via Play Closed Testing)
+#   2. Be added to Play Console Closed Testing tester list
+#   3. Be inserted into the beta_testers table with
+#      cohort='wc2026-internal', recruited_via='automated_qa'
+#
+# Update these values once before the first run.
+qa_user:
+  email: "qa.fansphere.android@gmail.com"  # TODO: replace with the real QA Gmail
+  password: "Replace-Me-Before-Running-1!"  # TODO: store in env var, not in repo
+  display_name: "QA Claude (Android)"
+  home_city: "Dallas"
+  primary_sport: "Soccer"
+  primary_team: "USA Men's National Team"   # WC qualifier
+
+app:
+  id: "org.fansphere.app"
+  launch_timeout_ms: 30000

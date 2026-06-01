@@ -1,0 +1,190 @@
+appId: org.fansphere.app
+name: "D2 PM — Join existing groups, chat, post clip"
+tags:
+  - day2
+  - groups
+  - participate
+---
+# Sign in → Groups tab → join 2 existing public groups → send chat
+# messages → upload a clip from inside a group context. Fires:
+# group_joined x2, message_sent x4, clip_uploaded, clip_liked x2.
+
+- launchApp:
+    clearState: false
+    stopApp: true
+
+- runFlow: flows/_sign_in.yaml
+
+- tapOn:
+    text: "Groups"
+
+- tapOn:
+    text: "Discover"
+    optional: true   # depends on whether Groups has a sub-tab
+
+- extendedWaitUntil:
+    visible:
+      text: ".*[Jj]oin.*"
+    timeout: 15000
+
+- takeScreenshot: screenshots/01_discover_groups
+
+# ─── Join group #1 ─────────────────────────────────────────────────
+- tapOn:
+    text: "Join"
+    index: 0
+
+- takeScreenshot: screenshots/02_joined_1
+
+# Open the joined group, send 2 messages
+- tapOn:
+    text: ".*[Vv]iew.*"
+    optional: true
+    index: 0
+
+- extendedWaitUntil:
+    visible:
+      text: ".*[Mm]essage.*"
+    timeout: 10000
+
+- tapOn:
+    text: "Type a message"
+    optional: true
+- tapOn:
+    text: "Message"
+    optional: true
+
+- inputText: "Hey crew, excited for the World Cup matches!"
+- tapOn:
+    text: "Send"
+    optional: true
+- pressKey: "Enter"
+    optional: true
+
+- inputText: "Anyone catching the opener live?"
+- tapOn:
+    text: "Send"
+    optional: true
+- pressKey: "Enter"
+    optional: true
+
+- takeScreenshot: screenshots/03_group1_chatted
+
+- pressKey: "Back"
+
+# ─── Join group #2 ─────────────────────────────────────────────────
+- tapOn:
+    text: "Join"
+    index: 0   # next available — list shifts up after the first join
+
+- takeScreenshot: screenshots/04_joined_2
+
+- tapOn:
+    text: ".*[Vv]iew.*"
+    optional: true
+    index: 0
+
+- extendedWaitUntil:
+    visible:
+      text: ".*[Mm]essage.*"
+    timeout: 10000
+
+- tapOn:
+    text: "Type a message"
+    optional: true
+- tapOn:
+    text: "Message"
+    optional: true
+
+- inputText: "Joining from Dallas — who else from TX?"
+- tapOn:
+    text: "Send"
+    optional: true
+- pressKey: "Enter"
+    optional: true
+
+- inputText: "Let's organize a watch party 🍻"
+- tapOn:
+    text: "Send"
+    optional: true
+- pressKey: "Enter"
+    optional: true
+
+- takeScreenshot: screenshots/05_group2_chatted
+
+# ─── Post a clip from inside a group ───────────────────────────────
+# The exact button label varies (could be camera icon, "+", "Post").
+- tapOn:
+    text: "Post"
+    optional: true
+- tapOn:
+    id: "add-clip"
+    optional: true
+- tapOn:
+    text: "+"
+    optional: true
+
+- takeScreenshot: screenshots/06_post_clip_form
+
+# Use a fixture from the emulator's photo library (we'll pre-load one
+# during emulator setup — see qa/maestro/fixtures/README.md).
+- tapOn:
+    text: ".*[Gg]allery.*"
+    optional: true
+- tapOn:
+    text: ".*[Pp]hotos.*"
+    optional: true
+
+- tapOn:
+    index: 0  # first photo in the gallery
+
+- tapOn:
+    text: "Next"
+    optional: true
+- tapOn:
+    text: "Continue"
+    optional: true
+
+- inputText: "QA test clip — World Cup 2026 hype"
+    optional: true
+
+- tapOn:
+    text: "Post"
+    optional: true
+
+- takeScreenshot: screenshots/07_clip_posted
+
+# ─── Like 2 other clips ────────────────────────────────────────────
+- pressKey: "Back"
+
+- tapOn:
+    text: "Clips"
+
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 5000
+
+# Like the first 2 clips in the feed
+- doubleTapOn:
+    index: 0
+    optional: true
+- tapOn:
+    id: "like-button"
+    optional: true
+    index: 0
+
+- swipe:
+    direction: UP
+
+- doubleTapOn:
+    index: 0
+    optional: true
+- tapOn:
+    id: "like-button"
+    optional: true
+    index: 0
+
+- takeScreenshot: screenshots/08_clips_liked
+
+- pressKey: "Back"
