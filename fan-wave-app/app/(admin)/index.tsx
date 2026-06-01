@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   Users, Tent, UsersRound, Video, Ticket, Flag, ChevronRight,
-  MapPin, Activity,
+  MapPin, Activity, Beaker,
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { FilterPillRow } from '@/components/FilterPillRow';
@@ -36,6 +36,7 @@ export default function AdminOverview() {
     { icon: Users,      label: 'Users',        route: '/(admin)/users'      },
     { icon: MapPin,     label: 'Geography',    route: '/(admin)/geography'  },
     { icon: Activity,   label: 'Activity',     route: '/(admin)/activity'   },
+    { icon: Beaker,     label: 'Beta Testers', route: '/(admin)/testers'    },
     { icon: Flag,       label: 'Moderation',   route: '/(admin)/moderation' },
   ];
 

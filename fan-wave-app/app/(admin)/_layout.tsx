@@ -40,6 +40,7 @@ export default function AdminLayout() {
       <Stack.Screen name="users" options={{ title: 'Users' }} />
       <Stack.Screen name="geography" options={{ title: 'Geography' }} />
       <Stack.Screen name="activity" options={{ title: 'Activity Feed' }} />
+      <Stack.Screen name="testers" options={{ title: 'Beta Testers' }} />
       <Stack.Screen name="moderation" options={{ title: 'Moderation' }} />
     </Stack>
   );
