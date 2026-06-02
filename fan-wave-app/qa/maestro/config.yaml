@@ -9,8 +9,8 @@
 #
 # Update these values once before the first run.
 qa_user:
-  email: "qa.fansphere.android@gmail.com"  # TODO: replace with the real QA Gmail
-  password: "Replace-Me-Before-Running-1!"  # TODO: store in env var, not in repo
+  email: "fansphere.tester1@gmail.com"
+  password: "Summer@12"
   display_name: "QA Claude (Android)"
   home_city: "Dallas"
   primary_sport: "Soccer"

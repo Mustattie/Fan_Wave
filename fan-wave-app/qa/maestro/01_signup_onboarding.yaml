@@ -16,15 +16,20 @@ tags:
     clearState: true
     stopApp: true
 
-- takeScreenshot: screenshots/01_launch
-
 # ─── Welcome carousel (3 pages: "Your crew" → middle → "Capture the moment") ──
 # Page 1 + 2 have a "Next" button. Page 3 reveals "Get Started" as the
 # sign-up CTA. "Already have an account? Sign In" is below it on every page.
+#
+# Wait for the welcome screen to fully render BEFORE the first screenshot —
+# otherwise Maestro's screenshot races the window manager and fails with
+# "Screenshot returned null - window may not be ready".
 - extendedWaitUntil:
     visible:
       text: "Fan Sphere"
     timeout: 30000
+- waitForAnimationToEnd
+
+- takeScreenshot: screenshots/01_launch
 
 - tapOn:
     text: "Next"
@@ -41,6 +46,15 @@ tags:
 - tapOn:
     text: "Get Started"
 
+# Wait for the Create Account screen to fully render before screenshotting.
+# Without this, Maestro's screenshot call can race the window manager and
+# fail with "Screenshot returned null - window may not be ready".
+- extendedWaitUntil:
+    visible:
+      text: "Create Account"
+    timeout: 15000
+- waitForAnimationToEnd
+
 - takeScreenshot: screenshots/02_signup_form
 
 # ─── Sign-up form ──────────────────────────────────────────────────
@@ -52,16 +66,27 @@ tags:
 
 - tapOn:
     text: "Email"
-- inputText: "qa.fansphere.android@gmail.com"
+- inputText: "fansphere.tester1@gmail.com"
 
 - tapOn:
     text: "Password"
     index: 0
-- inputText: "Replace-Me-Before-Running-1!"
+- inputText: "Summer@12"
+
+# Confirm Password tap is fragile via placeholder text:
+#   - Keyboard occludes the field when Password is focused
+#   - Even after hideKeyboard, the placeholder text isn't reliably matched
+# Use a coordinate tap instead. The form has 4 stacked fields; Confirm
+# Password sits at roughly 50% horizontal, 65% vertical on a typical phone
+# layout. If this fails on a smaller AVD, raise to 60% or scrollUntilVisible.
+- hideKeyboard
 
 - tapOn:
-    text: "Confirm Password"
-- inputText: "Replace-Me-Before-Running-1!"
+    point: "50%,65%"
+
+- inputText: "Summer@12"
+
+- hideKeyboard
 
 - takeScreenshot: screenshots/03_signup_filled
 

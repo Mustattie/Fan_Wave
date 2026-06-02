@@ -23,11 +23,11 @@ name: "shared sign-in flow"
 
 - tapOn:
     text: "Email"
-- inputText: "qa.fansphere.android@gmail.com"
+- inputText: "fansphere.tester1@gmail.com"
 
 - tapOn:
     text: "Password"
-- inputText: "Replace-Me-Before-Running-1!"
+- inputText: "Summer@12"
 
 - tapOn:
     text: "Sign In"
