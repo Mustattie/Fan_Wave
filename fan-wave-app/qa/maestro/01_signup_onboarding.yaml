@@ -18,13 +18,28 @@ tags:
 
 - takeScreenshot: screenshots/01_launch
 
-# ─── Welcome carousel ──────────────────────────────────────────────
-- assertVisible:
-    text: ".*[Ss]ign [Uu]p.*"
-    optional: false
+# ─── Welcome carousel (3 pages: "Your crew" → middle → "Capture the moment") ──
+# Page 1 + 2 have a "Next" button. Page 3 reveals "Get Started" as the
+# sign-up CTA. "Already have an account? Sign In" is below it on every page.
+- extendedWaitUntil:
+    visible:
+      text: "Fan Sphere"
+    timeout: 30000
 
 - tapOn:
-    text: "Sign Up"
+    text: "Next"
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Next"
+    optional: true
+- waitForAnimationToEnd
+
+- assertVisible:
+    text: "Get Started"
+
+- tapOn:
+    text: "Get Started"
 
 - takeScreenshot: screenshots/02_signup_form
 

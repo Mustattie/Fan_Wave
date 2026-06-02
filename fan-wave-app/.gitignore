@@ -41,3 +41,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Maestro per-run debug output (logs + commands JSON). Committed scenario
+# screenshots, if any, live elsewhere; this directory is recreated each run.
+qa/maestro/output/

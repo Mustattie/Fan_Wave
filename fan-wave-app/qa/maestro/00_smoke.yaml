@@ -1,0 +1,51 @@
+appId: org.fansphere.app
+name: "D0 — Smoke test (no credentials needed)"
+tags:
+  - smoke
+  - infra
+---
+# Verifies the Maestro -> emulator -> Fan Sphere pipeline end-to-end without
+# requiring the QA Gmail to exist. Confirms:
+#   1. Maestro can launch the production APK
+#   2. The Welcome carousel renders past the splash
+#   3. The "Next" button advances the carousel through all 3 pages
+#   4. The final page reveals a sign-up / get-started CTA
+# Run this once whenever the APK is reinstalled, before invoking scenarios 01-09.
+
+- launchApp:
+    clearState: true
+    stopApp: true
+
+- takeScreenshot: screenshots/smoke_01_launch
+
+- extendedWaitUntil:
+    visible:
+      text: "Fan Sphere"
+    timeout: 30000
+
+- takeScreenshot: screenshots/smoke_02_welcome_page1
+
+- assertVisible:
+    text: ".*crew.*|.*city.*|.*game.*"
+
+- tapOn:
+    text: "Next"
+
+- waitForAnimationToEnd
+
+- takeScreenshot: screenshots/smoke_03_welcome_page2
+
+- tapOn:
+    text: "Next"
+    optional: true
+
+- waitForAnimationToEnd
+
+- takeScreenshot: screenshots/smoke_04_welcome_page3
+
+# Last carousel page reveals either "Get Started", "Sign Up", or
+# "Create Account" — assert one of them is visible.
+- assertVisible:
+    text: ".*[Gg]et [Ss]tarted.*|.*[Ss]ign [Uu]p.*|.*[Cc]reate [Aa]ccount.*"
+
+- takeScreenshot: screenshots/smoke_05_signup_cta_visible
