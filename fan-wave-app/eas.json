@@ -19,7 +19,6 @@
       }
     },
     "preview": {
-      "_comment": "Staging/QA profile: points at the dev Supabase project. Used for internal Play Store track and sideloaded APKs.",
       "distribution": "internal",
       "autoIncrement": true,
       "android": {
@@ -41,7 +40,6 @@
       }
     },
     "production": {
-      "_comment": "Production profile: targets the prod Supabase project (fwlfiejvxmslkpoojggs). RevenueCat keys reused from preview because RC keys are tied to the RC project, not Supabase — verify they still resolve against the prod app-user pool. Sentry DSN still pending. See docs/env-swap-runbook.md.",
       "autoIncrement": true,
       "ios": {
         "image": "latest"
