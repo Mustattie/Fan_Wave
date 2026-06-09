@@ -85,6 +85,7 @@ function NavigationGuard({
   // Choose Plan screen before we know the user's real status.
   const { data: entState, isLoading: entLoading } = useSubscriptionState();
   const subscriptionStatus = entState?.status ?? 'none';
+  const hasPremiumAccess = entState?.hasPremiumAccess ?? false;
 
   useEffect(() => {
     if (!navigationState?.key) return;
@@ -109,27 +110,28 @@ function NavigationGuard({
       }
     } else if (session && inAuthGroup && !onOnboardingScreen && !onWelcomeScreen && !onPaymentScreen) {
       // Authenticated user on a non-onboarding / non-welcome / non-payment
-      // auth screen — route by progression state.
+      // auth screen — fail-closed routing: only hasPremiumAccess unlocks tabs.
       if (!onboardingComplete) {
         router.replace('/(auth)/onboarding-sports');
-      } else if (subscriptionStatus === 'none') {
-        router.replace('/(auth)/choose-plan');
+      } else if (hasPremiumAccess) {
+        router.replace('/(tabs)');
       } else if (subscriptionStatus === 'cancelled' || subscriptionStatus === 'expired') {
         router.replace('/(auth)/resubscribe');
       } else {
-        router.replace('/(tabs)');
+        router.replace('/(auth)/choose-plan');
       }
     } else if (session && !inAuthGroup && onboardingComplete) {
-      // Authenticated user in main app — gate by subscription state. A
-      // user with 'none' (post-onboarding but pre-plan) gets routed to
-      // Choose Plan; cancelled/expired users go to Resubscribe.
-      if (subscriptionStatus === 'none') {
-        router.replace('/(auth)/choose-plan');
-      } else if (subscriptionStatus === 'cancelled' || subscriptionStatus === 'expired') {
-        router.replace('/(auth)/resubscribe');
+      // Authenticated user in main app — fail-closed gate: anyone without
+      // hasPremiumAccess gets pushed back to a paywall screen.
+      if (!hasPremiumAccess) {
+        if (subscriptionStatus === 'cancelled' || subscriptionStatus === 'expired') {
+          router.replace('/(auth)/resubscribe');
+        } else {
+          router.replace('/(auth)/choose-plan');
+        }
       }
     }
-  }, [session, segments, navigationState?.key, onboardingComplete, hasSeenWelcome, subscriptionStatus, entLoading]);
+  }, [session, segments, navigationState?.key, onboardingComplete, hasSeenWelcome, subscriptionStatus, hasPremiumAccess, entLoading]);
 
   return null;
 }

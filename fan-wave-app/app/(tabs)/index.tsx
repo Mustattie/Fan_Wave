@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bell, Plus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/Colors';
 import { GameCard } from '@/components/GameCard';
 import { WatchPartyCard } from '@/components/WatchPartyCard';
@@ -22,6 +23,7 @@ import { subscribeToGames, subscribeToWatchParties } from '@/lib/realtime';
 import { mapGameToDisplay, mapWatchPartyToDisplay } from '@/lib/mappers';
 import { useGames, useWatchParties, useMyGroups, useUserCity } from '@/hooks/useData';
 import { queryClient } from '@/hooks/useQueryClient';
+import { supabase } from '@/lib/supabase';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -32,6 +34,68 @@ export default function HomeScreen() {
   const { data: games = [], isLoading: gamesLoading } = useGames(30);
   const { data: watchParties = [], isLoading: partiesLoading } = useWatchParties(city, 3);
   const { data: groups = [], isLoading: groupsLoading } = useMyGroups(3);
+
+  // User interests for the "Today's Games" carousel:
+  //   • selected_sports — AsyncStorage list of lowercase sport ids set during
+  //     onboarding-sports (e.g. ['nfl','nba','soccer']).
+  //   • followed-team sport ids — derived from user_team_follows joined to
+  //     teams→leagues→sports. We store the sport NAME lowercased so it
+  //     matches what mapGameToDisplay normalises games.sport_id into.
+  //
+  // Falls back to "no filter" when the user has no signals on file so the
+  // empty-case still shows all games (and we don't hide everything before
+  // onboarding finishes propagating to AsyncStorage).
+  const [interestSports, setInterestSports] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('selected_sports');
+        const fromStorage: string[] = raw ? JSON.parse(raw) : [];
+        const set = new Set(fromStorage.map((s) => s.toString().toLowerCase()));
+
+        // Followed teams → sport names. Cheap: one RPC, also handles WC
+        // (the FIFA World Cup league joins to the 'Soccer' sport).
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { data: follows } = await supabase.rpc('get_user_teams', {
+              p_user_id: user.id,
+            });
+            (follows || []).forEach((row: any) => {
+              if (row.sport_name) {
+                set.add(String(row.sport_name).toLowerCase());
+              }
+            });
+          }
+        } catch {
+          // Network failure — selected_sports alone is fine.
+        }
+
+        if (!cancelled) {
+          setInterestSports(set.size > 0 ? set : new Set());
+        }
+      } catch {
+        if (!cancelled) setInterestSports(new Set());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredGames = useMemo(() => {
+    if (!interestSports || interestSports.size === 0) return games;
+    const filtered = games.filter((g) => {
+      const sport = (g.sport || '').toLowerCase();
+      if (!sport) return false;
+      return interestSports.has(sport);
+    });
+    // Don't hide everything if the filter would empty the carousel —
+    // probably a user who picked an off-season sport. Fall back to all.
+    return filtered.length > 0 ? filtered : games;
+  }, [games, interestSports]);
 
   const loading = gamesLoading || partiesLoading || groupsLoading;
 
@@ -131,9 +195,9 @@ export default function HomeScreen() {
           actionText="See All →"
           onAction={() => router.push('/(tabs)/discover')}
         />
-        {games.length > 0 ? (
+        {filteredGames.length > 0 ? (
           <FlatList
-            data={games}
+            data={filteredGames}
             horizontal
             showsHorizontalScrollIndicator={false}
             scrollEnabled={true}

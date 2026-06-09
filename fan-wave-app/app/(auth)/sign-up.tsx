@@ -45,11 +45,14 @@ export default function SignUpScreen() {
 
     setLoading(true);
 
+    const trimmedEmail = email.trim();
+
     try {
       const { error } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: trimmedEmail,
         password,
         options: {
+          emailRedirectTo: 'fansphere://auth-callback',
           data: {
             display_name: displayName.trim(),
           },
@@ -58,10 +61,24 @@ export default function SignUpScreen() {
 
       if (error) throw error;
 
+      // Confirm Email is enabled in Supabase. signUp may return a temporary
+      // session before the user verifies — sign it out so the user can't slip
+      // through unverified, then route to the verify-email screen.
+      await supabase.auth.signOut();
+
       Alert.alert(
-        'Check your email',
-        'We sent a confirmation link to your email address.',
-        [{ text: 'OK', onPress: () => router.replace('/(auth)/sign-in') }]
+        'Verify your email',
+        `We've sent a confirmation link to ${trimmedEmail}. Tap it to activate your account.`,
+        [
+          {
+            text: 'OK',
+            onPress: () =>
+              router.replace({
+                pathname: '/(auth)/verify-email' as any,
+                params: { email: trimmedEmail },
+              }),
+          },
+        ]
       );
     } catch (e) {
       const info = parseAuthError(e);

@@ -11,10 +11,12 @@ export default function AuthLayout() {
     >
       <Stack.Screen name="sign-in" />
       <Stack.Screen name="sign-up" />
+      <Stack.Screen name="verify-email" />
       <Stack.Screen name="forgot-password" />
       <Stack.Screen name="onboarding-sports" />
       <Stack.Screen name="onboarding-teams" />
       <Stack.Screen name="onboarding-city" />
+      <Stack.Screen name="onboarding-suggested-groups" />
     </Stack>
   );
 }

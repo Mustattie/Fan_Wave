@@ -19,6 +19,7 @@
       }
     },
     "preview": {
+      "_comment": "Staging/QA profile: points at the dev Supabase project. Used for internal Play Store track and sideloaded APKs.",
       "distribution": "internal",
       "autoIncrement": true,
       "android": {
@@ -40,6 +41,7 @@
       }
     },
     "production": {
+      "_comment": "Production profile: targets the prod Supabase project (fwlfiejvxmslkpoojggs). RevenueCat keys reused from preview because RC keys are tied to the RC project, not Supabase — verify they still resolve against the prod app-user pool. Sentry DSN still pending. See docs/env-swap-runbook.md.",
       "autoIncrement": true,
       "ios": {
         "image": "latest"
@@ -49,9 +51,11 @@
       },
       "env": {
         "APP_ENV": "production",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://YOUR_PRODUCTION_PROJECT.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "YOUR_PRODUCTION_ANON_KEY",
-        "EXPO_PUBLIC_SENTRY_DSN": "YOUR_SENTRY_DSN"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://fwlfiejvxmslkpoojggs.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3bGZpZWp2eG1zbGtwb29qZ2dzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5OTgzNDAsImV4cCI6MjA5NjU3NDM0MH0.v4QaXnDnE0pJYcpSZXQPFlkNroEeAfhSbqozuLXbr_M",
+        "EXPO_PUBLIC_REVENUECAT_IOS_KEY": "appl_JmblLQHAuNHfPBzUQkjBzKmROAM",
+        "EXPO_PUBLIC_REVENUECAT_ANDROID_KEY": "goog_bZTjvIlQzCauhtncdPYeTjSkJmv",
+        "EXPO_PUBLIC_SENTRY_DSN": "__SET_PROD_SENTRY_DSN__"
       }
     }
   },
@@ -66,7 +70,7 @@
       },
       "android": {
         "serviceAccountKeyPath": "./play-store-key.json",
-        "track": "internal"
+        "track": "production"
       }
     }
   }

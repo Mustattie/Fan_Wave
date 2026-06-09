@@ -194,7 +194,7 @@ export function useUserCity() {
     queryKey: ['userCity'],
     queryFn: async () => {
       const storedCity = await AsyncStorage.getItem('user_city');
-      return storedCity || 'Chicago';
+      return storedCity || '';
     },
     staleTime: Infinity,
   });

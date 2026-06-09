@@ -6,6 +6,34 @@ import { reportError } from '@/lib/errorReporting';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
+/**
+ * Fail fast if a build was produced with unresolved placeholder credentials.
+ * This catches builds where the env-swap runbook step was skipped — without
+ * this guard the app would silently connect to a non-existent host and every
+ * query would time out with no clear root cause.
+ *
+ * Dev / preview flows are unaffected because they ship real values via .env
+ * and the `preview` EAS profile.
+ */
+function assertSupabaseEnvConfigured(url: string | undefined, key: string | undefined): void {
+  const placeholderTokens = ['__SET_', 'YOUR_PRODUCTION', 'YOUR_STAGING'];
+  const isPlaceholder = (value: string | undefined): boolean => {
+    if (!value) return true;
+    return placeholderTokens.some((token) => value.includes(token));
+  };
+
+  if (isPlaceholder(url) || isPlaceholder(key)) {
+    throw new Error(
+      '[supabase] Misconfigured build: EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY ' +
+        'still contain placeholder tokens (__SET_…, YOUR_PRODUCTION_…, YOUR_STAGING_…) or are empty. ' +
+        'Replace them in eas.json / .env.production before building. ' +
+        'See docs/env-swap-runbook.md.',
+    );
+  }
+}
+
+assertSupabaseEnvConfigured(supabaseUrl, supabaseAnonKey);
+
 const getStorage = () => {
   if (Platform.OS === 'web') {
     return typeof window !== 'undefined' ? window.localStorage : undefined;

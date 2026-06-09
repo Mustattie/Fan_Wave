@@ -78,7 +78,9 @@ export default function DiscoverScreen() {
     async (sport?: string, search?: string) => {
       try {
         const { data, error } = await supabase.rpc('browse_public_groups', {
-          p_city: city,
+          // Pass null (not '') when the user hasn't picked a home_city —
+          // the RPC's p_city IS NULL branch is the "show all" path.
+          p_city: city || null,
           ...(sport && sport !== 'all' ? { p_sport: SPORT_ID_MAP[sport] } : {}),
           ...(search ? { p_search: search } : {}),
           p_limit: 20,
@@ -97,19 +99,24 @@ export default function DiscoverScreen() {
     [city],
   );
 
+  // Watch parties are filtered by city ONLY — not by sport. The product
+  // wants "what's happening near me" surfaced regardless of which league
+  // it's tied to. The sport pill at the top still scopes the Groups
+  // section, but parties always show the full local lineup.
+  // Fallback: when the user has no home_city on file we show all upcoming
+  // parties instead of an empty list.
   const fetchWatchParties = useCallback(
-    async (sport?: string, cursor?: string | null) => {
+    async (_sport?: string, cursor?: string | null) => {
       try {
         let query = supabase
           .from('watch_parties')
           .select('*, sport:sports!sport_id(*)')
-          .ilike('venue_city', city)
           .gt('starts_at', cursor || new Date().toISOString())
           .order('starts_at', { ascending: true })
           .limit(20);
 
-        if (sport && sport !== 'all') {
-          query = query.eq('sport_name', SPORT_ID_MAP[sport]);
+        if (city) {
+          query = query.ilike('venue_city', city);
         }
 
         const { data, error } = await query;
@@ -158,16 +165,18 @@ export default function DiscoverScreen() {
     [fetchGroups, fetchWatchParties],
   );
 
-  // Load city from AsyncStorage on mount
+  // Load city from AsyncStorage on mount. Stay empty when the user hasn't
+  // gone through onboarding-city yet — the watch_parties query falls back
+  // to "all upcoming" so Discover isn't blank for them.
   useEffect(() => {
     AsyncStorage.getItem('user_city').then((stored) => {
-      setCity(stored || 'Chicago');
+      setCity(stored || '');
     });
   }, []);
 
-  // Initial load
+  // Initial load — fire whenever city resolves, even if it's empty so the
+  // fallback (show all watch parties) actually renders for cityless users.
   useEffect(() => {
-    if (!city) return;
     loadData(activeFilter);
   }, [city]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -214,7 +223,7 @@ export default function DiscoverScreen() {
           <MapPin size={14} color={Colors.dark.textSecondary} />
           <Text style={styles.subtitle}>
             {' '}
-            {city} ·{' '}
+            {city || 'Pick a city'} ·{' '}
             <Text style={styles.visitingLink}>I'm visiting...</Text>
           </Text>
         </TouchableOpacity>
@@ -258,7 +267,7 @@ export default function DiscoverScreen() {
           }
         >
           <SectionHeader
-            title={`Trending Groups in ${city}`}
+            title={city ? `Trending Groups in ${city}` : 'Trending Groups'}
             actionText="See All →"
           />
           {groups.length > 0 ? (
@@ -270,7 +279,7 @@ export default function DiscoverScreen() {
           )}
 
           <SectionHeader
-            title="Watch Parties This Week"
+            title={city ? `Watch Parties Near You · ${city}` : 'Upcoming Watch Parties'}
             actionText="Map View 🗺️"
           />
           {watchParties.length > 0 ? (

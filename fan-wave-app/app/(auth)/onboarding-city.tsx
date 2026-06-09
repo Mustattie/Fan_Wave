@@ -13,22 +13,23 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MapPin, Search, Check } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Location from 'expo-location';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 
 const POPULAR_CITIES = [
-  'Chicago',
-  'New York',
-  'Los Angeles',
-  'Houston',
-  'Phoenix',
-  'Dallas',
-  'Miami',
   'Atlanta',
-  'Denver',
-  'Seattle',
   'Boston',
+  'Chicago',
+  'Dallas',
+  'Denver',
+  'Houston',
+  'Los Angeles',
+  'Miami',
+  'New York',
   'Philadelphia',
+  'Phoenix',
+  'Seattle',
 ];
 
 interface NominatimResult {
@@ -51,44 +52,124 @@ export default function OnboardingCityScreen() {
   const [searchResults, setSearchResults] = useState<string[]>([]);
   const [detecting, setDetecting] = useState(false);
   const [detected, setDetected] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleDetectLocation = useCallback(() => {
+  const reverseGeocodeViaNominatim = useCallback(
+    async (latitude: number, longitude: number): Promise<string | null> => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
+          { headers: { 'User-Agent': 'FanSphere/1.0' } }
+        );
+        const data = await res.json();
+        const city =
+          data.address?.city || data.address?.town || data.address?.village;
+        const state = data.address?.state || '';
+        if (!city) return null;
+        return state ? `${city}, ${state}` : city;
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  const handleDetectLocation = useCallback(async () => {
     setDetecting(true);
     setDetected(false);
-    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
+    setLocationError(null);
+
+    if (Platform.OS !== 'web') {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setLocationError(
+            'Location permission denied. Search for your city below.'
+          );
+          setDetecting(false);
+          return;
+        }
+
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        const { latitude, longitude } = position.coords;
+
+        // Primary: on-device reverse geocode (offline, no rate limits).
+        let resolvedCity: string | null = null;
+        try {
+          const results = await Location.reverseGeocodeAsync({
+            latitude,
+            longitude,
+          });
+          if (results && results.length > 0) {
+            const first = results[0];
+            const cityName = first.city || first.subregion || first.district;
+            const region = first.region || '';
+            if (cityName) {
+              resolvedCity = region ? `${cityName}, ${region}` : cityName;
+            }
+          }
+        } catch {
+          // Fall through to Nominatim fallback.
+        }
+
+        // Fallback: HTTP reverse geocode via Nominatim.
+        if (!resolvedCity) {
+          resolvedCity = await reverseGeocodeViaNominatim(latitude, longitude);
+        }
+
+        if (resolvedCity) {
+          setSelectedCity(resolvedCity);
+          setDetected(true);
+        } else {
+          setLocationError(
+            "Couldn't determine your city. Search for your city below."
+          );
+        }
+      } catch {
+        setLocationError(
+          "Couldn't determine your city. Search for your city below."
+        );
+      } finally {
+        setDetecting(false);
+      }
+      return;
+    }
+
+    // Web path
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
-          try {
-            const res = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`,
-              { headers: { 'User-Agent': 'FanSphere/1.0' } }
+          const resolvedCity = await reverseGeocodeViaNominatim(
+            pos.coords.latitude,
+            pos.coords.longitude
+          );
+          if (resolvedCity) {
+            setSelectedCity(resolvedCity);
+            setDetected(true);
+          } else {
+            setLocationError(
+              "Couldn't determine your city. Search for your city below."
             );
-            const data = await res.json();
-            const city = data.address?.city || data.address?.town || data.address?.village || 'Unknown';
-            const state = data.address?.state || '';
-            setSelectedCity(`${city}, ${state}`);
-          } catch {
-            setSelectedCity('Chicago, IL');
           }
-          setDetected(true);
           setDetecting(false);
         },
         () => {
-          setSelectedCity('Chicago, IL');
-          setDetected(true);
+          setLocationError(
+            'Location permission denied. Search for your city below.'
+          );
           setDetecting(false);
         }
       );
     } else {
-      // Fallback for native or denied permissions
-      setTimeout(() => {
-        setSelectedCity('Chicago, IL');
-        setDetected(true);
-        setDetecting(false);
-      }, 1000);
+      setLocationError(
+        'Location not available. Search for your city below.'
+      );
+      setDetecting(false);
     }
-  }, []);
+  }, [reverseGeocodeViaNominatim]);
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
@@ -169,7 +250,10 @@ export default function OnboardingCityScreen() {
       // Network/Supabase failure — AsyncStorage cache still unblocks this session
     }
 
-    router.replace('/(tabs)');
+    // expo-router's typed-routes generator hasn't picked up the new file
+    // yet; once `expo start` regenerates .expo/types/router.d.ts the cast
+    // becomes a no-op. Without it, tsc rejects the literal.
+    router.replace('/(auth)/onboarding-suggested-groups' as any);
   }, [selectedCity, selectedSports, router]);
 
   return (
@@ -211,6 +295,10 @@ export default function OnboardingCityScreen() {
         </View>
         {detected && <Check size={18} color={Colors.dark.success} />}
       </TouchableOpacity>
+
+      {locationError && (
+        <Text style={styles.locationError}>{locationError}</Text>
+      )}
 
       {/* Search input */}
       <View style={styles.searchWrap}>
@@ -359,6 +447,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.dark.success,
     marginTop: 2,
+  },
+  locationError: {
+    fontSize: 13,
+    color: Colors.dark.textSecondary,
+    marginTop: -12,
+    marginBottom: 16,
+    paddingHorizontal: 4,
   },
 
   // Search

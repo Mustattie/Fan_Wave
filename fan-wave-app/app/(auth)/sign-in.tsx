@@ -35,12 +35,49 @@ export default function SignInScreen() {
     }
 
     setLoading(true);
+    const trimmedEmail = email.trim();
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
         password,
       });
       if (error) throw error;
+
+      // Gate access until email is confirmed. If Confirm Email is on,
+      // an unconfirmed user shouldn't have a usable session.
+      if (data.session && !data.session.user.email_confirmed_at) {
+        await supabase.auth.signOut();
+        Alert.alert(
+          'Email not verified',
+          'Please verify your email first. Check your inbox for the confirmation link.',
+          [
+            {
+              text: 'Resend',
+              onPress: async () => {
+                try {
+                  const { error: resendError } = await supabase.auth.resend({
+                    type: 'signup',
+                    email: trimmedEmail,
+                    options: {
+                      emailRedirectTo: 'fansphere://auth-callback',
+                    },
+                  });
+                  if (resendError) throw resendError;
+                  Alert.alert(
+                    'Email sent',
+                    `We sent a new confirmation link to ${trimmedEmail}.`,
+                  );
+                } catch (resendErr) {
+                  const info = parseAuthError(resendErr);
+                  Alert.alert(info.title, info.message);
+                }
+              },
+            },
+            { text: 'OK', style: 'cancel' },
+          ],
+        );
+        return;
+      }
     } catch (e) {
       const info = parseAuthError(e);
       Alert.alert(info.title, info.message);
