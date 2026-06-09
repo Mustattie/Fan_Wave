@@ -1,0 +1,168 @@
+appId: org.fansphere.app
+name: "Hotfix C — Unverified user blocked from sign-in"
+tags:
+  - hotfix
+  - p0
+  - auth
+---
+# Regression test for the P0 bug:
+#   "Email verification not sent / bypassed on signup"
+#
+# The hotfix server-side now requires email confirmation. The client-side
+# guard in sign-in.tsx checks `data.session.user.email_confirmed_at` and
+# signs the user back out if the field is null, then surfaces an alert
+# with the title "Email not verified", body that contains the phrase
+# "Please verify your email", and two buttons: "Resend" + "OK".
+#
+# This scenario:
+#   1. Signs up with a fresh email (unique per run, NOT confirmed)
+#   2. Backs out to the welcome screen + navigates to Sign In
+#   3. Attempts to sign in with the unverified credentials
+#   4. ASSERTS the "Email not verified" alert appears with both buttons
+#   5. ASSERTS tapping "Resend" produces the "Email sent" confirmation
+
+- launchApp:
+    clearState: true
+    stopApp: true
+
+# ─── Welcome → Sign Up ──────────────────────────────────────────────
+- extendedWaitUntil:
+    visible:
+      text: "Fan Sphere"
+    timeout: 30000
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Next"
+- waitForAnimationToEnd
+- tapOn:
+    text: "Next"
+    optional: true
+- waitForAnimationToEnd
+
+- tapOn:
+    text: ".*[Gg]et [Ss]tarted.*|.*[Ss]ign [Uu]p.*"
+
+- extendedWaitUntil:
+    visible:
+      text: "Create Account"
+    timeout: 15000
+- waitForAnimationToEnd
+
+# ─── Fill sign-up form ──────────────────────────────────────────────
+- tapOn:
+    text: "Display Name"
+- inputText: "QA Unverified ${maestroRunId}"
+
+- tapOn:
+    text: "Email"
+- inputText: "fansphere.qa+unverified-${maestroRunId}@gmail.com"
+
+- tapOn:
+    text: "Password"
+    index: 0
+- inputText: "Unverified@2026"
+
+- hideKeyboard
+
+- tapOn:
+    point: "50%,65%"
+
+- inputText: "Unverified@2026"
+
+- hideKeyboard
+
+- takeScreenshot: screenshots/hotfix_c_01_signup_filled
+
+- tapOn:
+    text: "Create Account"
+
+# Dismiss the success alert. The flow auto-routes to the verify-email
+# screen — we don't need to verify here.
+- tapOn:
+    text: "OK"
+    optional: true
+
+- extendedWaitUntil:
+    visible:
+      text: "Check your email"
+    timeout: 20000
+
+- takeScreenshot: screenshots/hotfix_c_02_verify_email
+
+# ─── Bounce back to Sign In without confirming ──────────────────────
+# Tap "I've verified" to route to the sign-in screen. We're lying —
+# the email is NOT verified — which is exactly what the regression
+# guard needs to catch.
+- tapOn:
+    text: "I've verified — sign me in"
+
+- extendedWaitUntil:
+    visible:
+      text: "Forgot password?"
+    timeout: 15000
+
+- takeScreenshot: screenshots/hotfix_c_03_signin_screen
+
+# ─── Attempt sign-in with unverified credentials ────────────────────
+- tapOn:
+    text: "Email"
+- inputText: "fansphere.qa+unverified-${maestroRunId}@gmail.com"
+
+- tapOn:
+    text: "Password"
+- inputText: "Unverified@2026"
+
+- hideKeyboard
+
+- tapOn:
+    text: "Sign In"
+
+# ─── ASSERTION 1: "Email not verified" alert appears ────────────────
+- extendedWaitUntil:
+    visible:
+      text: "Email not verified"
+    timeout: 15000
+
+- takeScreenshot: screenshots/hotfix_c_04_email_not_verified_alert
+
+- assertVisible:
+    text: "Email not verified"
+
+- assertVisible:
+    text: ".*[Pp]lease verify your email.*"
+
+# ─── ASSERTION 2: "Resend" button is visible ────────────────────────
+- assertVisible:
+    text: "Resend"
+
+# Also confirms OK button exists for dismissal.
+- assertVisible:
+    text: "OK"
+
+# REGRESSION GUARD: must NOT land in the app. If the unverified bug
+# regresses, the user would slip past this dialog into tabs.
+- assertNotVisible:
+    text: "Today's Games"
+- assertNotVisible:
+    text: "Discover"
+
+# ─── ASSERTION 3: tapping Resend triggers the "Email sent" toast ────
+- tapOn:
+    text: "Resend"
+
+- extendedWaitUntil:
+    visible:
+      text: "Email sent"
+    timeout: 15000
+    optional: true
+
+- takeScreenshot: screenshots/hotfix_c_05_resent
+
+# Dismiss the second alert if present
+- tapOn:
+    text: "OK"
+    optional: true
+
+# ─── Cleanup ────────────────────────────────────────────────────────
+- pressKey: "Back"

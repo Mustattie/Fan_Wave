@@ -1,0 +1,259 @@
+appId: org.fansphere.app
+name: "Hotfix A — Signup gates on verify-email + paywall"
+tags:
+  - hotfix
+  - p0
+  - auth
+  - paywall
+---
+# Regression test for two production P0 bugs:
+#   1. "Email verification not sent / bypassed on signup" — sign-up was
+#      letting users straight into the app without going through the
+#      verify-email screen.
+#   2. "Paywall not initiated on signup" — after onboarding (sports/teams/
+#      city), the user was landing on the (tabs) home instead of the
+#      Choose Plan paywall screen.
+#
+# This scenario walks the new-user flow and pins down the exact transitions
+# the hotfix MUST preserve:
+#   Welcome → Sign Up → Create Account → Verify Email (NOT tabs)
+#   → I've verified — sign me in → Sign In → Onboarding (sports/teams/city)
+#   → Choose Plan (NOT tabs) → WC Pass Offer
+#
+# Real email verification cannot be automated from inside Maestro. The
+# scenario pauses after the verify-email assertion and uses an optional
+# Resend-Sign-In branch. For local runs where you've pre-confirmed the
+# email via Supabase Studio (the "REVISED: Enable Supabase Confirm Email +
+# pre-confirm reviewer" task), the rest of the flow continues normally.
+
+- launchApp:
+    clearState: true
+    stopApp: true
+
+# ─── Welcome carousel → Sign Up ─────────────────────────────────────
+- extendedWaitUntil:
+    visible:
+      text: "Fan Sphere"
+    timeout: 30000
+- waitForAnimationToEnd
+
+- takeScreenshot: screenshots/hotfix_a_01_welcome
+
+- tapOn:
+    text: "Next"
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Next"
+    optional: true
+- waitForAnimationToEnd
+
+- assertVisible:
+    text: ".*[Gg]et [Ss]tarted.*|.*[Ss]ign [Uu]p.*|.*[Cc]reate [Aa]ccount.*"
+
+- tapOn:
+    text: ".*[Gg]et [Ss]tarted.*|.*[Ss]ign [Uu]p.*"
+
+- extendedWaitUntil:
+    visible:
+      text: "Create Account"
+    timeout: 15000
+- waitForAnimationToEnd
+
+- takeScreenshot: screenshots/hotfix_a_02_signup_form
+
+# ─── Sign-up form ───────────────────────────────────────────────────
+# Unique email per run so we can re-run without colliding with previous
+# attempts. Maestro doesn't expose a real timestamp, but ${maestroRunId}
+# is unique per scenario invocation.
+- tapOn:
+    text: "Display Name"
+- inputText: "QA Hotfix Tester"
+
+- tapOn:
+    text: "Email"
+- inputText: "fansphere.qa+hotfix-${maestroRunId}@gmail.com"
+
+- tapOn:
+    text: "Password"
+    index: 0
+- inputText: "HotfixQA@2026"
+
+- hideKeyboard
+
+- tapOn:
+    point: "50%,65%"
+
+- inputText: "HotfixQA@2026"
+
+- hideKeyboard
+
+- takeScreenshot: screenshots/hotfix_a_03_signup_filled
+
+- tapOn:
+    text: "Create Account"
+
+# ─── ASSERTION 1: lands on verify-email screen, NOT tabs ────────────
+# The sign-up handler fires Alert.alert("Verify your email", ...) then
+# router.replace('/(auth)/verify-email'). Dismiss the alert first.
+- tapOn:
+    text: "OK"
+    optional: true
+
+- extendedWaitUntil:
+    visible:
+      text: "Check your email"
+    timeout: 20000
+
+- takeScreenshot: screenshots/hotfix_a_04_verify_email
+
+- assertVisible:
+    text: "Check your email"
+
+# Confirms the email was sent (subtitle mentions a confirmation link).
+- assertVisible:
+    text: ".*confirmation link.*"
+
+- assertVisible:
+    text: "I've verified — sign me in"
+
+- assertVisible:
+    text: "Resend"
+
+# REGRESSION GUARD: we MUST NOT see any tab bar text here. If the bug
+# regresses and the user lands in (tabs) instead of verify-email, one
+# of Today's Games / Home / Discover / Clips would be visible.
+- assertNotVisible:
+    text: "Today's Games"
+- assertNotVisible:
+    text: "Discover"
+
+# ─── ASSERTION 2: tapping "I've verified" routes to Sign In ─────────
+- tapOn:
+    text: "I've verified — sign me in"
+
+- extendedWaitUntil:
+    visible:
+      text: ".*Forgot password.*|.*Sign In.*"
+    timeout: 15000
+- waitForAnimationToEnd
+
+- takeScreenshot: screenshots/hotfix_a_05_signin
+
+- assertVisible:
+    text: "Forgot password?"
+
+# ─── Manual verification gate ───────────────────────────────────────
+# Real email-link confirmation cannot run inside Maestro. For local QA
+# the runner should:
+#   (a) confirm the user via Supabase Studio → Authentication → Users,
+#       OR
+#   (b) tap the verification link in the QA Gmail inbox.
+# Once confirmed, the rest of the flow continues. If the user is NOT
+# yet confirmed, sign-in below will surface the "Email not verified"
+# alert and this scenario will halt — which is itself a valid pass for
+# the verify-email gate.
+
+- tapOn:
+    text: "Email"
+- inputText: "fansphere.qa+hotfix-${maestroRunId}@gmail.com"
+
+- tapOn:
+    text: "Password"
+- inputText: "HotfixQA@2026"
+
+- hideKeyboard
+
+- tapOn:
+    text: "Sign In"
+
+# If the email isn't confirmed yet, scenario C covers that branch. Here
+# we proceed under the assumption it IS confirmed (or auto-confirmed).
+- tapOn:
+    text: "OK"
+    optional: true
+
+# ─── Onboarding: sports → teams → city ──────────────────────────────
+- extendedWaitUntil:
+    visible:
+      text: ".*[Pp]ick.*[Ss]port.*"
+    timeout: 25000
+
+- tapOn:
+    text: "Soccer"
+- tapOn:
+    text: "Basketball"
+
+- tapOn:
+    text: "Continue"
+
+- extendedWaitUntil:
+    visible:
+      text: ".*[Tt]eam.*"
+    timeout: 15000
+
+- tapOn:
+    text: "USA"
+    index: 0
+    optional: true
+- tapOn:
+    text: "Lakers"
+    optional: true
+
+- tapOn:
+    text: "Continue"
+
+- extendedWaitUntil:
+    visible:
+      text: ".*[Cc]ity.*"
+    timeout: 15000
+
+- tapOn:
+    text: "Dallas"
+
+- tapOn:
+    text: "Let's Go!"
+
+# ─── ASSERTION 3: lands on Choose Plan, NOT tabs ────────────────────
+# This is the regression guard for "Paywall not initiated on signup".
+# The Choose Plan screen has the hero "Start your 7-day free trial"
+# and shows BOTH the Annual + Monthly cards. Tabs do not.
+- extendedWaitUntil:
+    visible:
+      text: "Start your 7-day free trial"
+    timeout: 20000
+
+- takeScreenshot: screenshots/hotfix_a_06_choose_plan
+
+- assertVisible:
+    text: "Start your 7-day free trial"
+
+# Spec wording from the bug ticket was "Premium Monthly $9.99",
+# "Premium Annual", "World Cup 2026 Pass". The actual on-screen
+# strings are "Monthly" / "$9.99" / "Annual" / "$107.88" on Choose
+# Plan, and "World Cup 2026 Pass" is on the next screen (WC Pass
+# Offer). We assert what's actually rendered.
+- assertVisible:
+    text: "Monthly"
+- assertVisible:
+    text: "$9.99"
+- assertVisible:
+    text: "Annual"
+- assertVisible:
+    text: "$107.88"
+
+# REGRESSION GUARD: must NOT be on (tabs) home.
+- assertNotVisible:
+    text: "Today's Games"
+- assertNotVisible:
+    text: "World Cup"
+
+# ─── Skip the actual purchase, advance to WC Pass Offer ─────────────
+# In the real flow, completing a purchase routes to wc-pass-offer.
+# For the regression test we don't want to charge anything, so we
+# only confirm Choose Plan rendered. Backing out lands on the system
+# home — that's expected.
+
+- pressKey: "Back"
+
+- takeScreenshot: screenshots/hotfix_a_07_done
