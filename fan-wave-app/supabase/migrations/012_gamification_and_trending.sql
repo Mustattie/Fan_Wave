@@ -322,7 +322,7 @@ SELECT
     cr.id,
     cr.name,
     cr.description,
-    cr.icon,
+    cr.avatar_url AS icon,
     cr.sport_id,
     cr.city,
     cr.tags,

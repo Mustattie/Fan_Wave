@@ -10,7 +10,8 @@
 -- so the view is exposed via the REST API.
 -- ============================================================================
 
-CREATE OR REPLACE VIEW watch_party_details
+DROP VIEW IF EXISTS watch_party_details;
+CREATE VIEW watch_party_details
 WITH (security_invoker = true) AS
 SELECT
     wp.*,
