@@ -45,3 +45,7 @@ yarn-error.*
 # Maestro per-run debug output (logs + commands JSON). Committed scenario
 # screenshots, if any, live elsewhere; this directory is recreated each run.
 qa/maestro/output/
+
+# Play Store service account key (used by eas submit). Sensitive credentials —
+# never commit.
+play-store-key.json
