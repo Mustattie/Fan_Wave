@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Linking,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, X, Star } from 'lucide-react-native';
@@ -54,6 +55,10 @@ export function WCPassPaywall({ visible, onClose, onSuccess }: Props) {
     } else {
       reportError(result.error, { source: 'WCPassPaywall:purchase' });
       setState('idle');
+      Alert.alert(
+        'Purchase could not start',
+        "We couldn't open the Google Play purchase sheet. Please try again, or contact support@thabtech.com if it keeps happening.",
+      );
     }
   };
 

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Linking,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, X } from 'lucide-react-native';
@@ -66,6 +67,10 @@ export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'mon
     } else {
       reportError(result.error, { source: 'PremiumPaywall:purchase', plan });
       setState('idle');
+      Alert.alert(
+        'Purchase could not start',
+        "We couldn't open the Google Play purchase sheet. Please try again, or contact support@thabtech.com if it keeps happening.",
+      );
     }
   };
 

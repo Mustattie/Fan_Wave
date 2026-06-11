@@ -208,17 +208,64 @@ export type PurchaseResult =
   | { kind: 'cancelled' }
   | { kind: 'error'; error: unknown };
 
-const PREMIUM_PRODUCT_IDS: Record<'monthly' | 'annual', string> = {
-  monthly: 'premium_monthly_999',
-  annual: 'premium_annual_10788',
-};
-const WC_PASS_PRODUCT_ID = 'wc_pass_2026';
+// Find the RC package matching a plan from the current offering. Tries
+// multiple identifier strategies so the lookup is resilient to dashboard
+// config drift: RC default IDs ($rc_monthly, $rc_annual, $rc_lifetime),
+// custom IDs we use (monthly, annual, wc_pass), or product-id match. The
+// product-id match is what makes Android work — Play subscription product
+// IDs have a `:basePlanId` suffix (e.g. `premium_monthly_999:monthly`)
+// that the bare-string purchaseProduct() lookup did not handle, so the
+// pre-fix code silently rejected the purchase on every Android device.
+async function findPackageForPlan(
+  plan: 'monthly' | 'annual' | 'wc_pass',
+): Promise<unknown | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const Purchases = require('react-native-purchases').default;
+    const offerings = await Purchases.getOfferings();
+    const current = offerings?.current;
+    const packages: any[] = current?.availablePackages ?? [];
+    if (packages.length === 0) return null;
+
+    const defaultRcId =
+      plan === 'monthly' ? '$rc_monthly'
+      : plan === 'annual' ? '$rc_annual'
+      : '$rc_lifetime';
+    const customRcId = plan === 'wc_pass' ? 'wc_pass' : plan;
+    const productId =
+      plan === 'monthly' ? 'premium_monthly_999'
+      : plan === 'annual' ? 'premium_annual_10788'
+      : 'wc_pass_2026';
+
+    return (
+      packages.find((p) => p.identifier === defaultRcId) ??
+      packages.find((p) => p.identifier === customRcId) ??
+      packages.find((p) => {
+        const pid: string = p.product?.identifier ?? '';
+        return pid === productId || pid.startsWith(productId + ':');
+      }) ??
+      null
+    );
+  } catch (e) {
+    if (__DEV__) console.warn('[entitlements] findPackageForPlan failed:', e);
+    return null;
+  }
+}
 
 export async function purchasePremium(plan: 'monthly' | 'annual'): Promise<PurchaseResult> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const Purchases = require('react-native-purchases').default;
-    const result = await Purchases.purchaseProduct(PREMIUM_PRODUCT_IDS[plan]);
+    const pkg = await findPackageForPlan(plan);
+    if (!pkg) {
+      return {
+        kind: 'error',
+        error: new Error(
+          `No matching ${plan} package in current RevenueCat offering`,
+        ),
+      };
+    }
+    const result = await Purchases.purchasePackage(pkg);
     if (result?.customerInfo?.entitlements?.active?.premium) {
       return { kind: 'success' };
     }
@@ -235,7 +282,16 @@ export async function purchaseWCPass(): Promise<PurchaseResult> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const Purchases = require('react-native-purchases').default;
-    const result = await Purchases.purchaseProduct(WC_PASS_PRODUCT_ID);
+    const pkg = await findPackageForPlan('wc_pass');
+    if (!pkg) {
+      return {
+        kind: 'error',
+        error: new Error(
+          'No matching WC Pass package in current RevenueCat offering',
+        ),
+      };
+    }
+    const result = await Purchases.purchasePackage(pkg);
     if (result?.customerInfo?.entitlements?.active?.wc_pass) {
       return { kind: 'success' };
     }
