@@ -9,7 +9,11 @@ import {
   Linking,
   ScrollView,
   Alert,
+  Platform,
 } from 'react-native';
+
+// See note in PremiumPaywall.tsx — Apple Review 2.3.10 rejection.
+const STORE_NAME = Platform.OS === 'ios' ? 'App Store' : 'Google Play';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, X, Star } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
@@ -19,10 +23,10 @@ import { reportError } from '@/lib/errorReporting';
 type State = 'idle' | 'purchasing' | 'success';
 
 const FEATURES = [
-  'Join World Cup fan groups',
-  'RSVP + host World Cup watch parties',
+  'Join Soccer Cup fan groups',
+  'RSVP + host Soccer Cup watch parties',
   'Follow national teams',
-  'Post moments + clips on WC matches',
+  'Post moments + clips on tournament matches',
   'Valid June 1 – July 31, 2026',
 ];
 
@@ -57,7 +61,7 @@ export function WCPassPaywall({ visible, onClose, onSuccess }: Props) {
       setState('idle');
       Alert.alert(
         'Purchase could not start',
-        "We couldn't open the Google Play purchase sheet. Please try again, or contact support@thabtech.com if it keeps happening.",
+        `We couldn't open the ${STORE_NAME} purchase sheet. Please try again, or contact support@thabtech.com if it keeps happening.`,
       );
     }
   };
@@ -94,7 +98,7 @@ export function WCPassPaywall({ visible, onClose, onSuccess }: Props) {
           <View style={styles.header}>
             <View style={styles.titleRow}>
               <Star size={18} color={Colors.dark.accentGreen} fill={Colors.dark.accentGreen} />
-              <Text style={styles.title}>World Cup 2026 Pass</Text>
+              <Text style={styles.title}>Soccer Cup 2026 Pass</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <X size={22} color={Colors.dark.textMuted} />
@@ -118,7 +122,7 @@ export function WCPassPaywall({ visible, onClose, onSuccess }: Props) {
 
             <Text style={styles.disclosureCopy}>
               One-time purchase of $19.99. Access is valid through July 31, 2026 (with a one-week buffer
-              past the Final). Not auto-renewing. Refunds handled by your App Store / Google Play account.
+              past the Final). Not auto-renewing. Refunds handled by your {STORE_NAME} account.
             </Text>
 
             <View style={styles.linkRow}>
@@ -145,7 +149,7 @@ export function WCPassPaywall({ visible, onClose, onSuccess }: Props) {
             ) : state === 'success' ? (
               <Text style={styles.ctaText}>✓ Pass unlocked</Text>
             ) : (
-              <Text style={styles.ctaText}>Buy World Cup Pass</Text>
+              <Text style={styles.ctaText}>Buy Soccer Cup Pass</Text>
             )}
           </TouchableOpacity>
         </View>

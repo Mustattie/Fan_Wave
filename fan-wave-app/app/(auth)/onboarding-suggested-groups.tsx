@@ -30,7 +30,7 @@ interface SuggestedGroup {
 const REASON_LABEL: Record<Reason, string> = {
   team: 'Your team',
   city_sport: 'Near you',
-  wc_country: 'World Cup',
+  wc_country: 'Soccer Cup',
 };
 
 export default function OnboardingSuggestedGroupsScreen() {

@@ -87,7 +87,7 @@ export default function CreateWCGroupScreen() {
       case 'travel':
         return selectedCity ? `Traveling to ${selectedCity} ✈️` : '';
       case 'city':
-        return selectedCity ? `${selectedCity} World Cup Hub 🏙️` : '';
+        return selectedCity ? `${selectedCity} Soccer Cup Hub 🏙️` : '';
       default:
         return '';
     }
@@ -110,7 +110,7 @@ export default function CreateWCGroupScreen() {
     if (!isValid) return;
     setIsCreating(true);
 
-    const tags = ['World Cup'];
+    const tags = ['Soccer Cup'];
     if (selectedCountry) {
       const country = COUNTRIES.find(c => c.code === selectedCountry);
       if (country) tags.push(country.name);
@@ -121,7 +121,7 @@ export default function CreateWCGroupScreen() {
     const groupData = {
       id: `wc-new-${Date.now()}`,
       name: groupName.trim(),
-      description: description.trim() || `World Cup 2026 ${getTemplateTitle()}`,
+      description: description.trim() || `Soccer Cup 2026 ${getTemplateTitle()}`,
       icon: getTemplateIcon(),
       memberCount: 1,
       onlineCount: 1,
@@ -251,7 +251,7 @@ export default function CreateWCGroupScreen() {
                     setSelectedCity(city);
                     if (!groupName) {
                       if (template === 'travel') setGroupName(`Traveling to ${city} ✈️`);
-                      if (template === 'city') setGroupName(`${city} World Cup Hub 🏙️`);
+                      if (template === 'city') setGroupName(`${city} Soccer Cup Hub 🏙️`);
                     }
                   }}
                 >

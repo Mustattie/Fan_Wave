@@ -443,7 +443,7 @@ export function WCSchedule() {
   const renderCountdown = () => (
     <View style={styles.countdownContainer}>
       <Text style={styles.countdownEmoji}>{'\u26BD'}</Text>
-      <Text style={styles.countdownTitle}>World Cup 2026</Text>
+      <Text style={styles.countdownTitle}>Soccer Cup 2026</Text>
       <View style={styles.countdownBadge}>
         <Text style={styles.countdownNumber}>{daysUntil}</Text>
         <Text style={styles.countdownLabel}>days to go</Text>

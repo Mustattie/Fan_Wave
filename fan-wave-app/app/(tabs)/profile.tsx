@@ -26,6 +26,7 @@ import {
   Shield,
   ScrollText,
   Slash,
+  Trash2,
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
@@ -164,6 +165,8 @@ export default function ProfileScreen() {
       router.push('/blocked-users' as any);
     } else if (label === 'Sign Out') {
       handleSignOut();
+    } else if (label === 'Delete Account') {
+      router.push('/delete-account' as any);
     }
   };
 
@@ -196,6 +199,7 @@ export default function ProfileScreen() {
     { icon: Shield, label: 'Privacy Policy', color: Colors.dark.text },
     { icon: ScrollText, label: 'Terms of Service', color: Colors.dark.text },
     { icon: LogOut, label: 'Sign Out', color: Colors.dark.error },
+    { icon: Trash2, label: 'Delete Account', color: Colors.dark.error },
   ];
 
   if (loading) {

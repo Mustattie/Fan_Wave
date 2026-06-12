@@ -287,7 +287,7 @@ export async function purchaseWCPass(): Promise<PurchaseResult> {
       return {
         kind: 'error',
         error: new Error(
-          'No matching WC Pass package in current RevenueCat offering',
+          'No matching Soccer Cup Pass package in current RevenueCat offering',
         ),
       };
     }

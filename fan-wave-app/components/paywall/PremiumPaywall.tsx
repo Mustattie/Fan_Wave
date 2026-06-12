@@ -9,7 +9,14 @@ import {
   Linking,
   ScrollView,
   Alert,
+  Platform,
 } from 'react-native';
+
+// Apple Review (build 8 / 2.3.10) flagged "Google Play" appearing in iOS
+// copy as a "third-party platform" reference. Centralise the per-platform
+// store label so the disclosures and error messages never leak the other
+// platform's name on iOS.
+const STORE_NAME = Platform.OS === 'ios' ? 'App Store' : 'Google Play';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, X } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
@@ -69,7 +76,7 @@ export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'mon
       setState('idle');
       Alert.alert(
         'Purchase could not start',
-        "We couldn't open the Google Play purchase sheet. Please try again, or contact support@thabtech.com if it keeps happening.",
+        `We couldn't open the ${STORE_NAME} purchase sheet. Please try again, or contact support@thabtech.com if it keeps happening.`,
       );
     }
   };
@@ -149,7 +156,7 @@ export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'mon
             <Text style={styles.disclosureCopy}>
               Start your 7-day free trial. We'll charge {PRICES[plan].display} after the trial ends.
               Subscriptions auto-renew unless cancelled. Manage or cancel anytime in your{' '}
-              App Store or Google Play account settings.
+              {STORE_NAME} account settings.
             </Text>
 
             <View style={styles.linkRow}>

@@ -49,8 +49,8 @@ const FILTER_PILLS = ['All Groups', 'By Country', 'By City', 'Travel Fans'];
 const GROUP_TEMPLATES: GroupTemplate[] = [
   { id: 'tpl-team', icon: '🏴', label: 'Team Fans', description: '[Country] Fans' },
   { id: 'tpl-match', icon: '⚽', label: 'Match Watch', description: '[Team A] vs [Team B] Watch' },
-  { id: 'tpl-travel', icon: '✈️', label: 'Travel Fans', description: 'Traveling to [City] for WC' },
-  { id: 'tpl-city', icon: '🏙️', label: 'City Hub', description: '[City] World Cup Hub' },
+  { id: 'tpl-travel', icon: '✈️', label: 'Travel Fans', description: 'Traveling to [City] for the Cup' },
+  { id: 'tpl-city', icon: '🏙️', label: 'City Hub', description: '[City] Soccer Cup Hub' },
 ];
 
 // ── Component ──────────────────────────────────────────────
@@ -95,12 +95,12 @@ export default function WCFanGroups() {
       if (!error && data) {
         const mapped: WCFanGroupItem[] = data.map((g: any) => ({
           id: g.id,
-          name: g.name || 'WC Group',
+          name: g.name || 'Soccer Cup Group',
           icon: g.icon || '⚽',
           memberCount: g.member_count || 0,
           onlineCount: g.online_count || 0,
           description: g.description || '',
-          tags: g.tags || ['World Cup'],
+          tags: g.tags || ['Soccer Cup'],
           isPublic: g.is_public !== false,
         }));
         // Deduplicate: only include local groups not already in Supabase results
@@ -127,7 +127,7 @@ export default function WCFanGroups() {
 
     if (activeFilter === 'All Groups') return matchesSearch;
     if (activeFilter === 'By Country') {
-      return matchesSearch && g.tags.some((t) => !['World Cup', 'Travel', 'Hub'].includes(t));
+      return matchesSearch && g.tags.some((t) => !['Soccer Cup', 'Travel', 'Hub'].includes(t));
     }
     if (activeFilter === 'By City') {
       return matchesSearch && g.tags.some((t) => ['New York', 'Dallas', 'Los Angeles', 'Miami', 'Chicago', 'Houston', 'Toronto', 'Mexico City'].includes(t));
@@ -299,7 +299,7 @@ export default function WCFanGroups() {
         <Search size={18} color={Colors.dark.textSecondary} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search WC fan groups..."
+          placeholder="Search Soccer Cup fan groups..."
           placeholderTextColor={Colors.dark.textSecondary}
           value={searchQuery}
           onChangeText={setSearchQuery}

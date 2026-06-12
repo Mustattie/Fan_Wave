@@ -8,10 +8,10 @@ import { Colors } from '@/constants/Colors';
 import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
 
 const PERKS = [
-  'Join World Cup fan groups',
-  'RSVP + host WC watch parties',
+  'Join Soccer Cup fan groups',
+  'RSVP + host Soccer Cup watch parties',
   'Follow your national teams',
-  'Post moments + clips on WC matches',
+  'Post moments + clips on Soccer Cup matches',
 ];
 
 export default function WCPassOfferScreen() {
@@ -33,14 +33,14 @@ export default function WCPassOfferScreen() {
         style={styles.heroBanner}
       >
         <Star size={48} color="#fff" fill="#fff" />
-        <Text style={styles.heroTitle}>World Cup 2026</Text>
+        <Text style={styles.heroTitle}>Soccer Cup 2026</Text>
         <Text style={styles.heroSubtitle}>USA · Canada · Mexico · June 11 – July 19</Text>
       </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionTitle}>Get the World Cup Pass</Text>
+        <Text style={styles.sectionTitle}>Get the Soccer Cup Pass</Text>
         <Text style={styles.sectionBody}>
-          Unlock the WC tab for the entire tournament. One-time purchase, no auto-renewal.
+          Unlock the Soccer Cup tab for the entire tournament. One-time purchase, no auto-renewal.
         </Text>
 
         <View style={styles.priceCard}>
@@ -72,7 +72,7 @@ export default function WCPassOfferScreen() {
           onPress={() => setShowPaywall(true)}
           activeOpacity={0.8}
         >
-          <Text style={styles.buyText}>Add WC Pass</Text>
+          <Text style={styles.buyText}>Add Soccer Cup Pass</Text>
         </TouchableOpacity>
       </View>
 

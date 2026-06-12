@@ -58,7 +58,7 @@ export default function WorldCupScreen() {
       >
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.headerTitle}>World Cup 2026</Text>
+            <Text style={styles.headerTitle}>Soccer Cup 2026</Text>
             <Text style={styles.headerSubtitle}>
               USA &middot; Canada &middot; Mexico &middot; June 11 - July 19
             </Text>

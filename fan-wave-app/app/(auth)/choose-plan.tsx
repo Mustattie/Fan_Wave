@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Check } from 'lucide-react-native';
@@ -7,6 +7,9 @@ import { Colors } from '@/constants/Colors';
 import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
 
 type Plan = 'monthly' | 'annual';
+
+// Apple Review 2.3.10 — never mention "Google Play" in iOS-rendered copy.
+const STORE_NAME = Platform.OS === 'ios' ? 'App Store' : 'Google Play';
 
 const PERKS = [
   'Post unlimited clips + moments',
@@ -36,7 +39,7 @@ export default function ChoosePlanScreen() {
           <Text style={styles.eyebrow}>Welcome to Fan Sphere</Text>
           <Text style={styles.title}>Start your 7-day free trial</Text>
           <Text style={styles.subtitle}>
-            Try everything for a week. Cancel any time in your App Store / Google Play settings.
+            Try everything for a week. Cancel any time in your {STORE_NAME} settings.
           </Text>
         </View>
 
@@ -77,7 +80,7 @@ export default function ChoosePlanScreen() {
         <Text style={styles.legalCopy}>
           Tap a plan to start your 7-day free trial. We'll charge the listed amount after the trial ends.
           Subscriptions auto-renew unless cancelled at least 24h before the period ends. Manage anywhere
-          in your App Store / Google Play account settings.
+          in your {STORE_NAME} account settings.
         </Text>
       </ScrollView>
 

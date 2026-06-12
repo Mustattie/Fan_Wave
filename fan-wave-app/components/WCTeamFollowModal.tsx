@@ -242,7 +242,7 @@ export function WCTeamFollowModal({ visible, onClose, onUpdate }: WCTeamFollowMo
           <View style={styles.handleBar} />
 
           {/* Title */}
-          <Text style={styles.title}>Follow World Cup Teams</Text>
+          <Text style={styles.title}>Follow Soccer Cup Teams</Text>
 
           {/* Search bar */}
           <View style={styles.searchContainer}>

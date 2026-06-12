@@ -62,7 +62,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="world-cup"
         options={{
-          title: 'World Cup',
+          title: 'Soccer Cup',
           href: worldCupEnabled ? '/world-cup' : null,
           tabBarIcon: ({ size, focused }) => (
             <Trophy

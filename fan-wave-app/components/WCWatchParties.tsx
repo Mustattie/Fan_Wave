@@ -73,7 +73,7 @@ export default function WCWatchParties() {
       const { data, error } = await supabase
         .from('watch_parties')
         .select('*')
-        .ilike('event', '%World Cup%');
+        .ilike('event', '%Soccer Cup%');
 
       if (!error && data) {
         const mapped: WCWatchPartyItem[] = data.map((p: any) => ({
@@ -227,7 +227,7 @@ export default function WCWatchParties() {
     return (
       <View style={styles.emptyContainer}>
         <Text style={styles.emptyIcon}>⚽</Text>
-        <Text style={styles.emptyTitle}>No World Cup watch parties yet</Text>
+        <Text style={styles.emptyTitle}>No Soccer Cup watch parties yet</Text>
         <Text style={styles.emptySubtitle}>Be the first to create one!</Text>
       </View>
     );
@@ -242,7 +242,7 @@ export default function WCWatchParties() {
         <Search size={18} color={Colors.dark.textSecondary} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search WC watch parties..."
+          placeholder="Search Soccer Cup watch parties..."
           placeholderTextColor={Colors.dark.textSecondary}
           value={searchQuery}
           onChangeText={setSearchQuery}

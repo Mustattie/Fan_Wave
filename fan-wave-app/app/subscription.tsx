@@ -112,7 +112,7 @@ export default function SubscriptionScreen() {
             ) : (
               <AlertCircle size={20} color={Colors.dark.textMuted} />
             )}
-            <Text style={styles.cardTitle}>World Cup 2026 Pass</Text>
+            <Text style={styles.cardTitle}>Soccer Cup 2026 Pass</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Status</Text>
@@ -132,7 +132,7 @@ export default function SubscriptionScreen() {
               style={[styles.primaryBtn, { backgroundColor: Colors.dark.accentGreen }]}
               onPress={() => setShowWCPaywall(true)}
             >
-              <Text style={styles.primaryBtnText}>Buy WC Pass — $19.99</Text>
+              <Text style={styles.primaryBtnText}>Buy Soccer Cup Pass — $19.99</Text>
             </TouchableOpacity>
           )}
         </View>
