@@ -75,24 +75,42 @@ export function calculateDistance(
 
 // ---------------------------------------------------------------------------
 // searchVenues – Overpass API
+//
+// Live v5 P0: previously took just (lat, lon, radius=2000) and ignored the
+// user's typed query — the caller's client-side `name.includes(q)` filter
+// hit nothing in the 2-3km bubble, so the fallback `results.slice(0,15)`
+// surfaced random "venues" from the wrong city (or zero on cellular).
+//
+// New behaviour:
+//   • query is passed THROUGH to Overpass as a server-side `name~` regex
+//     filter (case-insensitive), so we only get rows that actually match.
+//   • radius defaults to 30 km — covers a typical metro area, so a user
+//     in Dallas searching for a venue ten miles away gets a hit.
+//   • amenity list expanded to include nightclub and cinema (relevant for
+//     watch parties).
+//   • If query is empty or under 2 chars, fall back to the un-filtered
+//     amenity dump so we still populate the "near you" list on first open.
 // ---------------------------------------------------------------------------
 export async function searchVenues(
   lat: number,
   lon: number,
-  radius: number = 2000
+  query: string = '',
+  radius: number = 30000
 ): Promise<Venue[]> {
-  const cacheKey = `venues_${lat.toFixed(3)}_${lon.toFixed(3)}_${radius}`;
+  const q = query.trim().replace(/["\\]/g, '');
+  const cacheKey = `venues_${lat.toFixed(3)}_${lon.toFixed(3)}_${radius}_${q.toLowerCase()}`;
   const cached = getCached<Venue[]>(cacheKey);
   if (cached) return cached;
 
   return overpassBreaker.execute(async () => {
-    const query = `
+    const amenityRegex = '^(bar|pub|restaurant|cafe|nightclub|cinema)$';
+    // Server-side name filter when the user has typed enough characters.
+    const nameClause = q.length >= 2 ? `["name"~"${q}",i]` : '';
+
+    const overpassQuery = `
       [out:json][timeout:25];
       (
-        node["amenity"="bar"](around:${radius},${lat},${lon});
-        node["amenity"="pub"](around:${radius},${lat},${lon});
-        node["amenity"="restaurant"](around:${radius},${lat},${lon});
-        node["amenity"="cafe"](around:${radius},${lat},${lon});
+        node["amenity"~"${amenityRegex}"]${nameClause}(around:${radius},${lat},${lon});
       );
       out body;
     `;
@@ -100,7 +118,7 @@ export async function searchVenues(
     const response = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `data=${encodeURIComponent(query)}`,
+      body: `data=${encodeURIComponent(overpassQuery)}`,
     });
 
     if (!response.ok) throw new Error('Overpass API error');
@@ -109,13 +127,11 @@ export async function searchVenues(
 
     const venues: Venue[] = (data.elements || []).map((el: any) => {
       const tags = el.tags || {};
-
       const street = tags['addr:street'] || '';
       const houseNumber = tags['addr:housenumber'] || '';
-      const address =
-        street || houseNumber
-          ? `${street} ${houseNumber}`.trim()
-          : 'Address not available';
+      const city = tags['addr:city'] || '';
+      const parts = [houseNumber, street, city].filter(Boolean).join(' ').trim();
+      const address = parts || 'Address not available';
 
       return {
         name: tags.name || 'Unnamed Venue',

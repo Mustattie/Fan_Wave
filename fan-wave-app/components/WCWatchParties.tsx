@@ -70,25 +70,37 @@ export default function WCWatchParties() {
   const fetchParties = async () => {
     setLoading(true);
     try {
+      // Filter by the seeded Soccer Cup event_id (from migration 006).
+      // Previously this used .ilike('event', ...) — but 'event' is not a
+      // column on watch_parties (real cols: event_id, sport_id, title,
+      // venue_name, venue_city, starts_at). The bad filter silently
+      // errored and the tab showed "No Soccer Cup watch parties yet" even
+      // when matching rows existed (Apple build-9 / live Android v5 P0).
+      const SOCCER_CUP_EVENT_ID = 'e0260000-0000-0000-0000-000000002026';
       const { data, error } = await supabase
         .from('watch_parties')
         .select('*')
-        .ilike('event', '%Soccer Cup%');
+        .eq('event_id', SOCCER_CUP_EVENT_ID)
+        .gt('starts_at', new Date().toISOString())
+        .order('starts_at', { ascending: true });
 
       if (!error && data) {
-        const mapped: WCWatchPartyItem[] = data.map((p: any) => ({
-          id: p.id,
-          title: p.title || p.name,
-          venue: p.venue || 'TBD',
-          city: p.city || '',
-          date: p.date || '',
-          time: p.time || '',
-          rsvpCount: p.rsvp_count || 0,
-          capacity: p.capacity || 50,
-          atmosphere: p.atmosphere || 'Chill',
-          attendees: [],
-          matchEvent: p.event,
-        }));
+        const mapped: WCWatchPartyItem[] = data.map((p: any) => {
+          const starts = p.starts_at ? new Date(p.starts_at) : null;
+          return {
+            id: p.id,
+            title: p.title || 'Watch Party',
+            venue: p.venue_name || 'TBD',
+            city: p.venue_city || '',
+            date: starts ? starts.toLocaleDateString() : '',
+            time: starts ? starts.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '',
+            rsvpCount: p.rsvp_count || 0,
+            capacity: p.capacity || 50,
+            atmosphere: p.atmosphere || 'Chill',
+            attendees: [],
+            matchEvent: 'Soccer Cup 2026',
+          };
+        });
         setParties(mapped);
       }
     } catch {
@@ -286,7 +298,7 @@ export default function WCWatchParties() {
       <PaywallGate require="wc_pass">
         <TouchableOpacity
           style={styles.fab}
-          onPress={() => router.push('/create-watch-party' as any)}
+          onPress={() => router.push('/create-watch-party?event=soccer-cup-2026' as any)}
           activeOpacity={0.85}
         >
           <Text style={styles.fabText}>+</Text>

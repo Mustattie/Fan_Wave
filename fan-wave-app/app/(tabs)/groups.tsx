@@ -11,8 +11,10 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Search, Plus, X, Users, UserPlus } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
@@ -38,6 +40,7 @@ const VISIBILITY_OPTIONS = [
 
 export default function GroupsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [joinedIds, setJoinedIds] = useState<Set<string>>(new Set());
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -501,10 +504,17 @@ export default function GroupsScreen() {
         animationType="slide"
         onRequestClose={() => setShowCreateModal(false)}
       >
-        <View style={styles.modalOverlay}>
+        {/* Android Modal does NOT honor the activity's adjustResize, so we
+            need an explicit KeyboardAvoidingView INSIDE the Modal for the
+            sheet to push above the soft keyboard. */}
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <ScrollView
             contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end' }}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
           >
             <View style={styles.modalSheet}>
               <View style={styles.modalHandle} />
@@ -656,7 +666,7 @@ export default function GroupsScreen() {
                 </View>
               )}
 
-              <View style={styles.modalActions}>
+              <View style={[styles.modalActions, { paddingBottom: insets.bottom + 8 }]}>
                 <TouchableOpacity
                   style={styles.cancelButton}
                   onPress={() => setShowCreateModal(false)}
@@ -680,7 +690,7 @@ export default function GroupsScreen() {
               </View>
             </View>
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Contact Picker Modal */}

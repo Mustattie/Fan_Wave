@@ -13,7 +13,7 @@ import {
   FlatList,
   Modal,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Globe, Lock, UserPlus, X, Users, Search } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
@@ -73,9 +73,18 @@ const TIME_PRESETS = computeTimePresets();
 // Component
 // ---------------------------------------------------------------------------
 
+// Soccer Cup 2026 event + Soccer sport IDs (seeded in migration 006). When the
+// Soccer Cup tab pushes to /create-watch-party?event=soccer-cup-2026, we
+// stamp the resulting watch_parties row with these so the filtered list on
+// that tab can actually find it.
+const SOCCER_CUP_EVENT_ID = 'e0260000-0000-0000-0000-000000002026';
+const SOCCER_SPORT_ID = 'a0000000-0000-0000-0000-000000000004';
+
 export default function CreateWatchPartyScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { event: eventParam } = useLocalSearchParams<{ event?: string }>();
+  const isSoccerCupContext = eventParam === 'soccer-cup-2026';
   const [step, setStep] = useState(1);
 
   // Step 1 state
@@ -168,15 +177,12 @@ export default function CreateWatchPartyScreen() {
     if (!venueQuery.trim()) return;
     setVenueLoading(true);
     try {
-      const results = await searchVenues(searchLat, searchLon, 3000);
-      // Filter results by query text
-      const q = venueQuery.toLowerCase();
-      const filtered = results.filter(
-        (v) =>
-          v.name.toLowerCase().includes(q) ||
-          v.address.toLowerCase().includes(q)
-      );
-      setVenueResults(filtered.length > 0 ? filtered : results.slice(0, 15));
+      // Pass the query directly to Overpass — it filters server-side on
+      // name and uses a 30 km radius around the user's city. The previous
+      // "first-15 random venues" fallback was killed because it was the
+      // root cause of the "out-of-state results" bug from the live v5 test.
+      const results = await searchVenues(searchLat, searchLon, venueQuery, 30000);
+      setVenueResults(results);
     } catch {
       setVenueResults([]);
     } finally {
@@ -356,6 +362,15 @@ export default function CreateWatchPartyScreen() {
       starts_at: selectedTime,
       visibility: visibility === 'private' ? 'private' : 'public',
     };
+
+    // When created from the Soccer Cup tab, stamp the event_id + sport_id so
+    // the WCWatchParties tab's `.eq('event_id', SOCCER_CUP_EVENT_ID)` query
+    // actually surfaces this party. Without this the row gets inserted with
+    // event_id=null and disappears from the WC tab list (live Android v5 P0).
+    if (isSoccerCupContext) {
+      partyData.event_id = SOCCER_CUP_EVENT_ID;
+      partyData.sport_id = SOCCER_SPORT_ID;
+    }
 
     try {
       const { data: userData } = await supabase.auth.getUser();

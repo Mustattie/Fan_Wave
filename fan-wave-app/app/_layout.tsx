@@ -109,26 +109,24 @@ function NavigationGuard({
         router.replace('/(auth)/sign-in');
       }
     } else if (session && inAuthGroup && !onOnboardingScreen && !onWelcomeScreen && !onPaymentScreen) {
-      // Authenticated user on a non-onboarding / non-welcome / non-payment
-      // auth screen — fail-closed routing: only hasPremiumAccess unlocks tabs.
+      // Post-onboarding routing. Free-tier (status='none' or 'trial') lands
+      // in tabs and uses <PaywallGate> per-feature. Only churn states
+      // (cancelled/expired) get nudged to resubscribe.
       if (!onboardingComplete) {
         router.replace('/(auth)/onboarding-sports');
-      } else if (hasPremiumAccess) {
-        router.replace('/(tabs)');
       } else if (subscriptionStatus === 'cancelled' || subscriptionStatus === 'expired') {
         router.replace('/(auth)/resubscribe');
       } else {
-        router.replace('/(auth)/choose-plan');
+        router.replace('/(tabs)');
       }
     } else if (session && !inAuthGroup && onboardingComplete) {
-      // Authenticated user in main app — fail-closed gate: anyone without
-      // hasPremiumAccess gets pushed back to a paywall screen.
-      if (!hasPremiumAccess) {
-        if (subscriptionStatus === 'cancelled' || subscriptionStatus === 'expired') {
-          router.replace('/(auth)/resubscribe');
-        } else {
-          router.replace('/(auth)/choose-plan');
-        }
+      // Resume gate: NEVER bounce a free user out of the tabs. Per-feature
+      // <PaywallGate> components handle the upgrade prompts where they
+      // actually matter (clip post, fan group create, message send).
+      // Live Android v5 P1: 45-min-idle resume was dumping free users on
+      // /(auth)/choose-plan, hijacking their last screen.
+      if (subscriptionStatus === 'cancelled' || subscriptionStatus === 'expired') {
+        router.replace('/(auth)/resubscribe');
       }
     }
   }, [session, segments, navigationState?.key, onboardingComplete, hasSeenWelcome, subscriptionStatus, hasPremiumAccess, entLoading]);

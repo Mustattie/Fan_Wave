@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Users } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/Colors';
@@ -48,6 +49,7 @@ const WC_CITIES = [
 
 export default function CreateWCGroupScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ template: string }>();
   const template = params.template || 'team';
 
@@ -194,7 +196,12 @@ export default function CreateWCGroupScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {/* Template indicator */}
         <View style={styles.templateBanner}>
           <Text style={styles.templateIcon}>{getTemplateIcon()}</Text>
@@ -323,8 +330,9 @@ export default function CreateWCGroupScreen() {
         )}
       </ScrollView>
 
-      {/* Create Button */}
-      <View style={styles.footer}>
+      {/* Create Button — paddingBottom uses safe-area inset so the green
+          button sits above the Android nav bar / iPhone home indicator. */}
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity
           style={[styles.createButton, !isValid && styles.createButtonDisabled]}
           onPress={handleCreate}
@@ -459,8 +467,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   footer: {
-    padding: 16,
-    paddingBottom: 32,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    // paddingBottom set dynamically via useSafeAreaInsets().bottom in JSX
     backgroundColor: C.surface,
     borderTopWidth: 1,
     borderTopColor: C.border,

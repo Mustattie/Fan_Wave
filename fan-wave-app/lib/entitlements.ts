@@ -282,16 +282,20 @@ export async function purchaseWCPass(): Promise<PurchaseResult> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const Purchases = require('react-native-purchases').default;
+
+    // WC Pass is a non-consumable, NOT a subscription, so it doesn't
+    // need the productId:basePlanId Android-subscription handling that
+    // Premium uses. Try the package path first (works if the RC dashboard
+    // has it in the current offering), and fall back to a direct product
+    // purchase by bare product ID, which works on both iOS and Android
+    // for non-consumables. This recovers from RC offering misconfigurations
+    // — observed 2026-06-15 when findPackageForPlan kept returning null
+    // even with an Active wc_pass_2026 IAP in Play Console.
     const pkg = await findPackageForPlan('wc_pass');
-    if (!pkg) {
-      return {
-        kind: 'error',
-        error: new Error(
-          'No matching Soccer Cup Pass package in current RevenueCat offering',
-        ),
-      };
-    }
-    const result = await Purchases.purchasePackage(pkg);
+    const result = pkg
+      ? await Purchases.purchasePackage(pkg)
+      : await Purchases.purchaseProduct('wc_pass_2026');
+
     if (result?.customerInfo?.entitlements?.active?.wc_pass) {
       return { kind: 'success' };
     }

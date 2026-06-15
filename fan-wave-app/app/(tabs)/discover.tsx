@@ -108,23 +108,34 @@ export default function DiscoverScreen() {
   const fetchWatchParties = useCallback(
     async (_sport?: string, cursor?: string | null) => {
       try {
-        let query = supabase
-          .from('watch_parties')
-          .select('*, sport:sports!sport_id(*)')
-          .gt('starts_at', cursor || new Date().toISOString())
-          .order('starts_at', { ascending: true })
-          .limit(20);
+        const baseSelect = (q: any) =>
+          q
+            .from('watch_parties')
+            .select('*, sport:sports!sport_id(*)')
+            .gt('starts_at', cursor || new Date().toISOString())
+            .order('starts_at', { ascending: true })
+            .limit(20);
 
+        // First try the user's city. If that returns zero, fall back to a
+        // nationwide query so Dallas / smaller-metro users don't see a sad
+        // empty state (live v5 P2). The hook caller knows the result was
+        // broadened because `broadened: true` is returned.
         if (city) {
-          query = query.ilike('venue_city', city);
+          const localQuery = baseSelect(supabase).ilike('venue_city', city);
+          const { data, error } = await localQuery;
+          if (error) throw error;
+          const mapped = (data || []).map(mapWatchPartyToDisplay);
+          if (mapped.length > 0) {
+            return { items: mapped, hasMore: mapped.length === 20, broadened: false };
+          }
         }
 
-        const { data, error } = await query;
-        if (error) throw error;
-        const mapped = (data || []).map(mapWatchPartyToDisplay);
-        return { items: mapped, hasMore: mapped.length === 20 };
+        const { data: wider, error: widerError } = await baseSelect(supabase);
+        if (widerError) throw widerError;
+        const mapped = (wider || []).map(mapWatchPartyToDisplay);
+        return { items: mapped, hasMore: mapped.length === 20, broadened: !!city };
       } catch {
-        return { items: [], hasMore: false };
+        return { items: [], hasMore: false, broadened: false };
       }
     },
     [city],
@@ -142,6 +153,8 @@ export default function DiscoverScreen() {
     setLoadingMore(false);
   }, [hasMoreParties, loadingMore, partyCursor, activeFilter, fetchWatchParties]);
 
+  const [partiesBroadened, setPartiesBroadened] = useState(false);
+
   const loadData = useCallback(
     async (sport?: string, search?: string) => {
       setLoading(true);
@@ -153,6 +166,7 @@ export default function DiscoverScreen() {
         setGroups(groupResults);
         setWatchParties(partyResult.items);
         setHasMoreParties(partyResult.hasMore);
+        setPartiesBroadened(!!partyResult.broadened);
         if (partyResult.items.length > 0) {
           setPartyCursor(partyResult.items[partyResult.items.length - 1]?.startsAt ?? null);
         } else {
@@ -279,7 +293,13 @@ export default function DiscoverScreen() {
           )}
 
           <SectionHeader
-            title={city ? `Watch Parties Near You · ${city}` : 'Upcoming Watch Parties'}
+            title={
+              partiesBroadened
+                ? 'Watch Parties · Nearby (broader area)'
+                : city
+                  ? `Watch Parties Near You · ${city}`
+                  : 'Upcoming Watch Parties'
+            }
             actionText="Map View 🗺️"
           />
           {watchParties.length > 0 ? (
