@@ -44,7 +44,7 @@ tags:
 - tapOn:
     text: "Description"
     optional: true
-- inputText: "Automated QA group for World Cup 2026 testing."
+- inputText: "Automated QA group for Soccer Cup 2026 testing."
 
 # Pick the sport
 - tapOn:

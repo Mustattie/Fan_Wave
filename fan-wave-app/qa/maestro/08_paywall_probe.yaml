@@ -1,5 +1,5 @@
 appId: org.fansphere.app
-name: "D6 — Paywall probe (Premium + WC Pass)"
+name: "D6 — Paywall probe (Premium + Soccer Cup Pass)"
 tags:
   - day6
   - paywall
@@ -7,7 +7,7 @@ tags:
 ---
 # Sign in → Profile → Subscription → tap Premium → reach paywall sheet →
 # tap Annual → reach Apple/Google purchase dialog → CANCEL. Also probe
-# the WC Pass paywall path. Fires: screen_viewed (paywall_premium, paywall_wc_pass),
+# the Soccer Cup Pass paywall path. Fires: screen_viewed (paywall_premium, paywall_wc_pass),
 # plus a purchase_events row from RC sandbox for each surfaced product.
 #
 # CRITICAL: this scenario must NEVER complete a real-money purchase.
@@ -77,9 +77,9 @@ tags:
     optional: true
 - pressKey: "Back"
 
-# ─── WC Pass paywall (if surfaced separately) ──────────────────────
+# ─── Soccer Cup Pass paywall (if surfaced separately) ──────────────────────
 - tapOn:
-    text: "World Cup"
+    text: "Soccer Cup"
 - tapOn:
     text: ".*[Pp]ass.*"
     optional: true
@@ -95,7 +95,7 @@ tags:
 
 - extendedWaitUntil:
     visible:
-      text: ".*World Cup.*[Pp]ass.*"
+      text: ".*Soccer Cup.*[Pp]ass.*"
     timeout: 10000
     optional: true
 

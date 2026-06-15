@@ -1,6 +1,6 @@
 # Fan Sphere Maestro QA Scenarios
 
-End-to-end UI test scenarios for [Maestro](https://maestro.mobile.dev/). These run against the Android emulator and exercise the same code paths a real beta tester would hit — sign-up, onboarding, fan groups, World Cup tab, watch parties, clips, and the paywall flow.
+End-to-end UI test scenarios for [Maestro](https://maestro.mobile.dev/). These run against the Android emulator and exercise the same code paths a real beta tester would hit — sign-up, onboarding, fan groups, Soccer Cup tab, watch parties, clips, and the paywall flow.
 
 ## Why these exist
 
@@ -54,7 +54,7 @@ maestro test fan-wave-app/qa/maestro/01_signup_onboarding.yaml --format=junit --
 | `01_signup_onboarding.yaml` | D1 | Sign up + onboarding (sports/teams/city) + tour 6 tabs |
 | `02_fan_group_create.yaml` | D2 AM | Create a new fan group |
 | `03_fan_group_join_participate.yaml` | D2 PM | Join existing groups, chat, post clip from inside group |
-| `04_world_cup_tab.yaml` | D3 | World Cup tab — schedule, matches, bracket, WC group, WC parties |
+| `04_world_cup_tab.yaml` | D3 | Soccer Cup tab — schedule, matches, bracket, WC group, WC parties |
 | `05_watch_party_rsvp.yaml` | D4 AM | Browse + RSVP to existing watch parties |
 | `06_watch_party_create.yaml` | D4 PM | Create your own watch party for a WC match |
 | `07_clips.yaml` | D5 | Clip upload, like, share, export |
@@ -109,7 +109,7 @@ maestro test fan-wave-app/qa/maestro/
 
 ### What each hotfix scenario guards
 
-- **10 — Signup paywall gate**: catches regressions where (a) sign-up bypasses the verify-email screen, or (b) post-onboarding lands the user directly in tabs instead of the Choose Plan paywall. Asserts on the visible plan strings ("Monthly" / "$9.99" / "Annual" / "$107.88") instead of the spec wording ("Premium Monthly $9.99") because the on-screen text in `app/(auth)/choose-plan.tsx` uses the shorter labels. The "World Cup 2026 Pass" string lives on the next screen (`wc-pass-offer.tsx`) and is covered by scenario 08.
+- **10 — Signup paywall gate**: catches regressions where (a) sign-up bypasses the verify-email screen, or (b) post-onboarding lands the user directly in tabs instead of the Choose Plan paywall. Asserts on the visible plan strings ("Monthly" / "$9.99" / "Annual" / "$107.88") instead of the spec wording ("Premium Monthly $9.99") because the on-screen text in `app/(auth)/choose-plan.tsx` uses the shorter labels. The "Soccer Cup 2026 Pass" string lives on the next screen (`wc-pass-offer.tsx`) and is covered by scenario 08.
 - **11 — Location detection**: catches regressions of the "Chicago fallback" bug. Cannot assert a specific resolved city (depends on emulator GPS) but pins that the detect button MUST either resolve a real city or surface the permission-denied error — never silently default to Chicago. Also pins that the Popular Cities pills render in alphabetical order with Atlanta first.
 - **12 — Unverified blocked**: signs up a fresh user, then attempts to sign in without confirming the email. Asserts the "Email not verified" alert with "Resend" + "OK" buttons. This is the client-side half of the verify-email regression guard; the server-side half is enforced by the Supabase "Confirm Email" setting.
 - **13 — Clips ownership + delete**: signs in as the reviewer, navigates to Clips, asserts the Delete button is visible (proving `isOwner` is wired correctly), then confirms the delete dialog removes the clip. Guards against both the "test clips leak" regression and the "missing delete button" regression.

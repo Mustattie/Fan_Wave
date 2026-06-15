@@ -5,7 +5,7 @@ tags:
   - daily
 ---
 # Lightweight daily run for days 7-14. Fires: app_open, message_sent,
-# clip_liked x2, screen_viewed (Home + World Cup + group). On D10 add
+# clip_liked x2, screen_viewed (Home + Soccer Cup + group). On D10 add
 # an invite_shared.
 #
 # Run this once per day for 8 days. Schedule via Windows Task Scheduler
@@ -34,9 +34,9 @@ tags:
 - swipe:
     direction: UP
 
-# ─── World Cup tab (always — daily during tournament) ──────────────
+# ─── Soccer Cup tab (always — daily during tournament) ──────────────
 - tapOn:
-    text: "World Cup"
+    text: "Soccer Cup"
 
 - takeScreenshot: screenshots/02_world_cup
 

@@ -173,7 +173,7 @@ tags:
 - waitForAnimationToEnd
 
 - tapOn:
-    text: "World Cup"
+    text: "Soccer Cup"
 - takeScreenshot: screenshots/11_world_cup
 - waitForAnimationToEnd
 

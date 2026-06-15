@@ -1,10 +1,10 @@
 appId: org.fansphere.app
-name: "D3 — World Cup tab deep dive"
+name: "D3 — Soccer Cup tab deep dive"
 tags:
   - day3
   - world_cup
 ---
-# Sign in → World Cup tab → browse match schedule → tap into a match →
+# Sign in → Soccer Cup tab → browse match schedule → tap into a match →
 # view bracket → join a WC-themed fan group → browse WC watch parties.
 # Fires: screen_viewed (world_cup, match_detail, bracket, wc_watch_parties),
 # group_joined (WC group).
@@ -16,7 +16,7 @@ tags:
 - runFlow: flows/_sign_in.yaml
 
 - tapOn:
-    text: "World Cup"
+    text: "Soccer Cup"
 
 - extendedWaitUntil:
     visible:

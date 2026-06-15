@@ -36,7 +36,7 @@ tags:
     text: "Soccer"
     optional: true
 - tapOn:
-    text: "World Cup"
+    text: "Soccer Cup"
     optional: true
 
 - takeScreenshot: screenshots/02_filtered_soccer

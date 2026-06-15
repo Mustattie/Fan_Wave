@@ -54,7 +54,7 @@ tags:
     text: "Message"
     optional: true
 
-- inputText: "Hey crew, excited for the World Cup matches!"
+- inputText: "Hey crew, excited for the Soccer Cup matches!"
 - tapOn:
     text: "Send"
     optional: true
@@ -145,7 +145,7 @@ tags:
     text: "Continue"
     optional: true
 
-- inputText: "QA test clip — World Cup 2026 hype"
+- inputText: "QA test clip — Soccer Cup 2026 hype"
     optional: true
 
 - tapOn:

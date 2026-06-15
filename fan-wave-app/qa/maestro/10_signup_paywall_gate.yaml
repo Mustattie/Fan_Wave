@@ -18,7 +18,7 @@ tags:
 # the hotfix MUST preserve:
 #   Welcome → Sign Up → Create Account → Verify Email (NOT tabs)
 #   → I've verified — sign me in → Sign In → Onboarding (sports/teams/city)
-#   → Choose Plan (NOT tabs) → WC Pass Offer
+#   → Choose Plan (NOT tabs) → Soccer Cup Pass Offer
 #
 # Real email verification cannot be automated from inside Maestro. The
 # scenario pauses after the verify-email assertion and uses an optional
@@ -229,9 +229,9 @@ tags:
     text: "Start your 7-day free trial"
 
 # Spec wording from the bug ticket was "Premium Monthly $9.99",
-# "Premium Annual", "World Cup 2026 Pass". The actual on-screen
+# "Premium Annual", "Soccer Cup 2026 Pass". The actual on-screen
 # strings are "Monthly" / "$9.99" / "Annual" / "$107.88" on Choose
-# Plan, and "World Cup 2026 Pass" is on the next screen (WC Pass
+# Plan, and "Soccer Cup 2026 Pass" is on the next screen (Soccer Cup Pass
 # Offer). We assert what's actually rendered.
 - assertVisible:
     text: "Monthly"
@@ -246,9 +246,9 @@ tags:
 - assertNotVisible:
     text: "Today's Games"
 - assertNotVisible:
-    text: "World Cup"
+    text: "Soccer Cup"
 
-# ─── Skip the actual purchase, advance to WC Pass Offer ─────────────
+# ─── Skip the actual purchase, advance to Soccer Cup Pass Offer ─────────────
 # In the real flow, completing a purchase routes to wc-pass-offer.
 # For the regression test we don't want to charge anything, so we
 # only confirm Choose Plan rendered. Backing out lands on the system
