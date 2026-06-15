@@ -23,6 +23,12 @@ import { SportPillRow } from '@/components/SportPill';
 import { supabase } from '@/lib/supabase';
 import { subscribeToClips } from '@/lib/realtime';
 import { mapClipToDisplay, type ClipDisplay } from '@/lib/mappers';
+import {
+  subscribeToClipUploads,
+  retryClipUpload,
+  cancelClipUpload,
+  type JobState,
+} from '@/lib/clipUploads';
 import { trackEvent } from '@/lib/analytics';
 import { blockUser } from '@/lib/blocks';
 
@@ -305,12 +311,29 @@ export default function ClipsScreen() {
     })();
   }, [activeFilter, fetchClips]);
 
-  // Realtime subscription for new clips — only active when tab is focused
+  // Realtime subscription for new clips — only active when tab is focused.
+  // Deduplicates against optimistic placeholders: if a row arrives via
+  // postgres_changes whose media_url matches a queue job we already have
+  // in the cache, skip — the success handler below will swap the placeholder
+  // for the real row.
   useFocusEffect(
     useCallback(() => {
       const unsub = subscribeToClips(
         (newClip) => {
-          setClips((prev) => [mapClipToDisplay(newClip), ...prev].slice(0, 200));
+          setClips((prev) => {
+            if (prev.some((c) => c.id === newClip.id)) return prev;
+            if (
+              prev.some(
+                (c) =>
+                  c.status === 'uploading' &&
+                  !!c.pendingMediaUrl &&
+                  c.pendingMediaUrl === newClip.media_url,
+              )
+            ) {
+              return prev;
+            }
+            return [mapClipToDisplay(newClip), ...prev].slice(0, 200);
+          });
         },
         (updatedClip) => {
           setClips((prev) =>
@@ -321,6 +344,77 @@ export default function ClipsScreen() {
       return unsub;
     }, [])
   );
+
+  // Bridge the upload queue into the feed so the clip appears the instant
+  // the user taps Post. Lifecycle: queued → uploading → inserting → live
+  // (real row swap) or failed. Listener is mounted once per screen
+  // instance; subscribeToClipUploads replays current state on subscribe.
+  useEffect(() => {
+    const unsub = subscribeToClipUploads((state: JobState) => {
+      setClips((prev) => {
+        // Cancellation: emit may come through with undefined status to
+        // signal placeholder removal.
+        if (!state.status) {
+          return prev.filter((c) => c.tempId !== state.tempId);
+        }
+        const idx = prev.findIndex((c) => c.tempId === state.tempId);
+
+        // Success path: real row swap.
+        if (state.realId && state.mediaUrl) {
+          const live: ClipDisplay = {
+            id: state.realId,
+            title: state.title,
+            poster: `@${state.displayName}`,
+            group: 'Fan Sphere',
+            time: 'Just now',
+            sport: state.sportId,
+            sportIcon: '',
+            likes: 0, like_count: 0, view_count: 0,
+            comments: 0, comment_count: 0, shares: 0,
+            bgColors: ['#1a3a5c', '#2a4a7c'],
+            videoUrl: state.mediaUrl,
+            userId: state.userId,
+            mediaType: 'video',
+            status: 'live',
+          };
+          if (idx === -1) return [live, ...prev].slice(0, 200);
+          const copy = prev.slice();
+          copy[idx] = live;
+          return copy;
+        }
+
+        // Optimistic / in-progress / failed.
+        const placeholder: ClipDisplay = {
+          id: state.tempId,
+          tempId: state.tempId,
+          localUri: state.localUri,
+          pendingMediaUrl: state.mediaUrl,
+          title: state.title,
+          poster: `@${state.displayName}`,
+          group: 'Fan Sphere',
+          time: 'Posting…',
+          sport: state.sportId,
+          sportIcon: '',
+          likes: 0, like_count: 0, view_count: 0,
+          comments: 0, comment_count: 0, shares: 0,
+          bgColors: ['#1a3a5c', '#2a4a7c'],
+          videoUrl: '',
+          userId: state.userId,
+          mediaType: 'video',
+          status: state.status === 'failed' ? 'failed' : 'uploading',
+          progress: state.progress,
+        };
+        if (idx === -1) return [placeholder, ...prev].slice(0, 200);
+        const copy = prev.slice();
+        copy[idx] = placeholder;
+        return copy;
+      });
+    });
+    return unsub;
+  }, []);
+
+  const handleRetryUpload = useCallback((tempId: string) => retryClipUpload(tempId), []);
+  const handleCancelUpload = useCallback((tempId: string) => cancelClipUpload(tempId), []);
 
   const handleFilterChange = useCallback(
     (filterId: string) => {

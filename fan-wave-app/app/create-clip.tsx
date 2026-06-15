@@ -19,7 +19,12 @@ import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { SPORTS } from '@/constants/Sports';
 import { getMomentTypesForSport, type MomentType } from '@/constants/MomentTypes';
 import { PaywallGate } from '@/components/paywall/PaywallGate';
-import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
+import { validateClip, UploadValidationError } from '@/lib/storage';
+import {
+  enqueueClipUpload,
+  generateTempId,
+  activeUploadCount,
+} from '@/lib/clipUploads';
 
 const C = Colors.dark;
 const MAX_TITLE = 80;
@@ -62,6 +67,17 @@ export default function CreateClipScreen() {
     if (!videoUri) return;
     if (!title.trim()) {
       Alert.alert('Title required', 'Please add a caption for your clip.');
+      return;
+    }
+
+    // Cap simultaneous uploads from this device. During live matches users
+    // post bursts of clips; without this the next clip starves the first
+    // and every clip "looks stuck" while contending for the cellular link.
+    if (activeUploadCount() >= 2) {
+      Alert.alert(
+        'Hold on',
+        "You've got a couple clips still uploading. Give them a second to finish and try again.",
+      );
       return;
     }
 
@@ -125,27 +141,37 @@ export default function CreateClipScreen() {
 
       const ext = (videoUri.split('.').pop() || 'mp4').toLowerCase();
       const contentType = ext === 'mp4' ? 'video/mp4' : `video/${ext}`;
-      const { publicUrl } = await uploadClip(videoUri, {
-        contentType,
-        subpath: `${Date.now()}.${ext}`,
-      });
-
       const durationSeconds = durationMs
         ? Math.round(Number(durationMs) / 1000)
         : null;
 
-      const { error: insertError } = await supabase.from('media_clips').insert({
-        user_id: user.id,
+      // Enqueue the upload + insert in the background and bounce the user
+      // back immediately. The Clips feed shows the placeholder card via
+      // the upload-queue subscription. Lifecycle (queued → uploading →
+      // inserting → success or failed) is emitted to listeners; the feed
+      // swaps the placeholder for the real row on success or marks it
+      // failed with a tap-to-retry overlay.
+      enqueueClipUpload({
+        tempId: generateTempId(),
+        localUri: videoUri,
+        contentType,
+        subpath: `${Date.now()}.${ext}`,
         title: title.trim(),
         description: description.trim(),
-        media_url: publicUrl,
-        media_type: 'video',
-        duration_seconds: durationSeconds,
-        sport_id: sportId,
-        moment_type: selectedMoment?.id ?? null,
+        sportId: sportId ?? '',
+        momentType: selectedMoment?.id ?? null,
+        durationSeconds,
+        userId: user.id,
+        profileId,
+        displayName:
+          user.user_metadata?.display_name ||
+          user.email?.split('@')[0] ||
+          'Fan',
+        createdAt: new Date().toISOString(),
       });
-      if (insertError) throw insertError;
 
+      // The user is done from their POV. Clips feed will render the
+      // optimistic placeholder; the upload runs in the background.
       router.back();
     } catch (e: any) {
       Alert.alert(

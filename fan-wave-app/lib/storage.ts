@@ -1,4 +1,8 @@
-import { uploadAsync, FileSystemUploadType, getInfoAsync } from 'expo-file-system/legacy';
+import {
+  createUploadTask,
+  FileSystemUploadType,
+  getInfoAsync,
+} from 'expo-file-system/legacy';
 import { supabase } from './supabase';
 
 // ---------------------------------------------------------------------------
@@ -12,6 +16,10 @@ export type StorageProvider = 'supabase' | 'cloudinary';
 export interface UploadOptions {
   contentType: string;
   subpath: string; // e.g. 'moments/<timestamp>.mp4' — folder/ prefix is auto-added below auth.uid()
+  /** Optional 0–100 progress callback. Used by the clip upload queue so
+   *  the optimistic UI placeholder can render an accurate progress bar.
+   *  Sampled every ~256 KB by expo-file-system's createUploadTask. */
+  onProgress?: (pct: number) => void;
 }
 
 export interface UploadResult {
@@ -90,19 +98,24 @@ export async function uploadClip(uri: string, opts: UploadOptions): Promise<Uplo
   if (provider === 'cloudinary') {
     return uploadToCloudinary(uri, path, opts.contentType);
   }
-  return uploadToSupabase(uri, path, opts.contentType);
+  return uploadToSupabase(uri, path, opts.contentType, opts.onProgress);
 }
 
-async function uploadToSupabase(uri: string, path: string, contentType: string): Promise<UploadResult> {
+async function uploadToSupabase(
+  uri: string,
+  path: string,
+  contentType: string,
+  onProgress?: (pct: number) => void,
+): Promise<UploadResult> {
   const { data: { session } } = await supabase.auth.getSession();
   const accessToken = session?.access_token;
   if (!accessToken) throw new Error('Not signed in');
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 
-  // Native binary upload via expo-file-system — avoids the broken
-  // fetch(file://).blob() → storage.upload() path on Android RN which
-  // surfaces as a generic "Network request failed".
-  const result = await uploadAsync(
+  // Native binary upload via expo-file-system createUploadTask — same
+  // codepath as uploadAsync, but exposes a progressCallback so the clip
+  // optimistic UI can paint an accurate "Posting… 42%" overlay.
+  const task = createUploadTask(
     `${supabaseUrl}/storage/v1/object/clips/${path}`,
     uri,
     {
@@ -114,7 +127,13 @@ async function uploadToSupabase(uri: string, path: string, contentType: string):
         'x-upsert': 'false',
       },
     },
+    (p) => {
+      if (!onProgress || !p.totalBytesExpectedToSend) return;
+      onProgress((p.totalBytesSent / p.totalBytesExpectedToSend) * 100);
+    },
   );
+  const result = await task.uploadAsync();
+  if (!result) throw new Error('Upload returned no result');
   if (result.status < 200 || result.status >= 300) {
     throw new Error(`Upload failed (${result.status}): ${result.body}`);
   }

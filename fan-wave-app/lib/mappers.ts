@@ -306,6 +306,14 @@ export interface ClipDisplay {
   videoUrl: string;
   userId: string;
   mediaType: 'video' | 'image';
+  // Optimistic-upload lifecycle. 'live' is the default for rows mapped
+  // from the DB; uploading/failed are only set by the clip upload queue
+  // when a placeholder is shown in the feed before the row exists server-side.
+  status?: 'uploading' | 'failed' | 'live';
+  progress?: number;          // 0–100, only meaningful when status === 'uploading'
+  localUri?: string;          // file:// for the upload preview
+  tempId?: string;            // local id for optimistic rows (stable; matches queue's tempId)
+  pendingMediaUrl?: string;   // remote URL after upload succeeds but before row swap (used for Realtime dedup)
 }
 
 export function mapClipToDisplay(row: any): ClipDisplay {
@@ -328,5 +336,6 @@ export function mapClipToDisplay(row: any): ClipDisplay {
     videoUrl: row.media_url || row.video_url || '',
     userId: row.user_id || '',
     mediaType: row.media_type || 'video',
+    status: 'live',
   };
 }
