@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  html, body { width: 1320px; height: 2868px; background: #0b0f14; overflow: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
+    color: #FFFFFF;
+    position: relative;
+  }
+  /* status bar */
+  .status {
+    height: 132px;
+    padding: 60px 56px 0;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 36px; font-weight: 600; color: #fff;
+  }
+  .status-right { display: flex; align-items: center; gap: 20px; font-size: 34px; }
+  /* hero gradient header (matches app's green WC pass styling) */
+  .hero {
+    margin: 40px 56px 0;
+    padding: 80px 56px;
+    border-radius: 36px;
+    background: linear-gradient(135deg, #00B074 0%, #008C5E 100%);
+    text-align: center;
+    color: #fff;
+  }
+  .hero .star { font-size: 120px; }
+  .hero .title { font-size: 78px; font-weight: 800; margin-top: 28px; letter-spacing: -1px; }
+  .hero .subtitle { font-size: 36px; margin-top: 22px; opacity: 0.92; font-weight: 500; }
+
+  .section { padding: 60px 56px 0; }
+  .section-title { font-size: 60px; font-weight: 800; letter-spacing: -0.5px; color: #fff; }
+  .section-body { font-size: 32px; line-height: 1.5; color: #b9c0c8; margin-top: 24px; }
+
+  .price-card {
+    margin: 50px 56px 0;
+    background: #18202b;
+    border: 2px solid #00B074;
+    border-radius: 36px;
+    padding: 56px 60px;
+    text-align: center;
+    box-shadow: 0 0 0 1px rgba(0,176,116,0.15) inset;
+  }
+  .price-label {
+    font-size: 30px;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    color: #00B074;
+    font-weight: 700;
+  }
+  .price-main {
+    font-size: 168px;
+    font-weight: 900;
+    color: #fff;
+    line-height: 1;
+    margin: 18px 0 14px;
+    letter-spacing: -3px;
+  }
+  .price-fine {
+    font-size: 32px;
+    color: #8d97a3;
+    font-weight: 500;
+  }
+
+  .features { margin: 60px 56px 0; }
+  .feature {
+    display: flex;
+    align-items: flex-start;
+    gap: 28px;
+    padding: 32px 0;
+    border-bottom: 1px solid #1c2532;
+  }
+  .feature:last-child { border-bottom: none; }
+  .feature-check {
+    flex: 0 0 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(0,176,116,0.18);
+    color: #00B074;
+    font-size: 38px;
+    font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .feature-text {
+    font-size: 38px;
+    font-weight: 600;
+    color: #fff;
+    line-height: 1.35;
+    padding-top: 8px;
+  }
+
+  .legal {
+    margin: 50px 56px 40px;
+    font-size: 26px;
+    line-height: 1.5;
+    color: #6a7280;
+    text-align: center;
+  }
+
+  .cta {
+    position: absolute;
+    left: 56px; right: 56px;
+    bottom: 96px;
+    padding: 44px 0;
+    background: #00B074;
+    border-radius: 32px;
+    text-align: center;
+    font-size: 46px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: 0.2px;
+    box-shadow: 0 12px 28px rgba(0,176,116,0.35);
+  }
+  /* home indicator */
+  .home-indicator {
+    position: absolute;
+    left: 50%; transform: translateX(-50%);
+    bottom: 30px;
+    width: 270px; height: 10px;
+    background: #fff;
+    border-radius: 6px;
+  }
+</style>
+</head>
+<body>
+  <div class="status">
+    <span>9:41</span>
+    <div class="status-right">
+      <span>5G</span>
+      <span style="font-size: 30px;">●●●●●</span>
+      <span style="border: 2px solid #fff; padding: 4px 14px; border-radius: 6px;">100%</span>
+    </div>
+  </div>
+
+  <div class="hero">
+    <div class="star">⭐</div>
+    <div class="title">Soccer Cup 2026 Pass</div>
+    <div class="subtitle">Full tournament access · June 11 – July 19</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Every match. Every moment.</div>
+    <div class="section-body">One-time purchase, no auto-renewal. Unlock the Soccer Cup tab for the entire tournament.</div>
+  </div>
+
+  <div class="price-card">
+    <div class="price-label">One-time</div>
+    <div class="price-main">$19.99</div>
+    <div class="price-fine">Valid June 1 – July 31, 2026</div>
+  </div>
+
+  <div class="features">
+    <div class="feature"><div class="feature-check">✓</div><div class="feature-text">Join Soccer Cup fan groups</div></div>
+    <div class="feature"><div class="feature-check">✓</div><div class="feature-text">RSVP + host Soccer Cup watch parties</div></div>
+    <div class="feature"><div class="feature-check">✓</div><div class="feature-text">Follow your national teams</div></div>
+    <div class="feature"><div class="feature-check">✓</div><div class="feature-text">Post moments + clips on Soccer Cup matches</div></div>
+  </div>
+
+  <div class="legal">
+    One-time purchase of $19.99 billed by App Store. Not auto-renewing.<br>
+    Refunds handled by your App Store account.
+  </div>
+
+  <div class="cta">Buy Soccer Cup Pass · $19.99</div>
+  <div class="home-indicator"></div>
+</body>
+</html>
