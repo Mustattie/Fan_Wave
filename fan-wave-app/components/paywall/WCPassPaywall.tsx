@@ -59,10 +59,20 @@ export function WCPassPaywall({ visible, onClose, onSuccess }: Props) {
     } else {
       reportError(result.error, { source: 'WCPassPaywall:purchase' });
       setState('idle');
-      Alert.alert(
-        'Purchase could not start',
-        `We couldn't open the ${STORE_NAME} purchase sheet. Please try again, or contact support@thabtech.com if it keeps happening.`,
-      );
+      const err = result.error as any;
+      const rawMessage: string =
+        err?.userInfo?.readable_error_message ||
+        err?.message ||
+        '';
+      // Common RC error codes that have a clear remediation we can show.
+      const code: string | number | undefined = err?.code ?? err?.userInfo?.code;
+      const friendly =
+        rawMessage && /not.*allowed|not.*available|configuration/i.test(rawMessage)
+          ? `${STORE_NAME} reported: ${rawMessage}`
+          : rawMessage && rawMessage.length > 0
+          ? `${STORE_NAME} reported: ${rawMessage}`
+          : `We couldn't open the ${STORE_NAME} purchase sheet. Code: ${code ?? 'unknown'}. Please try again, or contact support@thabtech.com.`;
+      Alert.alert('Purchase could not start', friendly);
     }
   };
 

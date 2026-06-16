@@ -24,7 +24,6 @@ import type { MomentType } from '@/constants/MomentTypes';
 import { supabase } from '@/lib/supabase';
 import { formatRelativeTime } from '@/lib/mappers';
 import { reportError } from '@/lib/errorReporting';
-import { PaywallGate } from '@/components/paywall/PaywallGate';
 
 interface Reaction {
   emoji: string;
@@ -474,17 +473,16 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          // WC fan groups (sportId='worldcup') gate behind WC Pass; all
-          // other groups gate behind Premium. RLS (FW-86) enforces the
-          // same on the server.
-          <PaywallGate require={sportId === 'worldcup' ? 'wc_pass' : 'premium'}>
-            <TouchableOpacity
-              style={styles.postButton}
-              onPress={() => setShowPostModal(true)}
-            >
-              <Text style={styles.postButtonText}>Post a Moment</Text>
-            </TouchableOpacity>
-          </PaywallGate>
+          // Per new product design (v7): no per-action paywalls. Subscribe
+          // happens at signup; inside the app, all features are open. DB
+          // RLS still enforces gates if the user tries to mutate without
+          // entitlement (migration 053/054).
+          <TouchableOpacity
+            style={styles.postButton}
+            onPress={() => setShowPostModal(true)}
+          >
+            <Text style={styles.postButtonText}>Post a Moment</Text>
+          </TouchableOpacity>
         }
       />
 

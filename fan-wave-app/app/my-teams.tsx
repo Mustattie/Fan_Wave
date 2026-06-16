@@ -42,11 +42,51 @@ export default function MyTeamsScreen() {
           setLoading(false);
           return;
         }
+
+        // Fallback 1: users.favorite_team_ids is populated for accounts
+        // that onboarded before user_team_follows existed (and for the
+        // reviewer account, where signup wrote to favorite_team_ids but
+        // not the normalized table). Look up team details and present
+        // them with a default 'lite' tier so the user can re-tier them.
+        const { data: userRow } = await supabase
+          .from('users')
+          .select('favorite_team_ids')
+          .eq('auth_id', userData.user.id)
+          .maybeSingle();
+        const favIds: string[] = userRow?.favorite_team_ids ?? [];
+        if (favIds.length > 0) {
+          const { data: teamRows } = await supabase
+            .from('teams')
+            .select(
+              'id, name, code, city, logo_url, colors, league:leagues!league_id(name, sport:sports!sport_id(name, icon))',
+            )
+            .in('id', favIds);
+          if (teamRows && teamRows.length > 0) {
+            const mapped: UserTeamFollow[] = teamRows.map((t: any) => ({
+              id: `legacy-${t.id}`,
+              user_id: userData.user!.id,
+              team_id: t.id,
+              tier: 'lite' as FollowTier,
+              followed_at: new Date().toISOString(),
+              team_name: t.name,
+              team_code: t.code,
+              team_city: t.city,
+              team_logo_url: t.logo_url,
+              team_colors: t.colors,
+              league_name: t.league?.name,
+              sport_name: t.league?.sport?.name,
+              sport_icon: t.league?.sport?.icon,
+            }));
+            setTeams(mapped);
+            setLoading(false);
+            return;
+          }
+        }
       }
     } catch (e) {
       reportError(e, { source: 'my-teams:loadTeams' });
     }
-    // Fallback to AsyncStorage
+    // Fallback 2: AsyncStorage from onboarding
     const stored = await loadFollowsFromStorage();
     setTeams(stored);
     setLoading(false);

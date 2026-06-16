@@ -13,7 +13,6 @@ import {
 import { Colors } from '@/constants/Colors';
 import { WC_TEAMS, getTeamsByGroup, WCTeam } from '@/constants/WorldCupData';
 import { supabase } from '@/lib/supabase';
-import { PaywallGate } from '@/components/paywall/PaywallGate';
 
 const ALL_GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
 
@@ -167,8 +166,7 @@ export function WCTeamFollowModal({ visible, onClose, onUpdate }: WCTeamFollowMo
               <Text style={styles.confText}>{item.confederation}</Text>
             </View>
           </View>
-          <PaywallGate require="wc_pass">
-            <TouchableOpacity
+          <TouchableOpacity
               style={[
                 styles.followBtn,
                 isFollowing ? styles.followBtnActive : styles.followBtnInactive,
@@ -185,7 +183,6 @@ export function WCTeamFollowModal({ visible, onClose, onUpdate }: WCTeamFollowMo
                 {isFollowing ? '\u2713 Following' : 'Follow'}
               </Text>
             </TouchableOpacity>
-          </PaywallGate>
         </View>
       );
     },

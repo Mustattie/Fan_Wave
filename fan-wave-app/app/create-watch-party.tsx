@@ -23,6 +23,7 @@ import { searchVenues, geocodeCity, searchAddress, Venue, AddressSuggestion } fr
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mapGameToDisplay, type GameDisplay } from '@/lib/mappers';
+import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
 
 const C = Colors.dark;
 
@@ -86,6 +87,7 @@ export default function CreateWatchPartyScreen() {
   const { event: eventParam } = useLocalSearchParams<{ event?: string }>();
   const isSoccerCupContext = eventParam === 'soccer-cup-2026';
   const [step, setStep] = useState(1);
+  const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
 
   // Step 1 state
   const [venueQuery, setVenueQuery] = useState('');
@@ -426,9 +428,23 @@ export default function CreateWatchPartyScreen() {
         },
         { text: 'Done', onPress: () => router.back() },
       ]);
-    } catch {
+    } catch (e: any) {
       setCreating(false);
-      Alert.alert('Error', 'Could not create watch party. Please try again.');
+      // 42501 = row-level security violation. Migration 053 still gates
+      // watch_parties_insert behind Premium (or WC pass for WC parties).
+      // Surface the upgrade modal rather than the generic error toast so
+      // the user has a one-tap path to unblock themselves.
+      const code: string | undefined = e?.code;
+      const msg: string = (e?.message ?? '').toLowerCase();
+      const isRlsBlock =
+        code === '42501' ||
+        msg.includes('row-level security') ||
+        msg.includes('violates row-level security policy');
+      if (isRlsBlock) {
+        setShowPremiumPaywall(true);
+      } else {
+        Alert.alert('Error', 'Could not create watch party. Please try again.');
+      }
     }
   };
 
@@ -930,6 +946,11 @@ export default function CreateWatchPartyScreen() {
           </View>
         )}
       </View>
+
+      <PremiumPaywall
+        visible={showPremiumPaywall}
+        onClose={() => setShowPremiumPaywall(false)}
+      />
 
       {/* Contact picker modal */}
       <Modal

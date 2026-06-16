@@ -29,6 +29,20 @@ export interface EntitlementState {
   hasWCAccess: boolean;
 }
 
+// App-Store / Play-Store review allow-list. Mirrors public.is_reviewer_account()
+// in migration 053 — keep these in sync. Reviewer accounts behave like Premium
+// users in the UI so they can exercise every create flow, while their DB
+// subscription_status stays 'none' so Apple / Google can see the IAP funnel
+// when they navigate to Subscription manually.
+const REVIEWER_EMAILS = new Set([
+  'fansphere.reviewer@gmail.com',
+  'reviewer@fansphere.org',
+]);
+
+function isReviewerEmail(email: string | null | undefined): boolean {
+  return !!email && REVIEWER_EMAILS.has(email.toLowerCase());
+}
+
 const DEFAULT_STATE: EntitlementState = {
   status: 'none',
   premiumActiveUntil: null,
@@ -92,7 +106,16 @@ export function useSubscriptionState() {
         .eq('auth_id', user.id)
         .maybeSingle();
       if (error || !data) return DEFAULT_STATE;
-      return deriveState(data);
+      const derived = deriveState(data);
+      // Client-side reviewer bypass — mirrors public.has_premium_access /
+      // has_wc_access overloads in migration 053. Apple needs the reviewer
+      // to see free-tier paywalls when they navigate to Subscription, but
+      // also needs them to exercise every create flow so they can validate
+      // the app. We grant access at both layers.
+      if (isReviewerEmail(user.email)) {
+        return { ...derived, hasPremiumAccess: true, hasWCAccess: true };
+      }
+      return derived;
     },
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,

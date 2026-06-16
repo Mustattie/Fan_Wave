@@ -103,14 +103,27 @@ export async function searchVenues(
   if (cached) return cached;
 
   return overpassBreaker.execute(async () => {
-    const amenityRegex = '^(bar|pub|restaurant|cafe|nightclub|cinema)$';
+    const amenityRegex = '^(bar|pub|restaurant|cafe|nightclub|cinema|fast_food|biergarten)$';
     // Server-side name filter when the user has typed enough characters.
     const nameClause = q.length >= 2 ? `["name"~"${q}",i]` : '';
+
+    // Two-pronged Overpass query: (1) amenity-tagged venues, (2) ALSO any
+    // node with a matching name (when the user typed a search term). Many
+    // sports bars / brewpubs are tagged as amenity=pub or amenity=bar but
+    // some are tagged only as shop=alcohol or have no amenity at all —
+    // matching by name AS WELL ensures venues like "The Brass Tap"
+    // surface even when the OSM tagging is unusual. Also covers
+    // amenity-only nodes when query is short/empty for the discover list.
+    const nameOnlyClause =
+      q.length >= 2
+        ? `node["name"~"${q}",i](around:${radius},${lat},${lon});`
+        : '';
 
     const overpassQuery = `
       [out:json][timeout:25];
       (
         node["amenity"~"${amenityRegex}"]${nameClause}(around:${radius},${lat},${lon});
+        ${nameOnlyClause}
       );
       out body;
     `;
@@ -125,23 +138,29 @@ export async function searchVenues(
 
     const data = await response.json();
 
-    const venues: Venue[] = (data.elements || []).map((el: any) => {
+    // Two Overpass clauses can return the same node twice; dedupe by id.
+    const seen = new Set<number>();
+    const venues: Venue[] = [];
+    for (const el of data.elements || []) {
+      if (typeof el.id === 'number' && seen.has(el.id)) continue;
+      if (typeof el.id === 'number') seen.add(el.id);
       const tags = el.tags || {};
+      // Skip unnamed nodes — they're rarely useful for "Search a venue."
+      if (!tags.name) continue;
       const street = tags['addr:street'] || '';
       const houseNumber = tags['addr:housenumber'] || '';
       const city = tags['addr:city'] || '';
       const parts = [houseNumber, street, city].filter(Boolean).join(' ').trim();
       const address = parts || 'Address not available';
-
-      return {
-        name: tags.name || 'Unnamed Venue',
+      venues.push({
+        name: tags.name,
         address,
         lat: el.lat,
         lon: el.lon,
-        type: tags.amenity as Venue['type'],
+        type: (tags.amenity as Venue['type']) || 'bar',
         distance: calculateDistance(lat, lon, el.lat, el.lon),
-      };
-    });
+      });
+    }
 
     venues.sort((a, b) => a.distance - b.distance);
     setCache(cacheKey, venues);

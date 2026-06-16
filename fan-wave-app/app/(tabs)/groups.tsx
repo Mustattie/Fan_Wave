@@ -25,6 +25,7 @@ import { SportPillRow } from '@/components/SportPill';
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mapChatRoomToDisplay, type ChatRoomDisplay } from '@/lib/mappers';
+import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
 
 const SPORT_PILLS = [
   { id: 'nfl', label: 'NFL 🏈', emoji: '🏈' },
@@ -59,6 +60,7 @@ export default function GroupsScreen() {
   const [loadingMyGroups, setLoadingMyGroups] = useState(true);
   const [loadingSuggested, setLoadingSuggested] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
 
   // Team search state
   const [teamQuery, setTeamQuery] = useState('');
@@ -290,8 +292,23 @@ export default function GroupsScreen() {
           // SMS composer not available — silently skip.
         }
       }
-    } catch {
-      Alert.alert('Error', 'Could not create group. Please try again.');
+    } catch (e: any) {
+      // 42501 = row-level security violation. With migration 053, this means
+      // the user is past their free-tier quota (already owns ≥1 group) and
+      // doesn't have Premium. Show the upgrade modal instead of a generic
+      // error toast.
+      const code: string | undefined = e?.code;
+      const msg: string = (e?.message ?? '').toLowerCase();
+      const isRlsBlock =
+        code === '42501' ||
+        msg.includes('row-level security') ||
+        msg.includes('violates row-level security policy');
+      if (isRlsBlock) {
+        setShowCreateModal(false);
+        setShowPremiumPaywall(true);
+      } else {
+        Alert.alert('Error', 'Could not create group. Please try again.');
+      }
     } finally {
       setIsCreating(false);
       setNewGroupName('');
@@ -693,6 +710,11 @@ export default function GroupsScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      <PremiumPaywall
+        visible={showPremiumPaywall}
+        onClose={() => setShowPremiumPaywall(false)}
+      />
+
       {/* Contact Picker Modal */}
       <Modal
         visible={contactPickerOpen}
@@ -895,7 +917,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
-    maxHeight: '85%',
+    // No maxHeight cap — capping clipped the bottom of the sheet when the
+    // user picked Private (which adds an Invite Friends section). The
+    // outer ScrollView + flexGrow:1+justifyContent:'flex-end' wrapping
+    // gives natural scroll behaviour when content exceeds the viewport.
   },
   modalHandle: {
     width: 40,

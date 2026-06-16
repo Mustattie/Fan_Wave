@@ -31,7 +31,6 @@ import {
   type ChatMessageDisplay,
 } from '@/lib/mappers';
 import MomentsFeed from '@/components/MomentsFeed';
-import { PaywallGate } from '@/components/paywall/PaywallGate';
 
 type SubTab = 'Chat' | 'Highlights';
 const SUB_TABS: SubTab[] = ['Chat', 'Highlights'];
@@ -461,18 +460,19 @@ export default function FanGroupDetailScreen() {
               returnKeyType="send"
               maxLength={2000}
             />
-            <PaywallGate require="premium">
-              <TouchableOpacity
-                style={[
-                  styles.sendButton,
-                  !message.trim() && styles.sendButtonDisabled,
-                ]}
-                onPress={handleSend}
-                disabled={!message.trim()}
-              >
-                <Send size={18} color={message.trim() ? '#fff' : Colors.dark.textMuted} />
-              </TouchableOpacity>
-            </PaywallGate>
+            {/* Sending chat in a group you're already a member of is free
+                (migration 053). PaywallGate removed — DB allows it for any
+                member. Creating groups + posting clips still gated. */}
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                !message.trim() && styles.sendButtonDisabled,
+              ]}
+              onPress={handleSend}
+              disabled={!message.trim()}
+            >
+              <Send size={18} color={message.trim() ? '#fff' : Colors.dark.textMuted} />
+            </TouchableOpacity>
           </View>
         </View>
       ) : (

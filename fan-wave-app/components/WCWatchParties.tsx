@@ -13,7 +13,6 @@ import { Search, Share2 } from 'lucide-react-native';
 import { shareWatchParty } from '@/lib/sharing';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
-import { PaywallGate } from '@/components/paywall/PaywallGate';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -160,8 +159,7 @@ export default function WCWatchParties() {
           <View style={styles.sportBadge}>
             <Text style={styles.sportBadgeText}>⚽ WORLD CUP</Text>
           </View>
-          <PaywallGate require="wc_pass">
-            <TouchableOpacity
+          <TouchableOpacity
               style={[styles.rsvpButton, isRsvp && styles.rsvpButtonActive]}
               onPress={() => handleRsvp(item.id)}
             >
@@ -169,7 +167,6 @@ export default function WCWatchParties() {
                 {isRsvp ? '✓ Going' : 'RSVP'}
               </Text>
             </TouchableOpacity>
-          </PaywallGate>
         </View>
 
         <Text style={styles.title}>{item.title}</Text>
@@ -294,16 +291,14 @@ export default function WCWatchParties() {
         showsVerticalScrollIndicator={false}
       />
 
-      {/* FAB — WC watch parties require Pass */}
-      <PaywallGate require="wc_pass">
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => router.push('/create-watch-party?event=soccer-cup-2026' as any)}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.fabText}>+</Text>
-        </TouchableOpacity>
-      </PaywallGate>
+      {/* FAB — no client-side paywall; DB layer enforces wc_pass if needed */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/create-watch-party?event=soccer-cup-2026' as any)}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.fabText}>+</Text>
+      </TouchableOpacity>
     </View>
   );
 }

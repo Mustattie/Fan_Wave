@@ -9,16 +9,15 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
-import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { SPORTS } from '@/constants/Sports';
 import { getMomentTypesForSport, type MomentType } from '@/constants/MomentTypes';
-import { PaywallGate } from '@/components/paywall/PaywallGate';
+import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
+import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 import { validateClip, UploadValidationError } from '@/lib/storage';
 import {
   enqueueClipUpload,
@@ -32,7 +31,6 @@ const MAX_DESCRIPTION = 300;
 
 export default function CreateClipScreen() {
   const router = useRouter();
-  const keyboardHeight = useKeyboardHeight();
   const { videoUri, durationMs } = useLocalSearchParams<{
     videoUri: string;
     durationMs?: string;
@@ -48,6 +46,7 @@ export default function CreateClipScreen() {
   const [sportId, setSportId] = useState<string>('nfl');
   const [selectedMoment, setSelectedMoment] = useState<MomentType | null>(null);
   const momentTypes = getMomentTypesForSport(sportId);
+  const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
 
   const player = useVideoPlayer(videoUri || null, (p) => {
     p.loop = true;
@@ -174,18 +173,33 @@ export default function CreateClipScreen() {
       // optimistic placeholder; the upload runs in the background.
       router.back();
     } catch (e: any) {
-      Alert.alert(
-        'Could not post clip',
-        e?.message || 'Please check your connection and try again.'
-      );
+      // 42501 = RLS row-level security policy violation. With migration 053
+      // still gating media_clips_insert behind has_premium_access, free users
+      // hit this. Show the upgrade paywall instead of a vague error toast.
+      const code: string | undefined = e?.code;
+      const msg: string = (e?.message ?? '').toLowerCase();
+      const isRlsBlock =
+        code === '42501' ||
+        msg.includes('row-level security') ||
+        msg.includes('violates row-level security policy');
+      if (isRlsBlock) {
+        setShowPremiumPaywall(true);
+      } else {
+        Alert.alert(
+          'Could not post clip',
+          e?.message || 'Please check your connection and try again.'
+        );
+      }
     } finally {
       setPosting(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={{ flex: 1, marginBottom: keyboardHeight }}>
+    <KeyboardAwareScreen
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      header={
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
             <X size={24} color={C.text} />
@@ -193,9 +207,22 @@ export default function CreateClipScreen() {
           <Text style={styles.headerTitle}>New Clip</Text>
           <View style={{ width: 40 }} />
         </View>
-
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {videoUri ? (
+      }
+      footer={
+        <TouchableOpacity
+          style={[styles.postBtn, (posting || !title.trim()) && styles.postBtnDisabled]}
+          disabled={posting || !title.trim()}
+          onPress={handlePost}
+        >
+          {posting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.postBtnText}>Post Clip</Text>
+          )}
+        </TouchableOpacity>
+      }
+    >
+      {videoUri ? (
             <VideoView
               player={player}
               style={styles.videoPreview}
@@ -274,25 +301,11 @@ export default function CreateClipScreen() {
           <Text style={styles.counter}>
             {description.length}/{MAX_DESCRIPTION}
           </Text>
-        </ScrollView>
-
-        <View style={styles.bottomBar}>
-          <PaywallGate require="premium">
-            <TouchableOpacity
-              style={[styles.postBtn, (posting || !title.trim()) && styles.postBtnDisabled]}
-              disabled={posting || !title.trim()}
-              onPress={handlePost}
-            >
-              {posting ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.postBtnText}>Post Clip</Text>
-              )}
-            </TouchableOpacity>
-          </PaywallGate>
-        </View>
-      </View>
-    </SafeAreaView>
+      <PremiumPaywall
+        visible={showPremiumPaywall}
+        onClose={() => setShowPremiumPaywall(false)}
+      />
+    </KeyboardAwareScreen>
   );
 }
 
