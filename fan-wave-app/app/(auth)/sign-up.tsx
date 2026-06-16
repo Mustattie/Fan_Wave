@@ -7,14 +7,13 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Mail, Lock, User, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { parseAuthError } from '@/lib/authErrors';
+import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -96,12 +95,10 @@ export default function SignUpScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
+    <KeyboardAwareScreen
+      style={styles.container}
+      contentContainerStyle={styles.content}
+    >
         <TouchableOpacity
           onPress={() => router.replace('/(auth)/welcome')}
           style={styles.backBtn}
@@ -206,8 +203,7 @@ export default function SignUpScreen() {
             <Text style={styles.footerLink}>Sign In</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+    </KeyboardAwareScreen>
   );
 }
 

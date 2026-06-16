@@ -8,17 +8,15 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { parseAuthError } from '@/lib/authErrors';
-import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
+import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 
 export default function SignInScreen() {
   const router = useRouter();
-  const keyboardHeight = useKeyboardHeight();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -87,8 +85,10 @@ export default function SignInScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={[styles.content, { marginBottom: keyboardHeight }]}>
+    <KeyboardAwareScreen
+      style={styles.container}
+      contentContainerStyle={styles.content}
+    >
         <View style={styles.logoSection}>
           <Text style={styles.logo}>Fan Sphere</Text>
           <Text style={styles.wave}>{'🌐'}</Text>
@@ -153,8 +153,7 @@ export default function SignInScreen() {
             <Text style={styles.footerLink}>Sign Up</Text>
           </TouchableOpacity>
         </View>
-      </View>
-    </SafeAreaView>
+    </KeyboardAwareScreen>
   );
 }
 

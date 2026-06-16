@@ -5,17 +5,16 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  ScrollView,
   Alert,
   ActivityIndicator,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ChevronLeft, AlertTriangle, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { reportError } from '@/lib/errorReporting';
+import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 
 const STORE_NAME = Platform.OS === 'ios' ? 'App Store' : 'Google Play';
 
@@ -49,16 +48,19 @@ export default function DeleteAccountScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} disabled={deleting} style={styles.backBtn}>
-          <ChevronLeft size={24} color={Colors.dark.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Delete Account</Text>
-        <View style={styles.backBtn} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <KeyboardAwareScreen
+      style={styles.container}
+      contentContainerStyle={styles.scroll}
+      header={
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} disabled={deleting} style={styles.backBtn}>
+            <ChevronLeft size={24} color={Colors.dark.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Delete Account</Text>
+          <View style={styles.backBtn} />
+        </View>
+      }
+    >
         <View style={styles.iconWrap}>
           <AlertTriangle size={40} color={Colors.dark.error} />
         </View>
@@ -126,8 +128,7 @@ export default function DeleteAccountScreen() {
         >
           <Text style={styles.cancelBtnText}>Cancel</Text>
         </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
+    </KeyboardAwareScreen>
   );
 }
 

@@ -7,17 +7,16 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Camera } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
+import { reportError } from '@/lib/errorReporting';
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -79,27 +78,40 @@ export default function EditProfileScreen() {
   const uploadAvatar = async (userId: string): Promise<string | null> => {
     if (!newAvatarUri) return avatarUrl;
 
-    try {
-      const ext = newAvatarUri.split('.').pop()?.toLowerCase() || 'jpg';
-      const path = `${userId}/avatar.${ext}`;
+    // RN/Expo gotcha: `fetch(localUri).blob()` silently returns a 0-byte
+    // blob on Android in many SDK versions, so the upload succeeds with
+    // an empty file and the avatar appears blank or unchanged. The
+    // reliable cross-platform pattern is to read the file as base64 via
+    // expo-file-system, convert to a Uint8Array, and upload that.
+    const ext = newAvatarUri.split('.').pop()?.toLowerCase() || 'jpg';
+    const contentType =
+      ext === 'png' ? 'image/png'
+      : ext === 'webp' ? 'image/webp'
+      : 'image/jpeg';
+    const path = `${userId}/avatar-${Date.now()}.${ext}`;
 
-      const response = await fetch(newAvatarUri);
-      const blob = await response.blob();
-
-      const { error } = await supabase.storage
-        .from('avatars')
-        .upload(path, blob, { upsert: true, contentType: `image/${ext}` });
-
-      if (error) throw error;
-
-      const { data: urlData } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(path);
-
-      return urlData.publicUrl;
-    } catch {
-      return avatarUrl; // Keep existing on failure
+    const base64 = await FileSystem.readAsStringAsync(newAvatarUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    if (!base64 || base64.length === 0) {
+      throw new Error('Selected image is empty or unreadable');
     }
+    // atob is polyfilled in RN — turn base64 → binary string → byte array.
+    const binary = global.atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(path, bytes, { upsert: true, contentType });
+    if (uploadError) throw uploadError;
+
+    const { data: urlData } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(path);
+    // Cache-bust so the Image component fetches the new file even when
+    // the path stays the same on re-upload.
+    return `${urlData.publicUrl}?v=${Date.now()}`;
   };
 
   const handleSave = async () => {
@@ -127,11 +139,26 @@ export default function EditProfileScreen() {
 
       if (error) throw error;
 
+      // Reflect the new avatar locally so the user sees it without a
+      // re-fetch on next focus.
+      if (uploadedUrl && uploadedUrl !== avatarUrl) {
+        setAvatarUrl(uploadedUrl);
+        setNewAvatarUri(null);
+      }
+
       Alert.alert('Saved', 'Your profile has been updated.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
-    } catch {
-      Alert.alert('Error', 'Could not save profile. Please try again.');
+    } catch (e: any) {
+      // Surface the real error instead of swallowing it — silent failure
+      // was the original bug ("clicked Save but the image never shows").
+      reportError(e, { source: 'edit-profile:handleSave' });
+      Alert.alert(
+        'Error',
+        e?.message
+          ? `Could not save profile: ${e.message}`
+          : 'Could not save profile. Please try again.',
+      );
     } finally {
       setSaving(false);
     }
@@ -139,22 +166,19 @@ export default function EditProfileScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={Colors.dark.accent} />
-        </View>
-      </SafeAreaView>
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={Colors.dark.accent} />
+      </View>
     );
   }
 
   const displayAvatar = newAvatarUri || avatarUrl;
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+    <KeyboardAwareScreen
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      header={
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <ArrowLeft size={24} color={Colors.dark.text} />
@@ -172,8 +196,8 @@ export default function EditProfileScreen() {
             )}
           </TouchableOpacity>
         </View>
-
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      }
+    >
           {/* Avatar */}
           <TouchableOpacity style={styles.avatarContainer} onPress={pickAvatar}>
             {displayAvatar ? (
@@ -219,9 +243,7 @@ export default function EditProfileScreen() {
             placeholder="e.g., Dallas, TX"
             placeholderTextColor={Colors.dark.textMuted}
           />
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    </KeyboardAwareScreen>
   );
 }
 

@@ -8,11 +8,11 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Mail, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
@@ -38,8 +38,10 @@ export default function ForgotPasswordScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+    <KeyboardAwareScreen
+      style={styles.container}
+      contentContainerStyle={styles.content}
+    >
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={24} color={Colors.dark.text} />
         </TouchableOpacity>
@@ -95,8 +97,7 @@ export default function ForgotPasswordScreen() {
             </TouchableOpacity>
           </View>
         )}
-      </View>
-    </SafeAreaView>
+    </KeyboardAwareScreen>
   );
 }
 
