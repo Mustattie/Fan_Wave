@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft,
@@ -40,7 +42,6 @@ export default function FanGroupDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const keyboardHeight = useKeyboardHeight();
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<ChatMessageDisplay[]>([]);
   const [activeTab, setActiveTab] = useState<SubTab>('Chat');
@@ -56,6 +57,11 @@ export default function FanGroupDetailScreen() {
   const [currentUserAvatar, setCurrentUserAvatar] = useState('A');
 
   const [group, setGroup] = useState<ChatRoomDisplay | null>(null);
+  // Membership state — drives the Join CTA banner. A user is "in the
+  // group" if they own it OR they have a row in chat_room_members.
+  const [isMember, setIsMember] = useState<boolean>(false);
+  const [isOwner, setIsOwner] = useState<boolean>(false);
+  const [joining, setJoining] = useState(false);
 
   // Load auth user
   useEffect(() => {
@@ -89,6 +95,11 @@ export default function FanGroupDetailScreen() {
         if (error) throw error;
         if (data) {
           setGroup(mapChatRoomToDisplay(data));
+          // Owner check uses the raw row's owner_id, which the mapper
+          // doesn't always preserve verbatim.
+          const auth = await supabase.auth.getUser();
+          const uid = auth.data.user?.id ?? null;
+          setIsOwner(!!uid && data.owner_id === uid);
         }
       } catch {
         // Group not found
@@ -97,6 +108,46 @@ export default function FanGroupDetailScreen() {
       }
     })();
   }, [id]);
+
+  // Membership check — separate query so it refreshes after Join
+  useEffect(() => {
+    if (!id || !currentUserId) return;
+    (async () => {
+      const { data } = await supabase
+        .from('chat_room_members')
+        .select('user_id')
+        .eq('chat_room_id', id)
+        .eq('user_id', currentUserId)
+        .maybeSingle();
+      setIsMember(!!data);
+    })();
+  }, [id, currentUserId]);
+
+  const handleJoin = useCallback(async () => {
+    if (!id || !currentUserId || joining) return;
+    setJoining(true);
+    try {
+      const { error } = await supabase.from('chat_room_members').insert({
+        chat_room_id: id,
+        user_id: currentUserId,
+        role: 'member',
+      });
+      if (error) throw error;
+      setIsMember(true);
+      // Bump local member count so the header reflects the join.
+      setGroup((prev) =>
+        prev ? { ...prev, memberCount: (prev.memberCount || 0) + 1 } : prev,
+      );
+    } catch (e: any) {
+      reportError(e, { source: 'fan-group:handleJoin', groupId: id });
+      Alert.alert(
+        'Could not join',
+        e?.message || 'Please try again in a moment.',
+      );
+    } finally {
+      setJoining(false);
+    }
+  }, [id, currentUserId, joining]);
 
   // Load initial messages from Supabase
   useEffect(() => {
@@ -366,9 +417,30 @@ export default function FanGroupDetailScreen() {
             {group.memberCount.toLocaleString()} members · {group.tags?.join(' · ') || ''}
           </Text>
         </View>
-        <TouchableOpacity style={styles.pinnedRsvp}>
-          <Text style={styles.pinnedRsvpText}>Share</Text>
-        </TouchableOpacity>
+        {!isOwner && !isMember ? (
+          // Join CTA — matches the WC Soccer Cup fan group card pattern so
+          // a visitor (coming in from Suggested Groups, a share link, or
+          // any tap on a group card) has a one-tap way to join. Owner /
+          // existing member never sees this.
+          <TouchableOpacity
+            style={styles.joinPinned}
+            onPress={handleJoin}
+            disabled={joining}
+          >
+            {joining ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.joinPinnedText}>Join</Text>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.pinnedRsvp} onPress={async () => {
+            const { shareGroup } = await import('@/lib/sharing');
+            if (group) await shareGroup({ id: group.id, name: group.name, memberCount: group.memberCount });
+          }}>
+            <Text style={styles.pinnedRsvpText}>Share</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Sub-Tabs */}
@@ -389,15 +461,17 @@ export default function FanGroupDetailScreen() {
         })}
       </View>
 
-      {/* Tab Content */}
+      {/* Tab Content — wrapped in KeyboardAvoidingView so the chat composer
+          rides above the soft keyboard on devices that don't honour the
+          app.json softwareKeyboardLayoutMode setting (notably Samsung One
+          UI). behavior='padding' on iOS, 'height' on Android — both keep
+          the FlatList visible and lift the input bar. */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
       {activeTab === 'Chat' ? (
-        // OS resize (softwareKeyboardLayoutMode=resize in app.json) isn't
-        // being honored on this user's device (likely an edge-to-edge +
-        // resize conflict on Samsung's One UI). Apply marginBottom on the
-        // INPUT BAR ONLY — not the whole chat container — so the bar
-        // lifts above the keyboard while the FlatList stays full-height
-        // (its content scrolls so newest messages stay visible above the
-        // keyboard).
         <View style={{ flex: 1 }}>
           {loadingMessages ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -431,17 +505,13 @@ export default function FanGroupDetailScreen() {
             />
           )}
 
-          {/* Input Bar — lifted above keyboard via marginBottom on the bar
-              itself (since OS resize isn't honored on this device). The
-              FlatList above stays at full height; its content scrolls so
-              the newest messages remain visible above the keyboard. */}
+          {/* Input Bar — KeyboardAvoidingView wrapping the whole tab lifts
+              this bar above the keyboard; we just add safe-area bottom
+              padding for when the keyboard is closed. */}
           <View
             style={[
               styles.inputBar,
-              {
-                marginBottom: keyboardHeight,
-                paddingBottom: 10 + (keyboardHeight > 0 ? 0 : insets.bottom),
-              },
+              { paddingBottom: 10 + insets.bottom },
             ]}
           >
             <TouchableOpacity style={styles.inputAction}>
@@ -480,6 +550,7 @@ export default function FanGroupDetailScreen() {
           <MomentsFeed chatRoomId={id || ''} sportId={group.sport || 'nfl'} />
         </View>
       )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -511,6 +582,15 @@ const styles = StyleSheet.create({
   pinnedMeta: { fontSize: 11, color: Colors.dark.textSecondary, marginTop: 2 },
   pinnedRsvp: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: Colors.dark.accent },
   pinnedRsvpText: { fontSize: 11, fontWeight: '700', color: '#fff' },
+  joinPinned: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.dark.accentGreen,
+    minWidth: 68,
+    alignItems: 'center',
+  },
+  joinPinnedText: { fontSize: 13, fontWeight: '800', color: '#fff' },
   subTabRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: Colors.dark.border },
   subTab: {
     flex: 1, alignItems: 'center', paddingVertical: 10,
