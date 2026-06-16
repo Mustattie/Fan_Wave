@@ -143,9 +143,18 @@ export default function WCFanGroups() {
     if (joinedMap[groupId]) return;
 
     try {
+      // Migration 053 RLS requires user_id = auth.uid() on the INSERT.
+      // Prior to v8 this insert was missing user_id and silently 42501-
+      // failed, leaving an optimistic-only "Joined" badge that vanished
+      // on next launch.
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.warn('Join attempted without auth user');
+        return;
+      }
       const { error } = await supabase
         .from('chat_room_members')
-        .insert({ chat_room_id: groupId, role: 'member' });
+        .insert({ chat_room_id: groupId, user_id: user.id, role: 'member' });
 
       if (error) {
         console.warn('Join insert failed, using local fallback:', error.message);

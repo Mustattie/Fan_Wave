@@ -88,7 +88,10 @@ export default function EditProfileScreen() {
       ext === 'png' ? 'image/png'
       : ext === 'webp' ? 'image/webp'
       : 'image/jpeg';
-    const path = `${userId}/avatar-${Date.now()}.${ext}`;
+    // Stable per-user path so `upsert: true` actually overwrites the prior
+    // avatar instead of accumulating one file per save. The cache-bust
+    // query string on the public URL handles client-side cache eviction.
+    const path = `${userId}/avatar.${ext}`;
 
     const base64 = await FileSystem.readAsStringAsync(newAvatarUri, {
       encoding: FileSystem.EncodingType.Base64,

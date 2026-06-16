@@ -75,7 +75,11 @@ export default function WCWatchParties() {
       // venue_name, venue_city, starts_at). The bad filter silently
       // errored and the tab showed "No Soccer Cup watch parties yet" even
       // when matching rows existed (Apple build-9 / live Android v5 P0).
-      const SOCCER_CUP_EVENT_ID = 'e0260000-0000-0000-0000-000000002026';
+      // Soccer Cup 2026 event UUID — must match the seeded row in events.
+      // Previously the wrong prefix (e0260000) was used, which silently
+      // bypassed the migration 053 watch_party_rsvps WC gate and made
+      // newly-created Soccer Cup parties invisible to the DB-side query.
+      const { WC_EVENT_ID: SOCCER_CUP_EVENT_ID } = await import('@/constants/WorldCupIds');
       const { data, error } = await supabase
         .from('watch_parties')
         .select('*')

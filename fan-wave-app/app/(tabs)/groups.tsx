@@ -292,11 +292,19 @@ export default function GroupsScreen() {
           // SMS composer not available — silently skip.
         }
       }
+      // Success path: clear inputs + close the modal.
+      setNewGroupName('');
+      setTeamQuery('');
+      setSelectedTeam(null);
+      setTeamResults([]);
+      setInvitedFriends([]);
+      setShowCreateModal(false);
     } catch (e: any) {
       // 42501 = row-level security violation. With migration 053, this means
       // the user is past their free-tier quota (already owns ≥1 group) and
-      // doesn't have Premium. Show the upgrade modal instead of a generic
-      // error toast.
+      // doesn't have Premium. Show the upgrade modal and DON'T wipe the form
+      // — the user can dismiss the paywall and try again with their inputs
+      // preserved.
       const code: string | undefined = e?.code;
       const msg: string = (e?.message ?? '').toLowerCase();
       const isRlsBlock =
@@ -307,16 +315,12 @@ export default function GroupsScreen() {
         setShowCreateModal(false);
         setShowPremiumPaywall(true);
       } else {
+        // Transient error (network blip, etc.) — keep the modal open with
+        // their typed inputs so they can retry without re-entering anything.
         Alert.alert('Error', 'Could not create group. Please try again.');
       }
     } finally {
       setIsCreating(false);
-      setNewGroupName('');
-      setTeamQuery('');
-      setSelectedTeam(null);
-      setTeamResults([]);
-      setInvitedFriends([]);
-      setShowCreateModal(false);
     }
   };
 

@@ -78,7 +78,9 @@ const TIME_PRESETS = computeTimePresets();
 // Soccer Cup tab pushes to /create-watch-party?event=soccer-cup-2026, we
 // stamp the resulting watch_parties row with these so the filtered list on
 // that tab can actually find it.
-const SOCCER_CUP_EVENT_ID = 'e0260000-0000-0000-0000-000000002026';
+// Soccer Cup 2026 event UUID — must match the seeded row in events.
+// Centralised in constants/WorldCupIds so all surfaces stay aligned.
+import { WC_EVENT_ID as SOCCER_CUP_EVENT_ID } from '@/constants/WorldCupIds';
 const SOCCER_SPORT_ID = 'a0000000-0000-0000-0000-000000000004';
 
 export default function CreateWatchPartyScreen() {
