@@ -4,7 +4,13 @@ tags:
   - day4
   - watch_parties
   - create
+  - v82
 ---
+# v8.2 FIXTURE REQUIREMENT (fix #4 — venue search city resolution)
+#   The QA tester user must have users.home_city = 'Dallas' so the
+#   venue search 4-tier coord cascade resolves to a real Dallas-area
+#   coordinate (static metro lookup tier) instead of the Chicago last-
+#   resort fallback. See lib/venueSearchApi.ts ~L100.
 # Sign in → Watch Parties → Create → pick a WC match → set venue + privacy
 # → confirm → share invite. Fires: watch_party_created, invite_shared.
 
@@ -54,6 +60,37 @@ tags:
 - tapOn:
     text: ".*[Pp]ublic.*"
     optional: true
+
+# ─── v8.2 fix #4 — venue search returns hits, not silent zero ──────
+# Pre-v8.2 the search collapsed to [] on every failure path AND
+# defaulted to a hardcoded Chicago lat/lon when AsyncStorage user_city
+# missed. v8.2 (lib/venueSearchApi.ts) now:
+#   - cascades coords through 4 tiers (Nominatim → static metro →
+#     expo-location → Chicago last-resort)
+#   - distinguishes 3 statuses: ok / api_error / breaker_open
+#   - surfaces a visible error string for empty hits
+# Sanity probe: type a generic term ("bar"), tap Search, assert EITHER
+# at least one venue card renders OR the explicit surfaced-error
+# string appears — but the screen MUST NOT be silently empty.
+- tapOn:
+    text: "Search venue name or location..."
+    optional: true
+- inputText: "bar"
+- tapOn:
+    text: "Search"
+
+- extendedWaitUntil:
+    visible:
+      text: ".*mi away.*|.*No venues found.*|.*temporarily unavailable.*"
+    timeout: 25000
+
+- takeScreenshot: screenshots/v82_venue_search_result
+
+# v8.2 fix #4 regression guard — the surfaced-error path is acceptable
+# (Overpass can legitimately be down), but a completely blank list
+# with no error means the silent-failure bug regressed.
+- assertNotVisible:
+    text: "Search for a venue to see results"
 
 - inputText: "The Pitch Sports Bar"
     optional: true

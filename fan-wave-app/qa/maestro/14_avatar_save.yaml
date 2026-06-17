@@ -1,0 +1,143 @@
+appId: org.fansphere.app
+name: "v8.2 — Avatar save (bucket exists)"
+tags:
+  - v82
+  - storage
+  - avatar
+  - profile
+---
+# v8.2 fix #1 regression guard. Migration 057 creates the `avatars`
+# storage bucket on prod (fwlfiejvxmslkpoojggs) so that the v8.1 path
+# hygiene fix actually has a target to upload to. Before 057 every Save
+# on Edit Profile blew up with:
+#   "Could not save profile: Bucket not found"
+#
+# This scenario:
+#   1. Signs in as the QA tester
+#   2. Opens Profile → Edit Profile
+#   3. Taps the avatar (opens gallery picker), picks the first photo
+#   4. Taps Save
+#   5. Asserts NO "Bucket not found" error alert surfaces (regression
+#      guard — passes whether the save succeeds OR the storage layer
+#      rejects for any other reason, but FAILS the bucket-missing case)
+#   6. Asserts the success "Saved" alert appears, taps OK
+#   7. Returns to Profile, re-opens Edit Profile
+#   8. Asserts the avatar image is still rendered (i.e. the new
+#      avatar_url persisted on the users row)
+#
+# PREREQUISITE: the emulator photo library must contain at least one
+# image. Push a fixture via:
+#   adb push qa/maestro/fixtures/avatar.jpg /sdcard/Pictures/
+#   adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
+#     -d file:///sdcard/Pictures/avatar.jpg
+
+- launchApp:
+    clearState: false
+    stopApp: true
+
+- runFlow: flows/_sign_in.yaml
+
+- tapOn:
+    text: "Profile"
+
+- extendedWaitUntil:
+    visible:
+      text: ".*[Ss]ubscription.*|.*[Ee]dit [Pp]rofile.*"
+    timeout: 15000
+
+- takeScreenshot: screenshots/v82_avatar_01_profile_tab
+
+# ─── Open Edit Profile ──────────────────────────────────────────────
+- tapOn:
+    text: "Edit Profile"
+    optional: true
+- tapOn:
+    text: ".*[Ee]dit.*[Pp]rofile.*"
+    optional: true
+
+- extendedWaitUntil:
+    visible:
+      text: "Edit Profile"
+    timeout: 10000
+
+- takeScreenshot: screenshots/v82_avatar_02_edit_open
+
+- assertVisible:
+    text: "Display Name"
+
+# ─── Tap avatar → gallery picker ────────────────────────────────────
+# The avatar tap target is the rounded image at the top of the form.
+# It opens expo-image-picker which surfaces the native gallery sheet
+# (on the emulator: "Photos" or system documents UI). We tap a couple
+# of likely entry points optionally so any picker variant works.
+- tapOn:
+    id: "avatar-picker"
+    optional: true
+- tapOn:
+    text: ".*[Pp]hotos.*"
+    optional: true
+- tapOn:
+    text: ".*[Gg]allery.*"
+    optional: true
+
+- waitForAnimationToEnd
+
+# Pick the first image in the gallery (fixture pushed via adb).
+- tapOn:
+    index: 0
+    optional: true
+
+- waitForAnimationToEnd
+
+- takeScreenshot: screenshots/v82_avatar_03_image_picked
+
+# ─── Save ──────────────────────────────────────────────────────────
+- tapOn:
+    text: "Save"
+
+# ─── REGRESSION GUARD: the pre-057 "Bucket not found" alert must NOT
+#     surface. If it does, the avatars bucket was deleted / 057 was
+#     never applied / the client switched to a different bucket name.
+- assertNotVisible:
+    text: ".*Bucket not found.*"
+
+- assertNotVisible:
+    text: ".*Could not save profile.*"
+
+# ─── Success alert ────────────────────────────────────────────────
+- extendedWaitUntil:
+    visible:
+      text: "Saved"
+    timeout: 20000
+
+- takeScreenshot: screenshots/v82_avatar_04_saved_alert
+
+- tapOn:
+    text: "OK"
+
+- waitForAnimationToEnd
+
+# Back on the Profile tab — re-open Edit Profile and confirm the
+# avatar is still visible (i.e. avatar_url persisted on the users row
+# and the public-read RLS policy is letting us load it back).
+- tapOn:
+    text: "Edit Profile"
+    optional: true
+- tapOn:
+    text: ".*[Ee]dit.*[Pp]rofile.*"
+    optional: true
+
+- extendedWaitUntil:
+    visible:
+      text: "Edit Profile"
+    timeout: 10000
+
+- takeScreenshot: screenshots/v82_avatar_05_reopened
+
+# The avatar emoji placeholder (👤) only renders when displayAvatar is
+# null. After a successful save displayAvatar is the public URL, so
+# the placeholder must NOT be visible.
+- assertNotVisible:
+    text: "👤"
+
+- pressKey: "Back"

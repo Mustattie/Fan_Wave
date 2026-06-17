@@ -4,6 +4,7 @@ tags:
   - day6
   - paywall
   - iap
+  - v82
 ---
 # Sign in → Profile → Subscription → tap Premium → reach paywall sheet →
 # tap Annual → reach Apple/Google purchase dialog → CANCEL. Also probe
@@ -22,19 +23,32 @@ tags:
 - tapOn:
     text: "Profile"
 
+# ─── v8.2 fix #2 — paywall entry point is discoverable ─────────────
+# Agent A added a Subscription menu row on the Profile tab with a
+# dynamic badge so free users see "Free · Upgrade" instead of just
+# the silent menu row. Pre-v8.2 a fresh sign-in had no in-app path to
+# the PremiumPaywall / WCPassPaywall components, so users couldn't
+# actually buy what they came for. The row label + free-user badge
+# string both come from app/(tabs)/profile.tsx ~L201-211.
+- assertVisible:
+    text: "Subscription"
+
+# The badge is one of: "Free · Upgrade" (no entitlements),
+# "Trial" / "Premium" (Premium active), or "Soccer Cup Pass" (WC pass
+# only). For the QA tester (no real-money purchases) the expected
+# badge is "Free · Upgrade". Match loosely so a tester with an active
+# RC sandbox trial doesn't false-fail this assertion.
+- assertVisible:
+    text: ".*Free.*Upgrade.*|Trial|Premium|Soccer Cup Pass"
+
+- takeScreenshot: screenshots/v82_paywall_entry_point
+
 - tapOn:
-    text: ".*[Ss]ubscription.*"
-    optional: true
-- tapOn:
-    text: "Premium"
-    optional: true
-- tapOn:
-    text: "Upgrade"
-    optional: true
+    text: "Subscription"
 
 - extendedWaitUntil:
     visible:
-      text: ".*Fan Sphere Premium.*"
+      text: ".*Fan Sphere Premium.*|.*Choose.*Plan.*|.*Premium.*"
     timeout: 15000
 
 - takeScreenshot: screenshots/01_premium_paywall
@@ -44,7 +58,7 @@ tags:
     text: "Annual"
     optional: true
 - tapOn:
-    text: "107.99"
+    text: "107.88"
     optional: true
 
 - takeScreenshot: screenshots/02_annual_selected

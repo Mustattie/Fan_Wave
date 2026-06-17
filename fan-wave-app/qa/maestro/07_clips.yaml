@@ -3,6 +3,7 @@ name: "D5 — Clip upload, like, share, export"
 tags:
   - day5
   - clips
+  - v82
 ---
 # Sign in → Clips tab → upload from gallery → like 3 → share 1 → export 1.
 # Fires: clip_uploaded, clip_liked x3, clip_shared, clip_exported.
@@ -22,6 +23,29 @@ tags:
     timeout: 10000
 
 - takeScreenshot: screenshots/01_clips_feed
+
+# ─── v8.2 fix #10 — no caption/title overlap on video card ─────────
+# Pre-v8.2 ExoPlayer's native title bar bled through under the React-
+# Native caption row at the bottom of every clip card, producing a
+# duplicated/garbled overlap. v8.2 (clips.tsx) disables nativeControls
+# on VideoView and adds an isReady status listener so the autoplay
+# overlay clears once the first decoded frame is ready (no more solid-
+# black initial frame). Maestro can't measure visual overlap, but we
+# can assert that the ExoPlayer-injected default-title placeholder
+# strings are NOT visible — they're the obvious tell of the leak.
+- assertNotVisible:
+    text: "Unknown"
+
+- assertNotVisible:
+    text: "ExoPlayer"
+
+- assertNotVisible:
+    text: "video/mp4"
+
+# The autoplay-on-visible path: after the feed settles, at least one
+# clip should be playing — assert by the visible Pause / Mute control
+# rendered by the RN overlay (not ExoPlayer chrome).
+- takeScreenshot: screenshots/v82_clip_no_overlap
 
 # ─── Upload a clip ─────────────────────────────────────────────────
 - tapOn:

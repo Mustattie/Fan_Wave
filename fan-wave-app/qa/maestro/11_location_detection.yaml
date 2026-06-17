@@ -5,6 +5,7 @@ tags:
   - p0
   - onboarding
   - location
+  - v82
 ---
 # Regression test for the P0 bug:
 #   "Location pin wrong (Chicago instead of Dallas)"
@@ -150,6 +151,20 @@ tags:
 
 - assertVisible:
     text: "Let's Go!"
+
+# ─── v8.2 fix #4 — venue search uses detected city ─────────────────
+# After finishing onboarding-city the selected city is persisted to
+# users.home_city, which lib/venueSearchApi.ts ~L100 reads as tier-2
+# of the coord cascade (static metro lookup). Without this fix the
+# Create-Watch-Party venue search defaulted to Chicago when Nominatim
+# geocoding failed, producing zero hits for a Dallas tester. We don't
+# finish onboarding here (the next scenario continues from this
+# screen) — instead, this assertion just pins that the city the user
+# would commit IS Dallas (not Chicago) so the downstream venue search
+# in scenario 06 + the detected-city tier of venueSearchApi land on
+# the correct metro.
+- assertNotVisible:
+    text: ".*Detected.*Chicago.*"
 
 # Don't actually finish onboarding — leave the user on this screen so
 # the next scenario (or a manual run) can continue from here without

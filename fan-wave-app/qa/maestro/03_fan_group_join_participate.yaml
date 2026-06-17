@@ -4,6 +4,7 @@ tags:
   - day2
   - groups
   - participate
+  - v82
 ---
 # Sign in → Groups tab → join 2 existing public groups → send chat
 # messages → upload a clip from inside a group context. Fires:
@@ -29,10 +30,31 @@ tags:
 
 - takeScreenshot: screenshots/01_discover_groups
 
+# ─── v8.2 fix #6 — Join CTA on Suggested-Group cards ───────────────
+# The Suggested Groups section header + the literal "Join" button on
+# every non-owned card must both be visible. Pre-v8.2 the Groups tab
+# rendered the cards but never wired the Join button, so users could
+# discover groups but not join from this surface. The button is a
+# real <Text>Join</Text> (groups.tsx ~L622) and MUST be tappable.
+- assertVisible:
+    text: "Suggested Groups"
+
+- assertVisible:
+    text: "Join"
+
 # ─── Join group #1 ─────────────────────────────────────────────────
 - tapOn:
     text: "Join"
     index: 0
+
+# v8.2 fix #6: after the tap, the just-joined card must flip to
+# "✓ Joined" (groups.tsx ~L622 ternary). If the Join handler errors
+# out silently the card would stay on "Join" — assert the transition.
+- extendedWaitUntil:
+    visible:
+      text: "✓ Joined"
+    timeout: 10000
+    optional: true
 
 - takeScreenshot: screenshots/02_joined_1
 

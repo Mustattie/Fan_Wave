@@ -4,9 +4,20 @@ tags:
   - day2
   - groups
   - create
+  - v82
 ---
 # Sign in → Groups tab → tap Create → name the group → set sport/team →
 # confirm. Fires: app_open, sign_in, group_created.
+#
+# v8.2 FIXTURE REQUIREMENT (fix #8 — city prefill)
+#   The QA tester user (config.yaml → qa_user.email) must have
+#   users.home_city = 'Dallas' on prod Supabase. The Suggested-Groups
+#   discovery + the create-group City field both read from this column;
+#   if it's null or "Chicago" (the old hardcoded fallback) the
+#   `assertVisible: "Dallas"` check below will fail.
+#   Seed once via Supabase Studio:
+#     UPDATE public.users SET home_city = 'Dallas'
+#      WHERE email = 'fansphere.tester1@gmail.com';
 
 - launchApp:
     clearState: false
@@ -35,6 +46,18 @@ tags:
     optional: true
 
 - takeScreenshot: screenshots/02_create_form
+
+# ─── v8.2 fix #8 — city prefill from users.home_city ───────────────
+# The Create-Group sheet has a City field that v8.1 hardcoded to
+# "Chicago" via an AsyncStorage default. v8.2 (groups.tsx ~L100) now
+# loads users.home_city on mount. With the fixture user seeded to
+# 'Dallas', the City input must show "Dallas" (NOT "Chicago", NOT the
+# placeholder "e.g., Dallas, TX" — the literal Dallas value).
+- assertVisible:
+    text: "Dallas"
+
+- assertNotVisible:
+    text: "Chicago"
 
 # ─── Fill the create form ──────────────────────────────────────────
 - tapOn:

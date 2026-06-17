@@ -4,6 +4,7 @@ tags:
   - day4
   - watch_parties
   - rsvp
+  - v82
 ---
 # Sign in → Watch Parties → filter Soccer/WC → RSVP to 2 existing parties →
 # open one to view chat → leave a comment. Fires: watch_party_rsvp x2,
@@ -41,12 +42,48 @@ tags:
 
 - takeScreenshot: screenshots/02_filtered_soccer
 
+# ─── v8.2 fix #13 — RSVP RPC signature repair ──────────────────────
+# Migration 059 dropped the legacy 3-arg rsvp_to_watch_party overload
+# and created a 2-arg overload (p_party_id, p_status) that matches
+# every client call site. Pre-v8.2 every RSVP returned 404 from
+# PostgREST and the client swallowed the error to console.warn.
+# Asserting that the RSVP STATE TRANSITIONS (no longer just sits on
+# "RSVP") proves the RPC resolved + succeeded.
+#
+# IMPORTANT: this scenario targets a NON-Soccer-Cup party (any
+# regular NBA / NFL / etc. game on the feed). If the only available
+# parties are Soccer Cup events the WC-pass gate will block this
+# tester unless they have WC Pass. Filter clears below so a
+# non-WC party is reachable.
+- tapOn:
+    text: "All"
+    optional: true
+- tapOn:
+    text: "Clear"
+    optional: true
+
 # ─── RSVP #1 ───────────────────────────────────────────────────────
 - tapOn:
     text: "RSVP"
     index: 0
 
 - takeScreenshot: screenshots/03_rsvp_1
+
+# v8.2 fix #13 regression guard: after a successful RSVP the card
+# transitions out of the "RSVP" CTA into "Going" / "Interested" /
+# "✓ Going" depending on the picker. If the RPC 404s the card stays
+# on "RSVP" and no transition fires.
+- extendedWaitUntil:
+    visible:
+      text: ".*[Gg]oing.*|.*[Ii]nterested.*|✓.*"
+    timeout: 10000
+    optional: true
+
+- assertNotVisible:
+    text: ".*Could not RSVP.*"
+
+- assertNotVisible:
+    text: ".*Something went wrong.*"
 
 # Some apps confirm with a modal — dismiss if present
 - tapOn:
