@@ -70,23 +70,59 @@ function ClipCard({
   isOwner: boolean;
 }) {
   const [isPlaying, setIsPlaying] = useState(false);
+  // Tracks expo-video player readiness so we can hide the raw VideoView
+  // (which paints solid black before the first frame is decoded) and show a
+  // loading placeholder instead. Without this, freshly-posted clips paint a
+  // black void on first viewport entry until the user taps.
+  const [isReady, setIsReady] = useState(false);
   const lastTapRef = useRef<number>(0);
   const heartAnimOpacity = useRef(new Animated.Value(0)).current;
   const heartAnimScale = useRef(new Animated.Value(0.5)).current;
 
   const player = useVideoPlayer(isVisible ? clip.videoUrl : null, (p) => {
     p.loop = true;
-    p.muted = false;
+    // Feed-style mute-by-default. Users can unmute via the play overlay
+    // (or future per-card mute toggle). Muted autoplay is also required
+    // by iOS to start playback without a user gesture.
+    p.muted = true;
   });
 
-  // Auto-pause when not visible
+  // Subscribe to player status so we can render a placeholder while the
+  // source is loading. expo-video status values: 'idle' | 'loading' |
+  // 'readyToPlay' | 'error'. We treat 'readyToPlay' as the cue to swap
+  // the placeholder for the live VideoView.
   useEffect(() => {
     if (!player) return;
-    if (!isVisible && isPlaying) {
-      player.pause();
+    setIsReady(false);
+    const sub = player.addListener('statusChange', ({ status }) => {
+      setIsReady(status === 'readyToPlay');
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [player, clip.videoUrl]);
+
+  // Autoplay-on-visible (feed pattern). Pauses + rewinds when scrolled
+  // off-screen so the next card paints its first frame, not the previous
+  // card's last frame.
+  useEffect(() => {
+    if (!player) return;
+    if (isVisible && isReady) {
+      try {
+        player.play();
+        setIsPlaying(true);
+      } catch {
+        /* player can be torn down mid-render; safe to ignore */
+      }
+    } else if (!isVisible) {
+      try {
+        player.pause();
+      } catch {
+        /* ignore */
+      }
       setIsPlaying(false);
     }
-  }, [isVisible, isPlaying, player]);
+  }, [isVisible, isReady, player]);
 
   const togglePlay = useCallback(() => {
     if (isPlaying) {
@@ -149,10 +185,22 @@ function ClipCard({
         <VideoView
           player={player}
           style={styles.video}
-          nativeControls
+          // nativeControls disabled — they overlap the caption/metadata
+          // bar (causing the visual "previous clip's caption bleeds into
+          // next clip's video" artifact) and conflict with the
+          // double-tap-to-like gesture. We render our own play overlay.
+          nativeControls={false}
           contentFit="cover"
         />
-        {!isPlaying && (
+        {/* Loading placeholder — masks the solid-black first paint that
+            expo-video shows before the source is decoded. Removed once
+            the player reports 'readyToPlay'. */}
+        {!isReady && (
+          <View style={[styles.videoLoadingOverlay, { backgroundColor: clip.bgColors[0] }]}>
+            <ActivityIndicator size="small" color="#fff" />
+          </View>
+        )}
+        {isReady && !isPlaying && (
           <View style={styles.playOverlay}>
             <Text style={styles.playIcon}>▶</Text>
           </View>
@@ -789,6 +837,9 @@ const styles = StyleSheet.create({
   clipCard: {
     backgroundColor: Colors.dark.surface,
     borderRadius: 16,
+    // overflow:hidden is critical — without it the absolutely-positioned
+    // video overlays (play button, view count badge, double-tap heart)
+    // can paint outside the card bounds and bleed into the next card.
     overflow: 'hidden',
     marginBottom: 16,
     borderWidth: 1,
@@ -799,10 +850,20 @@ const styles = StyleSheet.create({
     aspectRatio: 16 / 9,
     alignItems: 'center',
     justifyContent: 'center',
+    // Belt-and-braces: clip the video region itself so the VideoView and
+    // its native control surfaces cannot overflow into the clipInfo
+    // section below (the root cause of the caption-overlap artifact).
+    overflow: 'hidden',
+    position: 'relative',
   },
   video: {
     width: '100%',
     height: '100%',
+  },
+  videoLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   playOverlay: {
     position: 'absolute',

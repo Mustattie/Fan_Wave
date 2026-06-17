@@ -30,6 +30,8 @@ import { subscribeToRsvpCounts } from '@/lib/realtime';
 import { getSportEmoji, getSportColor, formatFullDate } from '@/lib/mappers';
 import { reportError } from '@/lib/errorReporting';
 import { blockUser } from '@/lib/blocks';
+import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
+import { WC_EVENT_ID } from '@/constants/WorldCupIds';
 
 type RsvpStatus = 'going' | 'interested' | 'cant_go' | null;
 
@@ -64,6 +66,9 @@ interface WatchPartyDetail {
   creator_avatar_bg: string;
   group_id: string | null;
   visibility: string;
+  // event_id is the WC marker used to know whether RLS will gate this
+  // RSVP behind has_wc_access() (migration 053). Null for non-event parties.
+  event_id: string | null;
 }
 
 const REPORT_REASONS = [
@@ -90,6 +95,11 @@ export default function WatchPartyDetailScreen() {
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [reportDetails, setReportDetails] = useState('');
   const [showAllAttendees, setShowAllAttendees] = useState(false);
+  // Surface WCPassPaywall when an RSVP is blocked by migration 053's
+  // watch_party_rsvps_insert RLS gate (42501). The RPC is SECURITY DEFINER
+  // and bypasses RLS, but defense-in-depth — we also catch the error code
+  // in case the RPC is removed or its grants change.
+  const [showWCPaywall, setShowWCPaywall] = useState(false);
 
   useEffect(() => {
     loadParty();
@@ -184,6 +194,7 @@ export default function WatchPartyDetailScreen() {
         creator_avatar_bg: '#3498db',
         group_id: null,
         visibility: 'public',
+        event_id: data.event_id ?? null,
       });
 
       // Check if current user is the creator
@@ -257,13 +268,62 @@ export default function WatchPartyDetailScreen() {
       // user from RSVPing because of an infra hiccup.
     }
 
+    // For Soccer Cup parties, bail early if the user lacks WC access so we
+    // surface the WCPassPaywall rather than letting the RLS gate (migration
+    // 053 watch_party_rsvps_insert) reject silently or leave the optimistic
+    // UI in a "going" state that doesn't match server truth.
+    const isWcParty = party?.event_id === WC_EVENT_ID;
+    if (isWcParty && newStatus === 'going') {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: userRow } = await supabase
+            .from('users')
+            .select('wc_pass_active_until, subscription_status')
+            .eq('auth_id', user.id)
+            .maybeSingle();
+          const wcUntil = userRow?.wc_pass_active_until
+            ? new Date(userRow.wc_pass_active_until).getTime()
+            : 0;
+          const status = userRow?.subscription_status ?? 'none';
+          const hasWcAccess =
+            wcUntil > Date.now() || status === 'trial' || status === 'active';
+          if (!hasWcAccess) {
+            setShowWCPaywall(true);
+            return;
+          }
+        }
+      } catch {
+        // If the check fails, proceed — the RPC + RLS will still gate.
+      }
+    }
+
     setRsvpStatus(newStatus);
 
     try {
-      await supabase.rpc('rsvp_to_watch_party', {
+      const { error } = await supabase.rpc('rsvp_to_watch_party', {
         p_party_id: id ?? party?.id,
         p_status: newStatus ?? 'cancelled',
       });
+      if (error) {
+        if (
+          error.code === '42501' ||
+          /row-level security/i.test(error.message ?? '')
+        ) {
+          // Roll back optimistic update before surfacing paywall.
+          setRsvpStatus(rsvpStatus);
+          if (isWcParty) {
+            setShowWCPaywall(true);
+          } else {
+            Alert.alert(
+              "Can't RSVP yet",
+              "This watch party requires an upgrade. Open Profile → Subscription to manage your plan.",
+            );
+          }
+          return;
+        }
+        throw error;
+      }
     } catch (e) {
       reportError(e, { source: 'watch-party:handleRsvp', partyId: id, status: newStatus });
     }
@@ -717,6 +777,11 @@ export default function WatchPartyDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      <WCPassPaywall
+        visible={showWCPaywall}
+        onClose={() => setShowWCPaywall(false)}
+      />
     </SafeAreaView>
   );
 }

@@ -27,11 +27,13 @@ import {
   ScrollText,
   Slash,
   Trash2,
+  Crown,
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
+import { useSubscriptionState } from '@/lib/entitlements';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -41,6 +43,11 @@ export default function ProfileScreen() {
   const [followedTeams, setFollowedTeams] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [homeCity, setHomeCity] = useState('');
+  // Drives the Subscription menu badge so free users see a "Free · Upgrade"
+  // call-out instead of just "Subscription" — without this entry point a
+  // fresh sign-in never finds the PremiumPaywall / WCPassPaywall after the
+  // v7 cleanup removed in-line PaywallGates.
+  const { data: subState } = useSubscriptionState();
 
   useEffect(() => {
     loadProfile();
@@ -155,6 +162,8 @@ export default function ProfileScreen() {
       router.push('/edit-profile' as any);
     } else if (label === 'My Stats') {
       router.push('/creator-stats' as any);
+    } else if (label === 'Subscription') {
+      router.push('/subscription' as any);
     } else if (label === 'Invite Friends') {
       handleInvite();
     } else if (label === 'Privacy Policy') {
@@ -186,20 +195,32 @@ export default function ProfileScreen() {
     ? `@${profile.email.split('@')[0]}`
     : '';
 
+  // Subscription badge text — drives the upgrade CTA so fresh free users
+  // can find PremiumPaywall / WCPassPaywall without trial-and-error after
+  // v7 dropped the in-line PaywallGates.
+  const hasPremium = subState?.hasPremiumAccess ?? false;
+  const hasWC = subState?.hasWCAccess ?? false;
+  const subBadge = hasPremium
+    ? (subState?.isTrial ? 'Trial' : 'Premium')
+    : hasWC
+      ? 'Soccer Cup Pass'
+      : 'Free · Upgrade';
+
   const menuItems = [
-    { icon: Edit3, label: 'Edit Profile', color: Colors.dark.text },
-    { icon: Trophy, label: 'My Sports', color: Colors.dark.text },
-    { icon: Star, label: 'My Teams', color: Colors.dark.text },
-    { icon: Ticket, label: 'RSVP History', color: Colors.dark.text },
-    { icon: Video, label: 'My Clips', color: Colors.dark.text },
-    { icon: BarChart3, label: 'My Stats', color: Colors.dark.text },
-    { icon: Bell, label: 'Notifications', color: Colors.dark.text },
-    { icon: Share2, label: 'Invite Friends', color: Colors.dark.accent },
-    { icon: Slash, label: 'Blocked Users', color: Colors.dark.text },
-    { icon: Shield, label: 'Privacy Policy', color: Colors.dark.text },
-    { icon: ScrollText, label: 'Terms of Service', color: Colors.dark.text },
-    { icon: LogOut, label: 'Sign Out', color: Colors.dark.error },
-    { icon: Trash2, label: 'Delete Account', color: Colors.dark.error },
+    { icon: Edit3, label: 'Edit Profile', color: Colors.dark.text, badge: null as string | null },
+    { icon: Crown, label: 'Subscription', color: Colors.dark.accent, badge: subBadge },
+    { icon: Trophy, label: 'My Sports', color: Colors.dark.text, badge: null },
+    { icon: Star, label: 'My Teams', color: Colors.dark.text, badge: null },
+    { icon: Ticket, label: 'RSVP History', color: Colors.dark.text, badge: null },
+    { icon: Video, label: 'My Clips', color: Colors.dark.text, badge: null },
+    { icon: BarChart3, label: 'My Stats', color: Colors.dark.text, badge: null },
+    { icon: Bell, label: 'Notifications', color: Colors.dark.text, badge: null },
+    { icon: Share2, label: 'Invite Friends', color: Colors.dark.accent, badge: null },
+    { icon: Slash, label: 'Blocked Users', color: Colors.dark.text, badge: null },
+    { icon: Shield, label: 'Privacy Policy', color: Colors.dark.text, badge: null },
+    { icon: ScrollText, label: 'Terms of Service', color: Colors.dark.text, badge: null },
+    { icon: LogOut, label: 'Sign Out', color: Colors.dark.error, badge: null },
+    { icon: Trash2, label: 'Delete Account', color: Colors.dark.error, badge: null },
   ];
 
   if (loading) {
@@ -256,19 +277,40 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        {menuItems.map((item) => (
-          <TouchableOpacity
-            key={item.label}
-            style={styles.menuItem}
-            onPress={() => handleMenuPress(item.label)}
-          >
-            <item.icon size={20} color={item.color} />
-            <Text style={[styles.menuLabel, { color: item.color }]}>
-              {item.label}
-            </Text>
-            <ChevronRight size={18} color={Colors.dark.textMuted} />
-          </TouchableOpacity>
-        ))}
+        {menuItems.map((item) => {
+          const isUpgradeBadge =
+            item.label === 'Subscription' && !hasPremium && !hasWC;
+          return (
+            <TouchableOpacity
+              key={item.label}
+              style={styles.menuItem}
+              onPress={() => handleMenuPress(item.label)}
+            >
+              <item.icon size={20} color={item.color} />
+              <Text style={[styles.menuLabel, { color: item.color }]}>
+                {item.label}
+              </Text>
+              {item.badge ? (
+                <View
+                  style={[
+                    styles.badge,
+                    isUpgradeBadge && styles.badgeUpgrade,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.badgeText,
+                      isUpgradeBadge && styles.badgeTextUpgrade,
+                    ]}
+                  >
+                    {item.badge}
+                  </Text>
+                </View>
+              ) : null}
+              <ChevronRight size={18} color={Colors.dark.textMuted} />
+            </TouchableOpacity>
+          );
+        })}
 
         {isAdmin && (
           <TouchableOpacity
@@ -390,6 +432,26 @@ const styles = StyleSheet.create({
   menuLabel: {
     fontSize: 15,
     flex: 1,
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: Colors.dark.surface,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  badgeUpgrade: {
+    backgroundColor: Colors.dark.accent,
+    borderColor: Colors.dark.accent,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.dark.textSecondary,
+  },
+  badgeTextUpgrade: {
+    color: '#fff',
   },
   spacer: {
     height: 40,

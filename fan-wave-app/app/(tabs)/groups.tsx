@@ -61,6 +61,11 @@ export default function GroupsScreen() {
   const [loadingSuggested, setLoadingSuggested] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
+  // Current auth user id — needed to hide the Join CTA on groups the user
+  // already owns (Issue #6 v8.1).
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // Track in-flight joins so we can disable the button & avoid double-inserts.
+  const [joiningIds, setJoiningIds] = useState<Set<string>>(new Set());
 
   // Team search state
   const [teamQuery, setTeamQuery] = useState('');
@@ -73,14 +78,46 @@ export default function GroupsScreen() {
   } | null>(null);
   const [teamSearchLoading, setTeamSearchLoading] = useState(false);
 
-  // City state
+  // City state — prefilled from users.home_city (fallback to AsyncStorage
+  // cache for offline UX). Never hardcode a city; an empty value lets the
+  // placeholder ("e.g., Dallas, TX") guide the user.
   const [city, setCity] = useState('');
 
-  // Load user city from AsyncStorage on mount
+  // Load user home_city from the users table on mount. Issue #8 v8.1:
+  // the previous default of "Chicago" appeared for every user regardless of
+  // their actual profile city, which broke the Suggested-Groups discovery
+  // query for non-Chicago users.
   useEffect(() => {
-    AsyncStorage.getItem('user_city').then((stored) => {
-      setCity(stored || 'Chicago');
-    });
+    const loadCity = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data } = await supabase
+          .from('users')
+          .select('home_city')
+          .eq('auth_id', user.id)
+          .single();
+
+        const homeCity = (data?.home_city ?? '').toString().trim();
+        if (homeCity) {
+          setCity(homeCity);
+          // Cache for offline / next launch
+          AsyncStorage.setItem('user_city', homeCity).catch(() => {});
+        } else {
+          // Profile city not set — try cached value, otherwise leave blank
+          const stored = await AsyncStorage.getItem('user_city');
+          if (stored) setCity(stored);
+        }
+      } catch {
+        // Network error — fall back to cached city, never to "Chicago".
+        const stored = await AsyncStorage.getItem('user_city');
+        if (stored) setCity(stored);
+      }
+    };
+    loadCity();
   }, []);
 
   // Fetch my groups from Supabase on mount
@@ -93,9 +130,11 @@ export default function GroupsScreen() {
         } = await supabase.auth.getUser();
         if (!user) {
           setMyGroups([]);
+          setCurrentUserId(null);
           setLoadingMyGroups(false);
           return;
         }
+        setCurrentUserId(user.id);
 
         const { data, error } = await supabase
           .from('chat_room_members')
@@ -148,7 +187,14 @@ export default function GroupsScreen() {
       }
     };
 
-    if (city) fetchSuggested();
+    if (city) {
+      fetchSuggested();
+    } else {
+      // No home_city on profile yet — don't leave the suggested-groups
+      // skeleton spinning forever. Show the empty state instead.
+      setSuggestedGroups([]);
+      setLoadingSuggested(false);
+    }
   }, [city, myGroups]);
 
   // Team search with debounce
@@ -179,36 +225,82 @@ export default function GroupsScreen() {
     return () => clearTimeout(timeout);
   }, [teamQuery]);
 
+  // Issue #6 v8.1: Suggested-group Join CTA.
+  // - Insert MUST include user_id explicitly to satisfy migration 053 RLS
+  //   (user_id = auth.uid()). Same fix applied to WCFanGroups in v8.1.
+  // - On success, move the group from Suggested → My Groups locally so the
+  //   UI updates without a refetch round-trip.
+  // - On 42501 (RLS), the Premium gate is active — surface the paywall.
   const handleJoin = async (id: string) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+    if (joiningIds.has(id) || joinedIds.has(id)) return;
 
-      if (joinedIds.has(id)) {
-        await supabase
-          .from('chat_room_members')
-          .delete()
-          .eq('chat_room_id', id)
-          .eq('user_id', user.id);
-        setJoinedIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      } else {
-        await supabase.from('chat_room_members').insert({
-          chat_room_id: id,
-          user_id: user.id,
-          role: 'member',
-        });
-        setJoinedIds((prev) => {
-          const next = new Set(prev);
-          next.add(id);
-          return next;
-        });
+    setJoiningIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Sign in required', 'Please sign in to join a group.');
+        return;
       }
+
+      const { error } = await supabase.from('chat_room_members').insert({
+        chat_room_id: id,
+        user_id: user.id,
+        role: 'member',
+      });
+
+      if (error) {
+        const code: string | undefined = (error as any)?.code;
+        const msg: string = (error.message ?? '').toLowerCase();
+        const isRlsBlock =
+          code === '42501' ||
+          msg.includes('row-level security') ||
+          msg.includes('violates row-level security policy');
+        if (isRlsBlock) {
+          setShowPremiumPaywall(true);
+        } else {
+          Alert.alert(
+            'Could not join',
+            'Could not join — try again or contact support.',
+          );
+        }
+        return;
+      }
+
+      // Optimistic local move: mark joined, then move card from Suggested
+      // → My Groups so the user sees the result immediately.
+      setJoinedIds((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+      setSuggestedGroups((prev) => {
+        const joined = prev.find((g: any) => g.id === id);
+        if (joined) {
+          setMyGroups((mg) => {
+            if (mg.some((g) => g.id === id)) return mg;
+            return [mapChatRoomToDisplay(joined), ...mg];
+          });
+        }
+        return prev.filter((g: any) => g.id !== id);
+      });
     } catch {
-      Alert.alert('Error', 'Could not update group membership.');
+      Alert.alert(
+        'Could not join',
+        'Could not join — try again or contact support.',
+      );
+    } finally {
+      setJoiningIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -467,54 +559,75 @@ export default function GroupsScreen() {
             )}
           </>
         }
-        renderItem={({ item: group }: { item: any }) => (
+        renderItem={({ item: group }: { item: any }) => {
           // Wrap whole row in TouchableOpacity so tapping the card navigates
           // to the fan-group detail screen. The nested Join button captures
           // its own taps (RN bubbles touch events to the innermost
           // responder), so pressing Join doesn't also fire navigation.
-          <TouchableOpacity
-            style={styles.suggestedCard}
-            activeOpacity={0.7}
-            onPress={() => router.push(`/fan-group/${group.id}`)}
-          >
-            <View style={styles.suggestedHeader}>
-              <View
-                style={[
-                  styles.suggestedIcon,
-                  { backgroundColor: group.iconBg || group.icon_bg || Colors.dark.accent + '33' },
-                ]}
-              >
-                <Text style={styles.suggestedIconText}>
-                  {group.icon || '🏟️'}
-                </Text>
-              </View>
-              <View style={styles.suggestedInfo}>
-                <Text style={styles.suggestedName}>{group.name}</Text>
-                <Text style={styles.suggestedMembers}>
-                  {joinedIds.has(group.id)
-                    ? `${(group.memberCount || group.member_count || 0) + 1} members · Joined`
-                    : `${group.memberCount || group.member_count || 0} members`}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[
-                  styles.joinButton,
-                  joinedIds.has(group.id) && styles.joinedButton,
-                ]}
-                onPress={() => handleJoin(group.id)}
-              >
-                <Text
+          //
+          // Issue #6 v8.1: Show Join only if the user is NOT the owner and
+          // NOT already a member. myGroups membership is the source of truth
+          // for the current session; joinedIds tracks just-joined items
+          // before they migrate into myGroups via the optimistic update.
+          const ownerId: string | undefined = group.owner_id;
+          const isOwner = !!(currentUserId && ownerId === currentUserId);
+          const isMember =
+            joinedIds.has(group.id) ||
+            myGroups.some((g) => g.id === group.id);
+          const isJoining = joiningIds.has(group.id);
+
+          return (
+            <TouchableOpacity
+              style={styles.suggestedCard}
+              activeOpacity={0.7}
+              onPress={() => router.push(`/fan-group/${group.id}`)}
+            >
+              <View style={styles.suggestedHeader}>
+                <View
                   style={[
-                    styles.joinButtonText,
-                    joinedIds.has(group.id) && styles.joinedButtonText,
+                    styles.suggestedIcon,
+                    { backgroundColor: group.iconBg || group.icon_bg || Colors.dark.accent + '33' },
                   ]}
                 >
-                  {joinedIds.has(group.id) ? '✓ Joined' : 'Join'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        )}
+                  <Text style={styles.suggestedIconText}>
+                    {group.icon || '🏟️'}
+                  </Text>
+                </View>
+                <View style={styles.suggestedInfo}>
+                  <Text style={styles.suggestedName}>{group.name}</Text>
+                  <Text style={styles.suggestedMembers}>
+                    {isMember
+                      ? `${(group.memberCount || group.member_count || 0) + 1} members · Joined`
+                      : `${group.memberCount || group.member_count || 0} members`}
+                  </Text>
+                </View>
+                {!isOwner && (
+                  <TouchableOpacity
+                    style={[
+                      styles.joinButton,
+                      isMember && styles.joinedButton,
+                    ]}
+                    onPress={() => handleJoin(group.id)}
+                    disabled={isMember || isJoining}
+                  >
+                    {isJoining ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text
+                        style={[
+                          styles.joinButtonText,
+                          isMember && styles.joinedButtonText,
+                        ]}
+                      >
+                        {isMember ? '✓ Joined' : 'Join'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        }}
         ListFooterComponent={<View style={styles.spacer} />}
       />
 
@@ -649,7 +762,7 @@ export default function GroupsScreen() {
               <Text style={styles.fieldLabel}>City</Text>
               <TextInput
                 style={styles.fieldInput}
-                placeholder="Your city"
+                placeholder="e.g., Dallas, TX"
                 placeholderTextColor={Colors.dark.textMuted}
                 value={city}
                 onChangeText={setCity}

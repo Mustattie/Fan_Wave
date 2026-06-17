@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fan Sphere</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a0b2e 0%, #2d1b4e 40%, #6c5ce7 100%);
+            color: #fff;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 24px;
+        }
+        .card { max-width: 480px; }
+        h1 { font-size: clamp(32px, 5vw, 44px); font-weight: 900; letter-spacing: -1px; margin: 0 0 12px; }
+        p { font-size: 17px; opacity: 0.9; margin: 0 0 20px; line-height: 1.5; }
+        a {
+            display: inline-block;
+            background: #fff;
+            color: #2d1b4e;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 999px;
+            font-weight: 700;
+            margin-top: 8px;
+        }
+        a:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.22); }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Fan Sphere</h1>
+        <p id="msg">Page not found. Let's get you back to the action.</p>
+        <a id="home-link" href="/">Go Home</a>
+    </div>
+
+    <script>
+        // Universal route handler for paths that GitHub Pages can't resolve
+        // (i.e. dynamic segments like /invite/CODE, /party/UUID, /group/UUID).
+        // We map them to the appropriate static page with the original path
+        // preserved in ?p=... so JS on that page can extract the dynamic part.
+        (function () {
+            var path = window.location.pathname || '';
+
+            var routes = [
+                { test: /^\/invite\/[^\/]+\/?$/i, target: '/invite/' },
+                { test: /^\/party\/[^\/]+\/?$/i,  target: '/' },
+                { test: /^\/group\/[^\/]+\/?$/i,  target: '/' },
+                { test: /^\/clip\/[^\/]+\/?$/i,   target: '/' },
+                { test: /^\/moment\/[^\/]+\/?$/i, target: '/' },
+            ];
+
+            for (var i = 0; i < routes.length; i++) {
+                if (routes[i].test.test(path)) {
+                    var sep = routes[i].target.indexOf('?') >= 0 ? '&' : '?';
+                    var redirect = routes[i].target + sep + 'p=' + encodeURIComponent(path);
+                    // Replace so the 404 doesn't sit in history
+                    window.location.replace(redirect);
+                    return;
+                }
+            }
+        })();
+    </script>
+</body>
+</html>

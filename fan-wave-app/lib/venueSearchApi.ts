@@ -12,6 +12,22 @@ export interface Venue {
   distance: number; // meters from search point
 }
 
+/**
+ * Result envelope so the UI can distinguish "API failed" from "0 hits".
+ * v8.2 Brass Tap P0: the old API returned `Venue[]` and swallowed every
+ * error to `[]`, so the user saw an empty list whether Overpass was down,
+ * the breaker was open, or OSM genuinely had nothing for the query —
+ * exactly the silent-failure bug we shipped in v6.
+ */
+export type VenueSearchStatus = 'ok' | 'api_error' | 'breaker_open';
+
+export interface VenueSearchResult {
+  venues: Venue[];
+  status: VenueSearchStatus;
+  /** Optional debug detail surfaced only to console + (sparingly) UI. */
+  errorMessage?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Cache
 // ---------------------------------------------------------------------------
@@ -74,73 +90,99 @@ export function calculateDistance(
 }
 
 // ---------------------------------------------------------------------------
+// resetVenueBreakers — let the caller force-clear OPEN state on user retry
+// ---------------------------------------------------------------------------
+export function resetVenueBreakers(): void {
+  overpassBreaker.reset();
+  nominatimBreaker.reset();
+}
+
+// ---------------------------------------------------------------------------
 // searchVenues – Overpass API
 //
-// Live v5 P0: previously took just (lat, lon, radius=2000) and ignored the
-// user's typed query — the caller's client-side `name.includes(q)` filter
-// hit nothing in the 2-3km bubble, so the fallback `results.slice(0,15)`
-// surfaced random "venues" from the wrong city (or zero on cellular).
+// v8.2 Brass Tap P0:
+//   • Returns a `VenueSearchResult` envelope so the caller can show a
+//     real error vs an empty result. The old `Venue[]` return type
+//     swallowed every failure mode to `[]`.
+//   • Logs the full Overpass query + HTTP status so a single device-log
+//     dump tells us whether the request even left the device.
+//   • Coords of (0,0) are now treated as a programmer error — we log and
+//     short-circuit to a clear error instead of querying mid-ocean.
 //
-// New behaviour:
-//   • query is passed THROUGH to Overpass as a server-side `name~` regex
-//     filter (case-insensitive), so we only get rows that actually match.
-//   • radius defaults to 30 km — covers a typical metro area, so a user
-//     in Dallas searching for a venue ten miles away gets a hit.
-//   • amenity list expanded to include nightclub and cinema (relevant for
-//     watch parties).
-//   • If query is empty or under 2 chars, fall back to the un-filtered
-//     amenity dump so we still populate the "near you" list on first open.
+// Historic v6 changes preserved:
+//   • query is pushed to Overpass as a server-side `name~` regex filter.
+//   • radius defaults to 30 km — covers a typical metro area.
+//   • Two-pronged query: amenity-tagged venues + any node with a matching
+//     name (handles unusual OSM tagging like "The Brass Tap" tagged as
+//     shop=alcohol).
 // ---------------------------------------------------------------------------
 export async function searchVenues(
   lat: number,
   lon: number,
   query: string = '',
   radius: number = 30000
-): Promise<Venue[]> {
+): Promise<VenueSearchResult> {
+  // Programmer-error guard. (0,0) is the Atlantic Ocean off Africa —
+  // a 30 km Overpass query around it returns nothing and is a sign the
+  // caller never resolved the user's city to coords.
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) {
+    const msg = `searchVenues called with invalid coords lat=${lat} lon=${lon}`;
+    console.error(`[venueSearchApi] ${msg}`);
+    return { venues: [], status: 'api_error', errorMessage: msg };
+  }
+
   const q = query.trim().replace(/["\\]/g, '');
   const cacheKey = `venues_${lat.toFixed(3)}_${lon.toFixed(3)}_${radius}_${q.toLowerCase()}`;
   const cached = getCached<Venue[]>(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    console.log(
+      `[venueSearchApi] cache HIT key=${cacheKey} → ${cached.length} venues`
+    );
+    return { venues: cached, status: 'ok' };
+  }
 
-  return overpassBreaker.execute(async () => {
-    const amenityRegex = '^(bar|pub|restaurant|cafe|nightclub|cinema|fast_food|biergarten)$';
-    // Server-side name filter when the user has typed enough characters.
-    const nameClause = q.length >= 2 ? `["name"~"${q}",i]` : '';
+  const amenityRegex =
+    '^(bar|pub|restaurant|cafe|nightclub|cinema|fast_food|biergarten)$';
+  const nameClause = q.length >= 2 ? `["name"~"${q}",i]` : '';
+  const nameOnlyClause =
+    q.length >= 2
+      ? `node["name"~"${q}",i](around:${radius},${lat},${lon});`
+      : '';
 
-    // Two-pronged Overpass query: (1) amenity-tagged venues, (2) ALSO any
-    // node with a matching name (when the user typed a search term). Many
-    // sports bars / brewpubs are tagged as amenity=pub or amenity=bar but
-    // some are tagged only as shop=alcohol or have no amenity at all —
-    // matching by name AS WELL ensures venues like "The Brass Tap"
-    // surface even when the OSM tagging is unusual. Also covers
-    // amenity-only nodes when query is short/empty for the discover list.
-    const nameOnlyClause =
-      q.length >= 2
-        ? `node["name"~"${q}",i](around:${radius},${lat},${lon});`
-        : '';
+  const overpassQuery = `
+    [out:json][timeout:25];
+    (
+      node["amenity"~"${amenityRegex}"]${nameClause}(around:${radius},${lat},${lon});
+      ${nameOnlyClause}
+    );
+    out body;
+  `;
 
-    const overpassQuery = `
-      [out:json][timeout:25];
-      (
-        node["amenity"~"${amenityRegex}"]${nameClause}(around:${radius},${lat},${lon});
-        ${nameOnlyClause}
-      );
-      out body;
-    `;
+  console.log(
+    `[venueSearchApi] Overpass request lat=${lat.toFixed(4)} lon=${lon.toFixed(4)} ` +
+      `radius=${radius}m q="${q}"`
+  );
 
+  const venues = await overpassBreaker.execute(async () => {
     const response = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: `data=${encodeURIComponent(overpassQuery)}`,
     });
 
-    if (!response.ok) throw new Error('Overpass API error');
+    console.log(
+      `[venueSearchApi] Overpass response status=${response.status}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`Overpass API error: HTTP ${response.status}`);
+    }
 
     const data = await response.json();
 
     // Two Overpass clauses can return the same node twice; dedupe by id.
     const seen = new Set<number>();
-    const venues: Venue[] = [];
+    const out: Venue[] = [];
     for (const el of data.elements || []) {
       if (typeof el.id === 'number' && seen.has(el.id)) continue;
       if (typeof el.id === 'number') seen.add(el.id);
@@ -152,7 +194,7 @@ export async function searchVenues(
       const city = tags['addr:city'] || '';
       const parts = [houseNumber, street, city].filter(Boolean).join(' ').trim();
       const address = parts || 'Address not available';
-      venues.push({
+      out.push({
         name: tags.name,
         address,
         lat: el.lat,
@@ -162,10 +204,35 @@ export async function searchVenues(
       });
     }
 
-    venues.sort((a, b) => a.distance - b.distance);
-    setCache(cacheKey, venues);
-    return venues;
+    out.sort((a, b) => a.distance - b.distance);
+    setCache(cacheKey, out);
+    console.log(
+      `[venueSearchApi] Overpass returned ${data.elements?.length ?? 0} raw / ${out.length} named venues`
+    );
+    return out;
   }, [] as Venue[]);
+
+  // Pull the failure mode out of the breaker so the UI can render the
+  // right toast. We only treat empty-venues-with-error as an error case;
+  // empty-venues-with-no-error is a legitimate "OSM has nothing" result.
+  if (venues.length === 0) {
+    if (overpassBreaker.wasShortCircuited) {
+      return {
+        venues,
+        status: 'breaker_open',
+        errorMessage: 'Venue search temporarily unavailable (cooling down).',
+      };
+    }
+    if (overpassBreaker.lastError) {
+      return {
+        venues,
+        status: 'api_error',
+        errorMessage: overpassBreaker.lastError.message,
+      };
+    }
+  }
+
+  return { venues, status: 'ok' };
 }
 
 // ---------------------------------------------------------------------------
@@ -270,6 +337,7 @@ export async function geocodeCity(
       cityName
     )}&limit=1&addressdetails=1&countrycodes=us,ca,mx`;
 
+    console.log(`[venueSearchApi] geocodeCity "${cityName}"`);
     const response = await fetch(url, {
       headers: { 'User-Agent': 'FanSphere/1.0' },
     });
@@ -278,7 +346,12 @@ export async function geocodeCity(
 
     const results = await response.json();
 
-    if (!results || results.length === 0) return null;
+    if (!results || results.length === 0) {
+      console.warn(
+        `[venueSearchApi] geocodeCity "${cityName}" returned 0 results`
+      );
+      return null;
+    }
 
     const first = results[0];
     const result = {
@@ -286,6 +359,9 @@ export async function geocodeCity(
       lon: parseFloat(first.lon),
       displayName: first.display_name,
     };
+    console.log(
+      `[venueSearchApi] geocodeCity "${cityName}" → (${result.lat}, ${result.lon}) ${result.displayName}`
+    );
 
     setCache(cacheKey, result);
     return result;

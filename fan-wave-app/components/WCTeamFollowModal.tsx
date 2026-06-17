@@ -13,6 +13,8 @@ import {
 import { Colors } from '@/constants/Colors';
 import { WC_TEAMS, getTeamsByGroup, WCTeam } from '@/constants/WorldCupData';
 import { supabase } from '@/lib/supabase';
+import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
+import { useHasWCAccess } from '@/lib/entitlements';
 
 const ALL_GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
 
@@ -35,6 +37,10 @@ interface GroupSection {
 export function WCTeamFollowModal({ visible, onClose, onUpdate }: WCTeamFollowModalProps) {
   const [followedCodes, setFollowedCodes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  // Surface WCPassPaywall when a free user taps Follow — the
+  // user_team_follows insert is gated by migration 053 for WC-league teams.
+  const [showWCPaywall, setShowWCPaywall] = useState(false);
+  const hasWCAccess = useHasWCAccess();
 
   // Map of team code → Supabase team UUID (loaded once)
   const [codeToId, setCodeToId] = useState<Record<string, string>>({});
@@ -86,6 +92,14 @@ export function WCTeamFollowModal({ visible, onClose, onUpdate }: WCTeamFollowMo
       const teamId = codeToId[code];
       const wasFollowing = followedCodes.has(code);
 
+      // WC team follows are gated by migration 053. If the user lacks WC
+      // access AND is trying to add a follow (not remove), surface the
+      // paywall instead of leaving a stale optimistic-followed badge.
+      if (!hasWCAccess && !wasFollowing) {
+        setShowWCPaywall(true);
+        return;
+      }
+
       // Optimistic UI update
       setFollowedCodes((prev) => {
         const next = new Set(prev);
@@ -129,7 +143,7 @@ export function WCTeamFollowModal({ visible, onClose, onUpdate }: WCTeamFollowMo
         }
       }
     },
-    [codeToId, followedCodes],
+    [codeToId, followedCodes, hasWCAccess],
   );
 
   const handleDone = useCallback(() => {
@@ -279,6 +293,11 @@ export function WCTeamFollowModal({ visible, onClose, onUpdate }: WCTeamFollowMo
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <WCPassPaywall
+        visible={showWCPaywall}
+        onClose={() => setShowWCPaywall(false)}
+      />
     </Modal>
   );
 }

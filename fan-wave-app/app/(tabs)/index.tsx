@@ -222,8 +222,15 @@ export default function HomeScreen() {
             <WatchPartyCard key={party.id} party={party} />
           ))
         ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No watch parties nearby yet — rally your crew!</Text>
+          <View style={styles.promoCard}>
+            <Text style={styles.promoEmoji}>🎉</Text>
+            <Text style={styles.promoTitle}>
+              Be the first to host{city ? ` in ${city}` : ' a watch party'}!
+            </Text>
+            <Text style={styles.promoSubtitle}>
+              Fans nearby will see your event and can RSVP. Pick a game, set a
+              venue, invite your crew.
+            </Text>
             <TouchableOpacity
               style={styles.emptyButton}
               onPress={() => router.push('/create-watch-party')}
@@ -327,6 +334,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
+  },
+  promoCard: {
+    backgroundColor: Colors.dark.surface,
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.dark.accent + '40',
+  },
+  promoEmoji: {
+    fontSize: 28,
+    marginBottom: 6,
+  },
+  promoTitle: {
+    color: Colors.dark.text,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  promoSubtitle: {
+    color: Colors.dark.textSecondary,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   emptyButtonText: {
     color: Colors.dark.text,

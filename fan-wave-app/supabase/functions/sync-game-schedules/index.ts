@@ -11,14 +11,29 @@ const corsHeaders = {
 };
 
 // ---------------------------------------------------------------------------
-// Sport / league mappings used by the ESPN adapter
+// Sport / league mappings used by the ESPN adapter.
+//
+// `sport` + `league` form the ESPN scoreboard path:
+//   https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard
+// `leagueName` is the value matched against `public.leagues.name` (ILIKE)
+// when stamping `event_id` on synced game rows. Used to be the same as the
+// sport key, but that broke for Soccer Cup whose league row is named
+// "Soccer Cup" (post migration 048 rebrand) while the sport key is
+// "worldcup" — so we now look up by leagueName explicitly.
 // ---------------------------------------------------------------------------
-const SPORT_LEAGUE_MAP: Record<string, { sport: string; league: string }> = {
-  nfl: { sport: "football", league: "nfl" },
-  nba: { sport: "basketball", league: "nba" },
-  mlb: { sport: "baseball", league: "mlb" },
-  mls: { sport: "soccer", league: "usa.1" },
-  nhl: { sport: "hockey", league: "nhl" },
+const SPORT_LEAGUE_MAP: Record<
+  string,
+  { sport: string; league: string; leagueName: string }
+> = {
+  nfl: { sport: "football", league: "nfl", leagueName: "NFL" },
+  nba: { sport: "basketball", league: "nba", leagueName: "NBA" },
+  mlb: { sport: "baseball", league: "mlb", leagueName: "MLB" },
+  mls: { sport: "soccer", league: "usa.1", leagueName: "MLS" },
+  nhl: { sport: "hockey", league: "nhl", leagueName: "NHL" },
+  // 2026 World Cup → Soccer Cup (rebranded migration 048). ESPN exposes
+  // it under `soccer/fifa.world`. The leagueName aligns with what
+  // migration 006/048 seeded so the events join still resolves.
+  worldcup: { sport: "soccer", league: "fifa.world", leagueName: "Soccer Cup" },
 };
 
 const ALL_SPORTS = Object.keys(SPORT_LEAGUE_MAP);
@@ -262,11 +277,14 @@ Deno.serve(async (req: Request) => {
 
       // Active event id for this league (still set on the row for joins/
       // analytics; no longer used for row matching — espn_id is the key).
+      // Lookup uses leagueName (not the sport key) so the Soccer Cup row
+      // (name="Soccer Cup", key="worldcup") resolves correctly.
       let eventId: string | null = null;
+      const leagueLookupName = SPORT_LEAGUE_MAP[sport]?.leagueName ?? sport;
       const { data: leagueRow } = await supabase
         .from("leagues")
         .select("id")
-        .ilike("name", sport)
+        .ilike("name", leagueLookupName)
         .maybeSingle();
       if (leagueRow?.id) {
         const { data: activeEvent } = await supabase

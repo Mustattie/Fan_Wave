@@ -12,6 +12,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { SPORTS } from '@/constants/Sports';
@@ -39,6 +40,16 @@ export default function CreateClipScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [posting, setPosting] = useState(false);
+  // Local override of the route-param videoUri so we can clear / replace
+  // the attached clip in-place (e.g. after the "Clip too large" rejection)
+  // without bouncing the user back to the feed first. Falls back to the
+  // route param on initial mount.
+  const [activeVideoUri, setActiveVideoUri] = useState<string | undefined>(
+    videoUri,
+  );
+  const [activeDurationMs, setActiveDurationMs] = useState<string | undefined>(
+    durationMs,
+  );
   // Mirrors the Post-a-Moment picker so clips get the same sport +
   // moment-type tagging. Defaults to NFL — users can change before posting.
   // Both are optional on the DB side (media_clips.sport_id / moment_type
@@ -48,22 +59,66 @@ export default function CreateClipScreen() {
   const momentTypes = getMomentTypesForSport(sportId);
   const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
 
-  const player = useVideoPlayer(videoUri || null, (p) => {
+  const player = useVideoPlayer(activeVideoUri || null, (p) => {
     p.loop = true;
     p.muted = true;
     p.play();
   });
 
   useEffect(() => {
-    if (!videoUri) {
+    if (!videoUri && !activeVideoUri) {
       Alert.alert('No video', 'Please pick a video first.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
     }
-  }, [videoUri, router]);
+  }, [videoUri, activeVideoUri, router]);
+
+  // Re-record / re-pick helpers. Used by the "Clip too large" recovery
+  // flow so the user is never stuck with a too-big file bound to the
+  // screen with only an "OK" Alert button.
+  const reRecord = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Camera permission denied',
+        'Enable camera access in Settings to record clips.',
+      );
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      videoMaxDuration: 30,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]?.uri) {
+      const asset = result.assets[0];
+      setActiveVideoUri(asset.uri);
+      setActiveDurationMs(String(asset.duration ?? ''));
+    }
+  };
+
+  const rePickFromLibrary = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Library permission denied',
+        'Enable photo library access in Settings to pick a clip.',
+      );
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]?.uri) {
+      const asset = result.assets[0];
+      setActiveVideoUri(asset.uri);
+      setActiveDurationMs(String(asset.duration ?? ''));
+    }
+  };
 
   const handlePost = async () => {
-    if (!videoUri) return;
+    if (!activeVideoUri) return;
     if (!title.trim()) {
       Alert.alert('Title required', 'Please add a caption for your clip.');
       return;
@@ -83,11 +138,24 @@ export default function CreateClipScreen() {
     // Client-side pre-upload validation (FW-100). Reject oversized /
     // overlong clips before any bandwidth is spent.
     try {
-      const durationSec = durationMs ? Number(durationMs) / 1000 : undefined;
-      await validateClip(videoUri, { durationSec });
+      const durationSec = activeDurationMs ? Number(activeDurationMs) / 1000 : undefined;
+      await validateClip(activeVideoUri, { durationSec });
     } catch (e) {
       if (e instanceof UploadValidationError) {
-        Alert.alert('Clip too large', e.message);
+        // Don't strand the user with a single "OK" button — they're holding
+        // a clip that can't be posted. Give them a clear escape path:
+        // re-record from the camera, pick a different clip, or cancel out.
+        // TODO(compression): once we ship expo-video-compressor we can add
+        // an "Auto-compress" button here instead of forcing a re-record.
+        Alert.alert(
+          'Clip too large',
+          `${e.message}\n\nRe-record a shorter clip or pick a smaller one from your library.`,
+          [
+            { text: 'Re-record', onPress: reRecord },
+            { text: 'Pick another', onPress: rePickFromLibrary },
+            { text: 'Cancel', style: 'cancel' },
+          ],
+        );
         return;
       }
       // Unknown validation error — let the server reject.
@@ -138,10 +206,10 @@ export default function CreateClipScreen() {
       const profileId = profile?.id;
       if (!profileId) throw new Error('Profile not found');
 
-      const ext = (videoUri.split('.').pop() || 'mp4').toLowerCase();
+      const ext = (activeVideoUri.split('.').pop() || 'mp4').toLowerCase();
       const contentType = ext === 'mp4' ? 'video/mp4' : `video/${ext}`;
-      const durationSeconds = durationMs
-        ? Math.round(Number(durationMs) / 1000)
+      const durationSeconds = activeDurationMs
+        ? Math.round(Number(activeDurationMs) / 1000)
         : null;
 
       // Enqueue the upload + insert in the background and bounce the user
@@ -152,7 +220,7 @@ export default function CreateClipScreen() {
       // failed with a tap-to-retry overlay.
       enqueueClipUpload({
         tempId: generateTempId(),
-        localUri: videoUri,
+        localUri: activeVideoUri,
         contentType,
         subpath: `${Date.now()}.${ext}`,
         title: title.trim(),
@@ -205,7 +273,7 @@ export default function CreateClipScreen() {
             <X size={24} color={C.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>New Clip</Text>
-          <View style={{ width: 40 }} />
+          <View style={{ width: 44 }} />
         </View>
       }
       footer={
@@ -222,7 +290,7 @@ export default function CreateClipScreen() {
         </TouchableOpacity>
       }
     >
-      {videoUri ? (
+      {activeVideoUri ? (
             <VideoView
               player={player}
               style={styles.videoPreview}
@@ -324,10 +392,12 @@ const styles = StyleSheet.create({
     borderBottomColor: C.border,
   },
   closeBtn: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 22,
+    backgroundColor: C.surface,
   },
   headerTitle: {
     color: C.text,

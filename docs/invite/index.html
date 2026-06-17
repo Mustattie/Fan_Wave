@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>You're Invited to Fan Sphere</title>
+    <meta name="description" content="A friend invited you to Fan Sphere — the social home for sports fans. Public &amp; private watch parties, live chat, clips, and team-by-team coverage across NBA, NFL, MLB, soccer, World Cup and more.">
+    <meta property="og:title" content="You're Invited to Fan Sphere">
+    <meta property="og:description" content="Your crew, any city, every game. Join Fan Sphere — watch parties, live chat, clips, and the community that loves the game as much as you do.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://fansphere.org/invite/">
+    <link rel="canonical" href="https://fansphere.org/invite/">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #1a1a2e;
+            line-height: 1.6;
+            background: #fafafe;
+        }
+        .hero {
+            background: linear-gradient(135deg, #1a0b2e 0%, #2d1b4e 40%, #6c5ce7 100%);
+            color: #fff;
+            padding: 64px 24px 72px;
+            text-align: center;
+        }
+        .invite-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.14);
+            border: 1px solid rgba(255,255,255,0.32);
+            border-radius: 999px;
+            padding: 6px 16px;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            margin-bottom: 18px;
+        }
+        .hero h1 {
+            font-size: clamp(32px, 5.5vw, 54px);
+            font-weight: 900;
+            letter-spacing: -1.2px;
+            margin-bottom: 14px;
+            line-height: 1.1;
+        }
+        .hero .tagline {
+            font-size: clamp(17px, 2.2vw, 22px);
+            opacity: 0.94;
+            max-width: 600px;
+            margin: 0 auto 28px;
+        }
+        .code-pill {
+            display: inline-block;
+            background: rgba(255,255,255,0.12);
+            border: 1px dashed rgba(255,255,255,0.45);
+            border-radius: 10px;
+            padding: 8px 16px;
+            margin-top: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .container { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+        section { padding: 56px 0; }
+        .cta-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            margin-top: 8px;
+        }
+        .badge-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            justify-content: center;
+        }
+        .store-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: #fff;
+            color: #2d1b4e;
+            text-decoration: none;
+            padding: 12px 22px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 15px;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            min-width: 200px;
+            justify-content: center;
+        }
+        .store-badge.secondary {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.4);
+        }
+        .store-badge:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.22); }
+        .store-badge .label-small { display: block; font-size: 11px; font-weight: 500; opacity: 0.7; letter-spacing: 0.4px; text-transform: uppercase; }
+        .store-badge .label-big { display: block; font-size: 16px; font-weight: 800; }
+        .deep-link-row {
+            margin-top: 28px;
+            font-size: 14px;
+            opacity: 0.88;
+        }
+        .deep-link-row a {
+            color: #fff;
+            text-decoration: underline;
+            font-weight: 600;
+        }
+        h2 {
+            font-size: clamp(24px, 3.5vw, 34px);
+            font-weight: 800;
+            color: #2d1b4e;
+            margin-bottom: 24px;
+            letter-spacing: -0.5px;
+            text-align: center;
+        }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 18px;
+        }
+        .feature {
+            background: #fff;
+            border: 1px solid #ebe9f3;
+            border-radius: 14px;
+            padding: 22px 20px;
+        }
+        .feature h3 { font-size: 16px; font-weight: 700; color: #2d1b4e; margin-bottom: 6px; }
+        .feature p { font-size: 14px; color: #595770; }
+        .icon { font-size: 26px; margin-bottom: 8px; }
+        footer {
+            background: #1a0b2e;
+            color: #c4c1d4;
+            padding: 36px 24px 28px;
+            text-align: center;
+        }
+        footer .links {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 22px;
+            margin-bottom: 20px;
+        }
+        footer a { color: #c4c1d4; text-decoration: none; font-size: 14px; }
+        footer a:hover { color: #fff; }
+        footer .copy { font-size: 12px; opacity: 0.6; }
+    </style>
+</head>
+<body>
+    <header class="hero">
+        <div class="container">
+            <div class="invite-badge">You're Invited</div>
+            <h1>Join me on Fan Sphere</h1>
+            <p class="tagline">A friend wants to watch the game with you. Public &amp; private watch parties, live chat, clips, and your crew — any city, every game.</p>
+            <div id="invite-code-display" class="code-pill" style="display:none;">Invite code: <span id="invite-code-value"></span></div>
+
+            <div class="cta-stack" style="margin-top: 32px;">
+                <div class="badge-row">
+                    <a id="play-store-link" class="store-badge" href="https://play.google.com/store/apps/details?id=org.fansphere.app">
+                        <span>
+                            <span class="label-small">Get it on</span>
+                            <span class="label-big">Google Play</span>
+                        </span>
+                    </a>
+                    <a id="app-store-link" class="store-badge secondary" href="https://apps.apple.com/app/fan-sphere/id6747320180">
+                        <span>
+                            <span class="label-small">Download on the</span>
+                            <span class="label-big">App Store</span>
+                        </span>
+                    </a>
+                </div>
+                <div class="deep-link-row">
+                    Already have the app? <a id="deep-link" href="fansphere://">Open in Fan Sphere</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <section>
+        <div class="container">
+            <h2>What you get when you join</h2>
+            <div class="features">
+                <div class="feature">
+                    <div class="icon">📺</div>
+                    <h3>Public &amp; Private Watch Parties</h3>
+                    <p>RSVP to public parties, or host private ones for your crew. Live chat included.</p>
+                </div>
+                <div class="feature">
+                    <div class="icon">🎬</div>
+                    <h3>Capture &amp; Share Clips</h3>
+                    <p>Record game-day moments and post to TikTok and Instagram with one tap.</p>
+                </div>
+                <div class="feature">
+                    <div class="icon">🏆</div>
+                    <h3>Every Sport, All Year</h3>
+                    <p>NBA, NFL, MLB, soccer, college, and FIFA World Cup 2026. Pick your teams.</p>
+                </div>
+                <div class="feature">
+                    <div class="icon">👥</div>
+                    <h3>Fan Groups</h3>
+                    <p>Unlimited groups for any team. Live chat with fellow fans anytime.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="links">
+            <a href="/">Home</a>
+            <a href="/privacy.html">Privacy Policy</a>
+            <a href="/terms.html">Terms of Service</a>
+            <a href="mailto:support@thabtech.com">Support</a>
+        </div>
+        <div class="copy">
+            &copy; 2026 Thabtech LLC. Fan Sphere is a Thabtech LLC product.
+        </div>
+    </footer>
+
+    <script>
+        // Extract invite code from either:
+        //   /invite/CODE        (path-style, redirected here by /404.html)
+        //   /invite/?code=CODE  (query-style)
+        //   /invite/#CODE       (fragment fallback)
+        (function () {
+            function sanitize(raw) {
+                if (!raw) return '';
+                // Only keep URL-safe invite code chars (alphanumeric + dash/underscore),
+                // cap at 64 chars to prevent abuse / ridiculous URLs.
+                return String(raw).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+            }
+
+            var code = '';
+            try {
+                var params = new URLSearchParams(window.location.search);
+                code = sanitize(params.get('code') || params.get('invite') || '');
+            } catch (_) { /* old browser */ }
+
+            if (!code) {
+                // Path-style: /invite/CODE (handled when 404.html redirects here
+                // with the original path preserved as ?p=/invite/CODE)
+                try {
+                    var params2 = new URLSearchParams(window.location.search);
+                    var origPath = params2.get('p') || '';
+                    var m = /\/invite\/([^\/?#]+)/.exec(origPath);
+                    if (m) code = sanitize(m[1]);
+                } catch (_) {}
+            }
+
+            if (!code && window.location.hash) {
+                code = sanitize(window.location.hash.replace(/^#/, ''));
+            }
+
+            if (code) {
+                document.getElementById('invite-code-value').textContent = code;
+                document.getElementById('invite-code-display').style.display = 'inline-block';
+
+                // Append referrer to Play Store link (Play accepts ?referrer=...)
+                var play = document.getElementById('play-store-link');
+                if (play) {
+                    var sep = play.href.indexOf('?') >= 0 ? '&' : '?';
+                    play.href = play.href + sep + 'referrer=invite_' + encodeURIComponent(code);
+                }
+
+                // Deep link into the app with the invite code
+                var deep = document.getElementById('deep-link');
+                if (deep) {
+                    deep.href = 'fansphere://invite/' + encodeURIComponent(code);
+                }
+            }
+        })();
+    </script>
+</body>
+</html>

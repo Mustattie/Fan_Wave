@@ -17,9 +17,17 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Globe, Lock, UserPlus, X, Users, Search } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
+import * as Location from 'expo-location';
 import { Colors } from '@/constants/Colors';
 import { SPORTS } from '@/constants/Sports';
-import { searchVenues, geocodeCity, searchAddress, Venue, AddressSuggestion } from '@/lib/venueSearchApi';
+import {
+  searchVenues,
+  geocodeCity,
+  searchAddress,
+  resetVenueBreakers,
+  Venue,
+  AddressSuggestion,
+} from '@/lib/venueSearchApi';
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mapGameToDisplay, type GameDisplay } from '@/lib/mappers';
@@ -27,9 +35,49 @@ import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
 
 const C = Colors.dark;
 
-// Default Chicago coordinates (used as initial fallback)
+// Default Chicago coordinates (used as initial fallback).
+// v8.2 Brass Tap P0: this default is the silent reason a user in McKinney TX
+// who never had `user_city` resolved correctly was searching a 30km bubble
+// around Chicago. Code now resolves the user's city via Supabase profile +
+// device GPS BEFORE the first search and only falls back to Chicago if
+// every signal is unavailable.
 const DEFAULT_LAT = 41.8781;
 const DEFAULT_LON = -87.6298;
+
+// Static lat/lon for top US metros — used as the last-resort fallback when
+// Nominatim geocoding is failing/rate-limited but we still have a city
+// string. Keeps the user from searching Chicago when they typed "Dallas".
+const US_METRO_FALLBACKS: Record<string, { lat: number; lon: number }> = {
+  atlanta: { lat: 33.749, lon: -84.388 },
+  austin: { lat: 30.2672, lon: -97.7431 },
+  boston: { lat: 42.3601, lon: -71.0589 },
+  chicago: { lat: 41.8781, lon: -87.6298 },
+  dallas: { lat: 32.7767, lon: -96.797 },
+  denver: { lat: 39.7392, lon: -104.9903 },
+  detroit: { lat: 42.3314, lon: -83.0458 },
+  houston: { lat: 29.7604, lon: -95.3698 },
+  'las vegas': { lat: 36.1699, lon: -115.1398 },
+  'los angeles': { lat: 34.0522, lon: -118.2437 },
+  mckinney: { lat: 33.1972, lon: -96.6398 },
+  miami: { lat: 25.7617, lon: -80.1918 },
+  'new york': { lat: 40.7128, lon: -74.006 },
+  philadelphia: { lat: 39.9526, lon: -75.1652 },
+  phoenix: { lat: 33.4484, lon: -112.074 },
+  plano: { lat: 33.0198, lon: -96.6989 },
+  portland: { lat: 45.5152, lon: -122.6784 },
+  'san antonio': { lat: 29.4241, lon: -98.4936 },
+  'san diego': { lat: 32.7157, lon: -117.1611 },
+  'san francisco': { lat: 37.7749, lon: -122.4194 },
+  seattle: { lat: 47.6062, lon: -122.3321 },
+};
+
+function lookupMetroFallback(
+  city: string
+): { lat: number; lon: number } | null {
+  // "McKinney, Texas" → "mckinney"
+  const key = city.split(',')[0]!.trim().toLowerCase();
+  return US_METRO_FALLBACKS[key] ?? null;
+}
 
 const SPORT_FILTERS = [
   { id: 'all', name: 'All' },
@@ -128,28 +176,95 @@ export default function CreateWatchPartyScreen() {
   const [contactSearch, setContactSearch] = useState('');
   const [creating, setCreating] = useState(false);
 
-  // Geo coordinates for venue search (loaded from user city)
+  // Geo coordinates for venue search (loaded from user city).
+  // `coordSource` tracks WHY we're at these coords so we can fall back
+  // intelligently when the user's search returns nothing.
   const [searchLat, setSearchLat] = useState(DEFAULT_LAT);
   const [searchLon, setSearchLon] = useState(DEFAULT_LON);
   const [userCity, setUserCity] = useState<string | null>(null);
+  const [coordSource, setCoordSource] = useState<
+    'default' | 'geocode' | 'metro_fallback' | 'device_gps'
+  >('default');
 
-  // Load user's city from AsyncStorage and geocode to lat/lon
+  // Resolve the user's search center. v8.2 Brass Tap P0: cascade through
+  //   1) Nominatim geocode of stored `user_city`
+  //   2) Static US-metro lookup (Nominatim down / "Dallas, TX" geocoded
+  //      to the wrong McKinney etc.)
+  //   3) Device GPS (real "where I am right now")
+  //   4) Chicago default (last resort — same as before)
+  // …so a user in McKinney never falls through to searching Chicago.
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      let storedCity: string | null = null;
       try {
-        const storedCity = await AsyncStorage.getItem('user_city');
-        if (storedCity) {
-          setUserCity(storedCity);
+        storedCity = await AsyncStorage.getItem('user_city');
+      } catch {
+        // ignore — fallthrough to GPS/default below
+      }
+
+      if (storedCity) {
+        if (!cancelled) setUserCity(storedCity);
+
+        // (1) Try real geocode first.
+        try {
           const geo = await geocodeCity(storedCity);
-          if (geo) {
+          if (!cancelled && geo) {
+            console.log(
+              `[create-watch-party] coords from geocode "${storedCity}" → (${geo.lat}, ${geo.lon})`
+            );
             setSearchLat(geo.lat);
             setSearchLon(geo.lon);
+            setCoordSource('geocode');
+            return;
+          }
+        } catch {
+          // swallow — try metro fallback next
+        }
+
+        // (2) Static metro fallback.
+        const metro = lookupMetroFallback(storedCity);
+        if (!cancelled && metro) {
+          console.log(
+            `[create-watch-party] coords from metro fallback "${storedCity}" → (${metro.lat}, ${metro.lon})`
+          );
+          setSearchLat(metro.lat);
+          setSearchLon(metro.lon);
+          setCoordSource('metro_fallback');
+          return;
+        }
+      }
+
+      // (3) Device GPS — best signal when the user hasn't set a home_city.
+      try {
+        if (Platform.OS !== 'web') {
+          const { status } = await Location.getForegroundPermissionsAsync();
+          if (status === 'granted') {
+            const pos = await Location.getLastKnownPositionAsync();
+            if (!cancelled && pos) {
+              console.log(
+                `[create-watch-party] coords from device GPS → (${pos.coords.latitude}, ${pos.coords.longitude})`
+              );
+              setSearchLat(pos.coords.latitude);
+              setSearchLon(pos.coords.longitude);
+              setCoordSource('device_gps');
+              return;
+            }
           }
         }
       } catch {
-        // Keep default Chicago coordinates
+        // ignore — fall through to default
       }
+
+      // (4) Keep Chicago default. Log it so device logs make the cause obvious.
+      console.warn(
+        '[create-watch-party] no home_city / GPS — using Chicago default coords'
+      );
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Load upcoming games from Supabase
@@ -176,23 +291,76 @@ export default function CreateWatchPartyScreen() {
 
   // -----------------------------------------------------------------------
   // Venue search
+  //
+  // v8.2 Brass Tap P0: `searchVenues` now returns `{ venues, status }` so
+  // we can render "API down" vs "0 hits in OSM" as two distinct messages.
+  // On retry after a failure we also reset the circuit breaker so a user
+  // re-tapping Search doesn't silently get short-circuited for another
+  // 60s.
   // -----------------------------------------------------------------------
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const lastSearchFailedRef = useRef(false);
+
   const handleVenueSearch = useCallback(async () => {
     if (!venueQuery.trim()) return;
     setVenueLoading(true);
+    setSearchError(null);
+
+    // If the previous search hit the breaker, this tap is the user's
+    // explicit retry — clear OPEN state so we actually hit the network.
+    if (lastSearchFailedRef.current) {
+      resetVenueBreakers();
+      lastSearchFailedRef.current = false;
+    }
+
     try {
-      // Pass the query directly to Overpass — it filters server-side on
-      // name and uses a 30 km radius around the user's city. The previous
-      // "first-15 random venues" fallback was killed because it was the
-      // root cause of the "out-of-state results" bug from the live v5 test.
-      const results = await searchVenues(searchLat, searchLon, venueQuery, 30000);
-      setVenueResults(results);
-    } catch {
+      const { venues, status, errorMessage } = await searchVenues(
+        searchLat,
+        searchLon,
+        venueQuery,
+        30000
+      );
+
+      console.log(
+        `[create-watch-party] venue search status=${status} hits=${venues.length} ` +
+          `coordSource=${coordSource} center=(${searchLat.toFixed(3)},${searchLon.toFixed(3)})`
+      );
+
+      setVenueResults(venues);
+
+      if (status === 'breaker_open') {
+        lastSearchFailedRef.current = true;
+        setSearchError(
+          'Search temporarily unavailable — tap Search again in a moment to retry.'
+        );
+      } else if (status === 'api_error') {
+        lastSearchFailedRef.current = true;
+        console.error(
+          '[create-watch-party] Overpass error:',
+          errorMessage
+        );
+        setSearchError(
+          'Search temporarily unavailable. Check your connection and tap Search to retry, or "Enter venue manually".'
+        );
+      } else if (venues.length === 0) {
+        // True empty — the API answered with zero matches.
+        setSearchError(
+          `No venues found within 30 km of ${userCity ?? 'your location'} matching "${venueQuery.trim()}". Try a shorter name, or "Enter venue manually".`
+        );
+      }
+    } catch (e: any) {
+      // searchVenues no longer throws under normal conditions, but guard
+      // anyway so a future regression never silently shows [].
+      lastSearchFailedRef.current = true;
+      console.error('[create-watch-party] unexpected venue search error:', e);
       setVenueResults([]);
+      setSearchError(
+        'Something went wrong searching for venues. Tap Search to retry, or "Enter venue manually".'
+      );
     } finally {
       setVenueLoading(false);
     }
-  }, [venueQuery, searchLat, searchLon]);
+  }, [venueQuery, searchLat, searchLon, coordSource, userCity]);
 
   // -----------------------------------------------------------------------
   // Address autocomplete (debounced)
@@ -494,6 +662,12 @@ export default function CreateWatchPartyScreen() {
 
           {venueLoading && (
             <ActivityIndicator color={C.accent} style={{ marginVertical: 20 }} />
+          )}
+
+          {!venueLoading && searchError && (
+            <View style={styles.searchErrorBox}>
+              <Text style={styles.searchErrorText}>{searchError}</Text>
+            </View>
           )}
 
           {venueResults.map((v, i) => {
@@ -1180,6 +1354,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     marginTop: 16,
+  },
+  searchErrorBox: {
+    backgroundColor: '#3a1f1f',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#7a3030',
+  },
+  searchErrorText: {
+    color: '#ffb4b4',
+    fontSize: 13,
+    lineHeight: 18,
   },
   addressDropdown: {
     backgroundColor: C.surface,

@@ -227,11 +227,26 @@ export interface ChatRoomDisplay {
 export function mapChatRoomToDisplay(row: any): ChatRoomDisplay {
   const rawSport = (row.sport || row.sport_id || '').toLowerCase();
   const tags: string[] = row.tags || [];
-  // World Cup fan groups don't always have sport='soccer' set on the row —
-  // detect via tag so MomentsFeed renders soccer-relevant moment types
+  // World Cup / Soccer Cup fan groups don't always have sport='soccer' set
+  // on the row — detect via tag, group_type, or the canonical soccer
+  // sport_id so MomentsFeed renders soccer-relevant moment types
   // (Goal, Yellow Card, Penalty, etc.) instead of the NFL default.
-  const isWorldCup = tags.some((t) => /world\s?cup/i.test(String(t)));
-  const sport = isWorldCup ? 'worldcup' : rawSport;
+  //
+  // We accept "World Cup" (legacy) and "Soccer Cup" (rebrand, migration 048)
+  // tag spellings. group_type='worldcup' is the canonical signal on every
+  // WC group. The Soccer sport_id UUID is a0000000-...-0004 (migration 006).
+  const SOCCER_SPORT_ID = 'a0000000-0000-0000-0000-000000000004';
+  const isWorldCup =
+    row.group_type === 'worldcup' ||
+    tags.some((t) => /world\s?cup|soccer\s?cup/i.test(String(t)));
+  let sport: string;
+  if (isWorldCup) {
+    sport = 'worldcup';
+  } else if (rawSport === SOCCER_SPORT_ID) {
+    sport = 'soccer';
+  } else {
+    sport = rawSport;
+  }
 
   return {
     id: row.id,

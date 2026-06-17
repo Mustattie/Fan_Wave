@@ -45,6 +45,16 @@ interface Moment {
 interface MomentsFeedProps {
   chatRoomId: string;
   sportId: string;
+  // FW-5: the match_moments INSERT policy requires
+  // is_chat_room_member(chat_room_id, auth.uid()) — same as SELECT.
+  // If a visitor lands on Highlights from Suggested Groups (i.e. not yet
+  // joined) and posts, the INSERT is silently rejected, so the moment
+  // briefly appears via optimistic UI and then vanishes on tab switch
+  // when we re-fetch from the DB and get an empty list. Parent owns the
+  // join state and supplies a callback so we can auto-join before INSERT.
+  // Both default to a permissive shape for older call sites.
+  isMember?: boolean;
+  onEnsureMember?: () => Promise<boolean>;
 }
 
 // VideoView requires a player instance, and useVideoPlayer must be called
@@ -69,7 +79,12 @@ function MomentClipVideo({ uri }: { uri: string }) {
   );
 }
 
-export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
+export default function MomentsFeed({
+  chatRoomId,
+  sportId,
+  isMember = true,
+  onEnsureMember,
+}: MomentsFeedProps) {
   const insets = useSafeAreaInsets();
   const [moments, setMoments] = useState<Moment[]>([]);
   const [showPostModal, setShowPostModal] = useState(false);
@@ -337,6 +352,23 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
       }
     }
 
+    // FW-5: ensure the poster is a chat_room_members row before INSERT.
+    // The match_moments RLS WITH CHECK requires is_chat_room_member, and
+    // both SELECT + INSERT share that gate (migrations 033/054), so a
+    // visitor posting from the Highlights tab would otherwise silently
+    // lose the row to RLS and see the moment vanish on tab switch.
+    if (!isMember && onEnsureMember) {
+      const joined = await onEnsureMember();
+      if (!joined) {
+        setMoments((prev) => prev.filter((m) => m.id !== tempId));
+        Alert.alert(
+          "Couldn't post moment",
+          "We couldn't add you to this group. Please tap Join and try again.",
+        );
+        return;
+      }
+    }
+
     try {
       const { data, error } = await supabase
         .from('match_moments')
@@ -363,8 +395,21 @@ export default function MomentsFeed({ chatRoomId, sportId }: MomentsFeedProps) {
           ),
         );
       }
-    } catch (e) {
+    } catch (e: any) {
+      // FW-5: a silent error here is what caused the "moment disappears"
+      // bug. Roll back the optimistic row and surface a visible message
+      // so the user knows their post didn't land. RLS rejections show up
+      // here as PostgrestError messages mentioning 'policy' or 'row-level'.
       reportError(e, { source: 'MomentsFeed:handlePost', chatRoomId });
+      setMoments((prev) => prev.filter((m) => m.id !== tempId));
+      const msg = String(e?.message || '');
+      const isRlsError = /policy|row-level|violates/i.test(msg);
+      Alert.alert(
+        "Couldn't post moment",
+        isRlsError
+          ? 'You may need to join this group before posting. Tap Join and try again.'
+          : 'Something went wrong. Please try again.',
+      );
     }
   };
 

@@ -547,7 +547,39 @@ export default function FanGroupDetailScreen() {
         </View>
       ) : (
         <View style={{ flex: 1 }}>
-          <MomentsFeed chatRoomId={id || ''} sportId={group.sport || 'nfl'} />
+          {/* sportId falls back to the moment-type 'default' bucket (Big
+              Play / Highlight / Reaction / Discussion) for any group whose
+              sport we can't resolve — NEVER 'nfl', which would surface
+              Touchdown/Interception/Sack chips inside a Soccer Cup group
+              (FW-7). Auto-join is delegated so MomentsFeed can ensure the
+              poster is a chat_room_members row before INSERT — otherwise
+              the RLS WITH CHECK silently rejects the row and the moment
+              vanishes on tab switch (FW-5). */}
+          <MomentsFeed
+            chatRoomId={id || ''}
+            sportId={group.sport || 'default'}
+            isMember={isMember || isOwner}
+            onEnsureMember={async () => {
+              if (isMember || isOwner || !currentUserId || !id) return true;
+              try {
+                const { error } = await supabase
+                  .from('chat_room_members')
+                  .insert({ chat_room_id: id, user_id: currentUserId, role: 'member' });
+                // Unique-violation = already a member (race); treat as success.
+                if (error && !/duplicate|unique/i.test(error.message)) {
+                  throw error;
+                }
+                setIsMember(true);
+                setGroup((prev) =>
+                  prev ? { ...prev, memberCount: (prev.memberCount || 0) + 1 } : prev,
+                );
+                return true;
+              } catch (e) {
+                reportError(e, { source: 'fan-group:onEnsureMember', groupId: id });
+                return false;
+              }
+            }}
+          />
         </View>
       )}
       </KeyboardAvoidingView>

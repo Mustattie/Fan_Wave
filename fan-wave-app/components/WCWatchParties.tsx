@@ -13,6 +13,8 @@ import { Search, Share2 } from 'lucide-react-native';
 import { shareWatchParty } from '@/lib/sharing';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
+import { useHasWCAccess } from '@/lib/entitlements';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -59,6 +61,13 @@ export default function WCWatchParties() {
   const [parties, setParties] = useState<WCWatchPartyItem[]>([]);
   const [rsvpMap, setRsvpMap] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+  // WC-pass paywall surfaces when a free user RSVPs to a Soccer Cup party
+  // or taps the FAB to host one — migration 053 enforces this server-side
+  // via watch_party_rsvps_insert / watch_parties_insert RLS; we mirror the
+  // outcome client-side so the user sees the upgrade modal instead of a
+  // silent failure (v8.1 P0).
+  const [showWCPaywall, setShowWCPaywall] = useState(false);
+  const hasWCAccess = useHasWCAccess();
 
   // ── Supabase fetch attempt ─────────────────────────────
 
@@ -129,15 +138,34 @@ export default function WCWatchParties() {
   // ── RSVP handler ───────────────────────────────────────
 
   const handleRsvp = async (partyId: string) => {
+    // Client-side WC-pass check — mirrors the migration 053 RLS gate so
+    // free users get the WCPassPaywall instead of a silent error toast.
+    if (!hasWCAccess) {
+      setShowWCPaywall(true);
+      return;
+    }
+
     const isCurrentlyRsvp = rsvpMap[partyId];
     const nextState = !isCurrentlyRsvp;
 
     try {
+      // Migration 059 standardised the RPC to a 2-arg (p_party_id, p_status)
+      // signature. Previously this call used p_watch_party_id and was 404-ing
+      // silently through PostgREST.
       const { error } = await supabase.rpc('rsvp_to_watch_party', {
-        p_watch_party_id: partyId,
+        p_party_id: partyId,
         p_status: nextState ? 'going' : 'none',
       });
       if (error) {
+        // 42501 = WC-pass RLS gate from migration 053. Surface the paywall
+        // instead of letting the optimistic toggle stick.
+        if (
+          error.code === '42501' ||
+          /row-level security/i.test(error.message ?? '')
+        ) {
+          setShowWCPaywall(true);
+          return;
+        }
         console.warn('RSVP RPC failed, using local fallback:', error.message);
       }
     } catch {
@@ -145,6 +173,15 @@ export default function WCWatchParties() {
     }
 
     setRsvpMap((prev) => ({ ...prev, [partyId]: nextState }));
+  };
+
+  const handleCreateParty = () => {
+    // Same WC-pass gate for hosting — migration 053 watch_parties_insert.
+    if (!hasWCAccess) {
+      setShowWCPaywall(true);
+      return;
+    }
+    router.push('/create-watch-party?event=soccer-cup-2026' as any);
   };
 
   // ── Render card ────────────────────────────────────────
@@ -295,14 +332,20 @@ export default function WCWatchParties() {
         showsVerticalScrollIndicator={false}
       />
 
-      {/* FAB — no client-side paywall; DB layer enforces wc_pass if needed */}
+      {/* FAB — guarded by handleCreateParty so free users see the
+          WCPassPaywall instead of bouncing off RLS at create time. */}
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => router.push('/create-watch-party?event=soccer-cup-2026' as any)}
+        onPress={handleCreateParty}
         activeOpacity={0.85}
       >
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
+
+      <WCPassPaywall
+        visible={showWCPaywall}
+        onClose={() => setShowWCPaywall(false)}
+      />
     </View>
   );
 }

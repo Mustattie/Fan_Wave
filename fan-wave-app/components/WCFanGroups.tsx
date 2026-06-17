@@ -16,6 +16,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reportError } from '@/lib/errorReporting';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
+import { useHasWCAccess } from '@/lib/entitlements';
 
 const WC_CREATED_GROUPS_KEY = 'wc_created_groups';
 
@@ -61,6 +63,11 @@ export default function WCFanGroups() {
   const [groups, setGroups] = useState<WCFanGroupItem[]>([]);
   const [joinedMap, setJoinedMap] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+  // WC-pass paywall — migration 053 chat_room_members_insert RLS rejects
+  // join attempts on `worldcup`-typed rooms unless has_wc_access() is TRUE.
+  // Without this trigger the Join button was silently no-op for free users.
+  const [showWCPaywall, setShowWCPaywall] = useState(false);
+  const hasWCAccess = useHasWCAccess();
 
   // ── Load groups (Supabase + local) ─────────────────────
 
@@ -142,6 +149,12 @@ export default function WCFanGroups() {
   const handleJoin = async (groupId: string) => {
     if (joinedMap[groupId]) return;
 
+    // Client-side WC-pass check — mirrors the migration 053 RLS gate.
+    if (!hasWCAccess) {
+      setShowWCPaywall(true);
+      return;
+    }
+
     try {
       // Migration 053 RLS requires user_id = auth.uid() on the INSERT.
       // Prior to v8 this insert was missing user_id and silently 42501-
@@ -157,6 +170,13 @@ export default function WCFanGroups() {
         .insert({ chat_room_id: groupId, user_id: user.id, role: 'member' });
 
       if (error) {
+        if (
+          error.code === '42501' ||
+          /row-level security/i.test(error.message ?? '')
+        ) {
+          setShowWCPaywall(true);
+          return;
+        }
         console.warn('Join insert failed, using local fallback:', error.message);
       }
     } catch {
@@ -166,9 +186,14 @@ export default function WCFanGroups() {
     setJoinedMap((prev) => ({ ...prev, [groupId]: true }));
   };
 
-  // ── Template press ─────────────────────────────────────
-
-  const handleTemplatePress = (template: GroupTemplate) => {
+  // Template press is also WC-pass gated server-side (chat_rooms insert
+  // with group_type='worldcup'); guard here so the create flow doesn't
+  // open just to bounce off RLS at the end.
+  const handleTemplatePressGuarded = (template: GroupTemplate) => {
+    if (!hasWCAccess) {
+      setShowWCPaywall(true);
+      return;
+    }
     const templateMap: Record<string, string> = {
       'tpl-team': 'team',
       'tpl-match': 'match',
@@ -184,7 +209,7 @@ export default function WCFanGroups() {
     <TouchableOpacity
       key={template.id}
       style={styles.templateCard}
-      onPress={() => handleTemplatePress(template)}
+      onPress={() => handleTemplatePressGuarded(template)}
       activeOpacity={0.8}
     >
       <Text style={styles.templateIcon}>{template.icon}</Text>
@@ -340,6 +365,11 @@ export default function WCFanGroups() {
         ListEmptyComponent={renderEmpty}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+      />
+
+      <WCPassPaywall
+        visible={showWCPaywall}
+        onClose={() => setShowWCPaywall(false)}
       />
     </View>
   );
