@@ -13,6 +13,7 @@ import {
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { subscribeToTable } from '@/lib/realtime';
+import { reportError } from '@/lib/errorReporting';
 
 const GREEN = Colors.dark.accentGreen;
 const GREEN_DARK = Colors.dark.accentGreenDark;
@@ -161,10 +162,27 @@ export function WCSchedule() {
         .order('scheduled_at', { ascending: true });
 
       if (!error && data) {
-        setAllGames(data as unknown as WCGameRow[]);
+        // v8.4 permanent fix: normalise nullable DB columns at the load
+        // boundary so the render path can rely on WCGameRow being strict.
+        // Migration 060 wiped seeded rows with stage='group_a'; ESPN sync
+        // writes stage=NULL on every real fixture. Defending only at the
+        // single .replace() call site (v8.4 hotfix) doesn't help when the
+        // next render code path touches the same column. Normalising once
+        // here closes the entire class of bug for every consumer of
+        // WCGameRow.
+        const normalised = (data as any[]).map((row) => ({
+          ...row,
+          stage: row.stage ?? 'group_stage',
+          metadata: row.metadata ?? {},
+          venue_name: row.venue_name ?? 'Venue TBD',
+          status: row.status ?? 'scheduled',
+        }));
+        setAllGames(normalised as unknown as WCGameRow[]);
       }
-    } catch {
-      // Network error — keep existing data
+    } catch (e) {
+      // Report so silent failures stop being silent (v8.4 permanent-fix
+      // pass: every error catch surfaces to Sentry via reportError).
+      reportError(e, { source: 'WCSchedule:fetchGames' });
     }
   }, []);
 

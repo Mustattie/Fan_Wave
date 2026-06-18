@@ -88,10 +88,14 @@ export default function EditProfileScreen() {
       ext === 'png' ? 'image/png'
       : ext === 'webp' ? 'image/webp'
       : 'image/jpeg';
-    // Stable per-user path so `upsert: true` actually overwrites the prior
-    // avatar instead of accumulating one file per save. The cache-bust
-    // query string on the public URL handles client-side cache eviction.
-    const path = `${userId}/avatar.${ext}`;
+
+    // v8.4 permanent fix: per-upload UNIQUE path so the resulting
+    // public URL is genuinely different every save. expo-image's
+    // URL-keyed cache then works naturally — no cache-bust query
+    // string, no useFocusEffect refetch trick, no "stale avatar for
+    // a minute after Save" symptom. Old files are cleaned up below.
+    const uniqueId = Date.now().toString(36);
+    const path = `${userId}/avatar-${uniqueId}.${ext}`;
 
     const base64 = await FileSystem.readAsStringAsync(newAvatarUri, {
       encoding: FileSystem.EncodingType.Base64,
@@ -106,15 +110,36 @@ export default function EditProfileScreen() {
 
     const { error: uploadError } = await supabase.storage
       .from('avatars')
-      .upload(path, bytes, { upsert: true, contentType });
+      .upload(path, bytes, { upsert: false, contentType });
     if (uploadError) throw uploadError;
+
+    // Best-effort cleanup: remove any prior avatar-*.{ext} for this user
+    // so storage doesn't grow unbounded across many edits. Failures here
+    // are non-blocking — the new avatar still saves; orphaned files just
+    // sit until the next save.
+    try {
+      const { data: existing } = await supabase.storage
+        .from('avatars')
+        .list(userId, { limit: 50 });
+      const toDelete = (existing ?? [])
+        .filter(
+          (f) =>
+            f.name.startsWith('avatar-') &&
+            !path.endsWith('/' + f.name),
+        )
+        .map((f) => `${userId}/${f.name}`);
+      if (toDelete.length > 0) {
+        await supabase.storage.from('avatars').remove(toDelete);
+      }
+    } catch (e) {
+      reportError(e, { source: 'edit-profile:uploadAvatar:cleanup' });
+    }
 
     const { data: urlData } = supabase.storage
       .from('avatars')
       .getPublicUrl(path);
-    // Cache-bust so the Image component fetches the new file even when
-    // the path stays the same on re-upload.
-    return `${urlData.publicUrl}?v=${Date.now()}`;
+    // No cache-bust query string needed — the path itself is unique.
+    return urlData.publicUrl;
   };
 
   const handleSave = async () => {

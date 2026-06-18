@@ -1,10 +1,11 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-router';
+import { Stack, useRouter, useSegments, useRootNavigationState, ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
-import { LogBox } from 'react-native';
+import { LogBox, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 LogBox.ignoreLogs([
@@ -19,12 +20,54 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { AppQueryClientProvider } from '@/hooks/useQueryClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-reanimated';
-import { initErrorReporting, setUserContext, clearUserContext } from '@/lib/errorReporting';
+import { initErrorReporting, setUserContext, clearUserContext, reportError } from '@/lib/errorReporting';
 import { configureRevenueCat, useEntitlementsRealtime, useSubscriptionState } from '@/lib/entitlements';
 import { useGamesRealtime } from '@/lib/realtime';
 import { useAppStateFocus } from '@/lib/appState';
 
-export { ErrorBoundary } from 'expo-router';
+// Custom ErrorBoundary so React render-tree crashes (the "Something went
+// wrong / Cannot read property 'X' of null" screen) ALSO get reported to
+// Sentry instead of just being shown to the user. expo-router's default
+// boundary renders the screen but does not report. v8.3 UAT had the
+// Soccer Cup tab crash with stage.replace-of-null and we only found it
+// from a user screenshot — Sentry-backed boundary closes that gap.
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  useEffect(() => {
+    reportError(error, {
+      source: 'RootErrorBoundary',
+      name: error?.name,
+      stack: error?.stack?.split('\n').slice(0, 8).join('\n'),
+    });
+  }, [error]);
+
+  return (
+    <SafeAreaView style={errorBoundaryStyles.container}>
+      <View style={errorBoundaryStyles.content}>
+        <Text style={errorBoundaryStyles.title}>Something went wrong</Text>
+        <Text style={errorBoundaryStyles.message} numberOfLines={6}>
+          {error?.message ?? 'Unknown error'}
+        </Text>
+        <TouchableOpacity style={errorBoundaryStyles.button} onPress={retry}>
+          <Text style={errorBoundaryStyles.buttonText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const errorBoundaryStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#0f0f1a' },
+  content: { flex: 1, padding: 24, justifyContent: 'center' },
+  title: { fontSize: 26, fontWeight: '800', color: '#fff', marginBottom: 12 },
+  message: { fontSize: 14, color: '#bdbdc7', marginBottom: 24, lineHeight: 20 },
+  button: {
+    backgroundColor: '#6c5ce7',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+});
 
 export const unstable_settings = {
   initialRouteName: '(auth)',
