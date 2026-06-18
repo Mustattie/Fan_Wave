@@ -55,6 +55,7 @@ function ClipCard({
   isVisible,
   isFollowingPoster,
   isOwner,
+  focusEpoch,
 }: {
   clip: ClipDisplay;
   isLiked: boolean;
@@ -68,6 +69,12 @@ function ClipCard({
   isVisible: boolean;
   isFollowingPoster: boolean;
   isOwner: boolean;
+  // Increments every time the Clips tab regains focus. Drives the
+  // play-on-visible effect to re-fire after a tab switch so paused
+  // players resume instead of staying frozen on return — the v8.3
+  // UAT artifact "when i went back the other time all clips were
+  // frozen, they were not playing."
+  focusEpoch: number;
 }) {
   const [isPlaying, setIsPlaying] = useState(false);
   // Tracks expo-video player readiness so we can hide the raw VideoView
@@ -143,7 +150,7 @@ function ClipCard({
       }
       setIsPlaying(false);
     }
-  }, [isVisible, isReady, player]);
+  }, [isVisible, isReady, player, focusEpoch]);
 
   const togglePlay = useCallback(() => {
     if (isPlaying) {
@@ -330,6 +337,17 @@ export default function ClipsScreen() {
   // The sheet wraps the legacy expo-sharing system-share path as its
   // "More apps..." row, so existing behavior remains as a fallback.
   const [shareTarget, setShareTarget] = useState<ClipDisplay | null>(null);
+
+  // focusEpoch bumps on every tab focus. ClipCard's play-on-visible effect
+  // depends on this so paused players resume after a tab switch instead of
+  // staying frozen — v8.3 UAT: "when i went back the other time all clips
+  // were frozen, they were not playing."
+  const [focusEpoch, setFocusEpoch] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      setFocusEpoch((e) => e + 1);
+    }, [])
+  );
 
   const fetchClips = useCallback(
     async (pageNum: number, filter: string, replace: boolean = false) => {
@@ -669,9 +687,10 @@ export default function ClipsScreen() {
         isVisible={visibleClipIds.has(item.id)}
         isFollowingPoster={followedUserIds.has(item.userId)}
         isOwner={!!currentUserId && item.userId === currentUserId}
+        focusEpoch={focusEpoch}
       />
     ),
-    [likedClipIds, handleLike, handleShare, handleComment, visibleClipIds, handleDelete, handleBlock, currentUserId, handleExport, handleFollow, followedUserIds]
+    [likedClipIds, handleLike, handleShare, handleComment, visibleClipIds, handleDelete, handleBlock, currentUserId, handleExport, handleFollow, followedUserIds, focusEpoch]
   );
 
   const renderFooter = useCallback(() => {
@@ -792,15 +811,18 @@ export default function ClipsScreen() {
           // Virtualization — caps the number of expo-video MediaPlayers
           // alive at once. windowSize=3 keeps roughly the current page +/-1
           // mounted; maxToRenderPerBatch=2 throttles how many new
-          // ClipCards spin up per scroll tick; removeClippedSubviews lets
-          // Android unmount fully off-screen views (freeing MediaCodec
-          // slots) instead of just hiding them. Without these caps, a
-          // fast scroll-up on Android exhausts the 8-slot global codec
-          // pool and force-closes the app.
+          // ClipCards spin up per scroll tick. Stable per-card player
+          // (line 90) is what actually prevents the MediaCodec exhaustion
+          // crash — the virtualization is belt-and-braces.
+          //
+          // CRITICAL: removeClippedSubviews intentionally OMITTED. On
+          // Android it has well-documented render-position bugs that
+          // caused the v8.3 UAT artifact where Card 2's video painted
+          // under Card 1's caption bar. Cards just hide off-screen via
+          // the standard FlatList recycling instead.
           windowSize={3}
           maxToRenderPerBatch={2}
           initialNumToRender={2}
-          removeClippedSubviews={true}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

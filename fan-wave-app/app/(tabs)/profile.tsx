@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -50,9 +51,16 @@ export default function ProfileScreen() {
   // v7 cleanup removed in-line PaywallGates.
   const { data: subState } = useSubscriptionState();
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
+  // useFocusEffect instead of useEffect so that returning from edit-profile
+  // (router.back()) refreshes the avatar + stats. With plain useEffect the
+  // tab is already mounted and never re-runs the load, so a freshly-saved
+  // avatar showed the stale URL for a long beat before something else
+  // happened to invalidate it. v8.3 UAT artifact.
+  useFocusEffect(
+    useCallback(() => {
+      loadProfile();
+    }, [])
+  );
 
   const loadProfile = async () => {
     try {
@@ -244,6 +252,13 @@ export default function ProfileScreen() {
               source={{ uri: profile.avatar_url }}
               style={styles.avatar}
               contentFit="cover"
+              // The cache-bust query string (?v=Date.now()) ensures the
+              // URL is unique per save, but expo-image's default
+              // memory-disk cache occasionally serves the prior image
+              // for the same path. cachePolicy="memory" skips the disk
+              // layer so a saved photo renders immediately after
+              // returning from Edit Profile.
+              cachePolicy="memory"
             />
           ) : (
             <View style={styles.avatar}>

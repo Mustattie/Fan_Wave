@@ -343,7 +343,13 @@ export function WCSchedule() {
       <View style={[styles.matchCard, isLive && styles.matchCardLive]}>
         {/* Stage + group badge row */}
         <View style={styles.matchMeta}>
-          <Text style={styles.matchStage}>{match.stage.replace(/_/g, ' ')}</Text>
+          <Text style={styles.matchStage}>
+            {/* ESPN-synced games leave stage NULL (mig 060 wiped the seeded
+                rows that had it). Default to a readable label so the Soccer
+                Cup tab doesn't crash with "Cannot read property 'replace'
+                of null" the moment real fixtures land. */}
+            {(match.stage ?? 'group_stage').replace(/_/g, ' ')}
+          </Text>
           {group && (
             <View style={styles.groupBadge}>
               <Text style={styles.groupBadgeText}>Group {group}</Text>

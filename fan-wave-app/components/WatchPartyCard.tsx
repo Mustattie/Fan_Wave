@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Share2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
@@ -32,12 +32,28 @@ export function WatchPartyCard({ party }: WatchPartyCardProps) {
       });
 
       if (error) {
-        console.warn('RSVP failed:', error.message);
+        // Surface the real error rather than swallowing it — silent failure
+        // is exactly why the v8.3 UAT report said "RSVP not saved": the RPC
+        // was throwing (with a now-visible reason) and the local state was
+        // updating optimistically anyway.
+        const code: any = (error as any)?.code;
+        const msg: string = error.message ?? 'Unknown error';
+        const friendly =
+          code === '42501' && msg.toLowerCase().includes('wc_pass_required')
+            ? 'Soccer Cup Pass required to RSVP to this party.'
+            : code === '53400'
+              ? 'This watch party is at capacity.'
+              : `RSVP could not be saved: ${msg}`;
+        Alert.alert('RSVP failed', friendly);
+        setRsvpLoading(false);
+        return;
       }
-    } catch (e) {
-      console.warn('RSVP error:', e);
-    } finally {
+      // Only update local state on success — prior code optimistically set
+      // "Going" even when the RPC threw, masking the bug from the user.
       setRsvpStatus(nextStatus === 'declined' ? 'none' : nextStatus);
+    } catch (e: any) {
+      Alert.alert('RSVP failed', e?.message ?? 'Network error — please try again.');
+    } finally {
       setRsvpLoading(false);
     }
   };
