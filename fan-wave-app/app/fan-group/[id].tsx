@@ -456,9 +456,15 @@ export default function FanGroupDetailScreen() {
             <Text style={styles.onlineText}>{displayedOnlineCount} online</Text>
           </Text>
         </View>
-        <TouchableOpacity style={styles.infoBtn} onPress={openInviteSheet}>
-          <Share2 size={20} color={Colors.dark.textSecondary} />
-        </TouchableOpacity>
+        {/* Share only surfaces once the user has joined. Pinned-banner
+            Join CTA (below) is the canonical entry for non-members; the
+            product rule is "you must be a member of a fan group before
+            you can share it." */}
+        {(isMember || isOwner) && (
+          <TouchableOpacity style={styles.infoBtn} onPress={openInviteSheet}>
+            <Share2 size={20} color={Colors.dark.textSecondary} />
+          </TouchableOpacity>
+        )}
         <TouchableOpacity style={styles.infoBtn}>
           <Users size={20} color={Colors.dark.textSecondary} />
         </TouchableOpacity>
