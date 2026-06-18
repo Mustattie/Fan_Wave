@@ -9,7 +9,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
-  Share,
   Animated,
   ViewToken,
 } from 'react-native';
@@ -31,6 +30,7 @@ import {
 } from '@/lib/clipUploads';
 import { trackEvent } from '@/lib/analytics';
 import { blockUser } from '@/lib/blocks';
+import { ClipShareSheet } from '@/components/ClipShareSheet';
 
 const PAGE_SIZE = 20;
 
@@ -79,7 +79,15 @@ function ClipCard({
   const heartAnimOpacity = useRef(new Animated.Value(0)).current;
   const heartAnimScale = useRef(new Animated.Value(0.5)).current;
 
-  const player = useVideoPlayer(isVisible ? clip.videoUrl : null, (p) => {
+  // CRITICAL: source MUST be stable for the lifetime of this card.
+  // Previously we passed `isVisible ? clip.videoUrl : null` which forced
+  // expo-video to tear down and recreate the underlying Android
+  // MediaPlayer / MediaCodec on every visibility flip. During a fast
+  // scroll the OS could not release codec slots fast enough, producing
+  // an uncatchable SIGABRT in libmedia (the JS try/catch around
+  // player.play() cannot intercept a native crash). We now create the
+  // player once per card and only pause/play it.
+  const player = useVideoPlayer(clip.videoUrl, (p) => {
     p.loop = true;
     // Feed-style mute-by-default. Users can unmute via the play overlay
     // (or future per-card mute toggle). Muted autoplay is also required
@@ -91,20 +99,33 @@ function ClipCard({
   // source is loading. expo-video status values: 'idle' | 'loading' |
   // 'readyToPlay' | 'error'. We treat 'readyToPlay' as the cue to swap
   // the placeholder for the live VideoView.
+  //
+  // The `mounted` flag guards against the player being GC'd between the
+  // native callback firing and React scheduling the state update — which
+  // is how the previous version could call setIsReady on an unmounted
+  // card mid-scroll.
   useEffect(() => {
     if (!player) return;
+    let mounted = true;
     setIsReady(false);
     const sub = player.addListener('statusChange', ({ status }) => {
+      if (!mounted) return;
       setIsReady(status === 'readyToPlay');
     });
     return () => {
-      sub.remove();
+      mounted = false;
+      try {
+        sub.remove();
+      } catch {
+        /* listener may already be detached if the player was released */
+      }
     };
-  }, [player, clip.videoUrl]);
+  }, [player]);
 
   // Autoplay-on-visible (feed pattern). Pauses + rewinds when scrolled
   // off-screen so the next card paints its first frame, not the previous
-  // card's last frame.
+  // card's last frame. Because the player itself never changes, this is
+  // just a pause/play toggle — no MediaPlayer churn.
   useEffect(() => {
     if (!player) return;
     if (isVisible && isReady) {
@@ -305,6 +326,10 @@ export default function ClipsScreen() {
   }, []);
   const [likedClipIds, setLikedClipIds] = useState<Set<string>>(new Set());
   const [visibleClipIds, setVisibleClipIds] = useState<Set<string>>(new Set());
+  // Custom share sheet (v8.3): TikTok / IG Stories / Copy Link / More apps.
+  // The sheet wraps the legacy expo-sharing system-share path as its
+  // "More apps..." row, so existing behavior remains as a fallback.
+  const [shareTarget, setShareTarget] = useState<ClipDisplay | null>(null);
 
   const fetchClips = useCallback(
     async (pageNum: number, filter: string, replace: boolean = false) => {
@@ -560,13 +585,11 @@ export default function ClipsScreen() {
     });
   }, []);
 
-  const handleShare = useCallback(async (clip: ClipDisplay) => {
-    const { shareClip } = await import('@/lib/sharing');
-    await shareClip({
-      id: clip.id,
-      title: clip.title,
-      mediaUrl: clip.videoUrl,
-    });
+  const handleShare = useCallback((clip: ClipDisplay) => {
+    // Replaces the previous direct expo-sharing call with the custom
+    // ClipShareSheet so users get an explicit "Share to TikTok" row in
+    // addition to the original system share sheet (now "More apps...").
+    setShareTarget(clip);
   }, []);
 
   const handleDelete = useCallback((clip: ClipDisplay) => {
@@ -766,6 +789,18 @@ export default function ClipsScreen() {
           onEndReachedThreshold={0.5}
           ListFooterComponent={renderFooter}
           ListEmptyComponent={renderEmpty}
+          // Virtualization — caps the number of expo-video MediaPlayers
+          // alive at once. windowSize=3 keeps roughly the current page +/-1
+          // mounted; maxToRenderPerBatch=2 throttles how many new
+          // ClipCards spin up per scroll tick; removeClippedSubviews lets
+          // Android unmount fully off-screen views (freeing MediaCodec
+          // slots) instead of just hiding them. Without these caps, a
+          // fast scroll-up on Android exhausts the 8-slot global codec
+          // pool and force-closes the app.
+          windowSize={3}
+          maxToRenderPerBatch={2}
+          initialNumToRender={2}
+          removeClippedSubviews={true}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -786,6 +821,18 @@ export default function ClipsScreen() {
       >
         <Plus size={28} color="#fff" />
       </TouchableOpacity>
+
+      {shareTarget && (
+        <ClipShareSheet
+          visible={!!shareTarget}
+          onClose={() => setShareTarget(null)}
+          clip={{
+            id: shareTarget.id,
+            title: shareTarget.title,
+            mediaUrl: shareTarget.videoUrl,
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }

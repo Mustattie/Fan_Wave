@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -26,6 +27,14 @@ import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { reportError } from '@/lib/errorReporting';
 import { subscribeToMessages, subscribeToPresence } from '@/lib/realtime';
+import * as Contacts from 'expo-contacts';
+import {
+  loadContactsWithPhones,
+  pickPhoneForContact,
+  openSmsInvite,
+  buildGroupInviteBody,
+} from '@/lib/inviteContacts';
+import { X as XIcon, Users as UsersIcon } from 'lucide-react-native';
 import {
   mapChatRoomToDisplay,
   mapMessageToDisplay,
@@ -62,6 +71,59 @@ export default function FanGroupDetailScreen() {
   const [isMember, setIsMember] = useState<boolean>(false);
   const [isOwner, setIsOwner] = useState<boolean>(false);
   const [joining, setJoining] = useState(false);
+
+  // Invite sheet state (v8.3): two-option chooser between contacts-picker
+  // SMS invite (reusing the create-private-group flow) and the system
+  // share sheet (existing shareGroup helper). Contacts list shares the
+  // helper in lib/inviteContacts.ts.
+  const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactsList, setContactsList] = useState<Contacts.ExistingContact[]>([]);
+
+  const openInviteSheet = useCallback(() => setInviteSheetOpen(true), []);
+
+  const handleInviteViaShare = useCallback(async () => {
+    setInviteSheetOpen(false);
+    const { shareGroup } = await import('@/lib/sharing');
+    if (group) {
+      await shareGroup({
+        id: group.id,
+        name: group.name,
+        memberCount: group.memberCount,
+      });
+    }
+  }, [group]);
+
+  const handleInviteViaContacts = useCallback(async () => {
+    setInviteSheetOpen(false);
+    setContactPickerOpen(true);
+    setContactsLoading(true);
+    const list = await loadContactsWithPhones();
+    if (list === null) {
+      setContactPickerOpen(false);
+      setContactsLoading(false);
+      return;
+    }
+    setContactsList(list);
+    setContactsLoading(false);
+  }, []);
+
+  const handlePickInviteContact = useCallback(
+    async (contact: Contacts.Contact) => {
+      if (!group) return;
+      const picked = await pickPhoneForContact(contact);
+      if (!picked) return;
+      setContactPickerOpen(false);
+      // Hand off to the device SMS composer (same path as the
+      // create-private-group flow).
+      await openSmsInvite(
+        [picked],
+        buildGroupInviteBody({ id: group.id, name: group.name }),
+      );
+    },
+    [group],
+  );
 
   // Load auth user
   useEffect(() => {
@@ -394,10 +456,7 @@ export default function FanGroupDetailScreen() {
             <Text style={styles.onlineText}>{displayedOnlineCount} online</Text>
           </Text>
         </View>
-        <TouchableOpacity style={styles.infoBtn} onPress={async () => {
-          const { shareGroup } = await import('@/lib/sharing');
-          if (group) await shareGroup({ id: group.id, name: group.name, memberCount: group.memberCount });
-        }}>
+        <TouchableOpacity style={styles.infoBtn} onPress={openInviteSheet}>
           <Share2 size={20} color={Colors.dark.textSecondary} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.infoBtn}>
@@ -434,10 +493,7 @@ export default function FanGroupDetailScreen() {
             )}
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.pinnedRsvp} onPress={async () => {
-            const { shareGroup } = await import('@/lib/sharing');
-            if (group) await shareGroup({ id: group.id, name: group.name, memberCount: group.memberCount });
-          }}>
+          <TouchableOpacity style={styles.pinnedRsvp} onPress={openInviteSheet}>
             <Text style={styles.pinnedRsvpText}>Share</Text>
           </TouchableOpacity>
         )}
@@ -583,6 +639,102 @@ export default function FanGroupDetailScreen() {
         </View>
       )}
       </KeyboardAvoidingView>
+
+      {/* Invite chooser sheet — two options: contacts picker (SMS deep
+          link, mirrors create-private-group flow) and the existing
+          system share sheet. */}
+      <Modal
+        visible={inviteSheetOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setInviteSheetOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setInviteSheetOpen(false)}
+          />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Invite to group</Text>
+              <TouchableOpacity onPress={() => setInviteSheetOpen(false)} hitSlop={10}>
+                <XIcon size={22} color={Colors.dark.text} />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={styles.inviteRow} onPress={handleInviteViaContacts}>
+              <View style={[styles.inviteIcon, { backgroundColor: Colors.dark.accent }]}>
+                <UsersIcon size={20} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inviteRowLabel}>Pick from Contacts</Text>
+                <Text style={styles.inviteRowSub}>Send an SMS invite with the group link</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.inviteRow} onPress={handleInviteViaShare}>
+              <View style={[styles.inviteIcon, { backgroundColor: Colors.dark.surface }]}>
+                <Share2 size={20} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inviteRowLabel}>Share via...</Text>
+                <Text style={styles.inviteRowSub}>System share sheet</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Contact picker — reuses the same list/render pattern as groups.tsx */}
+      <Modal
+        visible={contactPickerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setContactPickerOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { maxHeight: '75%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Pick a contact</Text>
+              <TouchableOpacity onPress={() => setContactPickerOpen(false)} hitSlop={10}>
+                <XIcon size={22} color={Colors.dark.text} />
+              </TouchableOpacity>
+            </View>
+            {contactsLoading ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator color={Colors.dark.accent} />
+              </View>
+            ) : (
+              <FlatList
+                data={contactsList}
+                keyExtractor={(c) => c.id || c.name || Math.random().toString()}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.contactRow}
+                    onPress={() => handlePickInviteContact(item)}
+                  >
+                    <View style={styles.contactAvatar}>
+                      <UsersIcon size={18} color={Colors.dark.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.contactName}>{item.name}</Text>
+                      {item.phoneNumbers?.[0]?.number && (
+                        <Text style={styles.contactPhone}>
+                          {item.phoneNumbers[0].number}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <Text style={styles.emptyContactsText}>
+                    No contacts with phone numbers found.
+                  </Text>
+                }
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -663,4 +815,61 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   sendButtonDisabled: { backgroundColor: Colors.dark.surface },
+  // Invite chooser + contact picker (v8.3)
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: Colors.dark.background,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 28,
+    borderTopWidth: 1,
+    borderTopColor: Colors.dark.border,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    marginBottom: 4,
+  },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: Colors.dark.text },
+  inviteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  inviteIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  inviteRowLabel: { fontSize: 15, fontWeight: '700', color: Colors.dark.text },
+  inviteRowSub: { fontSize: 12, color: Colors.dark.textSecondary, marginTop: 2 },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border,
+  },
+  contactAvatar: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: Colors.dark.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  contactName: { fontSize: 14, fontWeight: '600', color: Colors.dark.text },
+  contactPhone: { fontSize: 12, color: Colors.dark.textSecondary, marginTop: 2 },
+  emptyContactsText: {
+    textAlign: 'center',
+    color: Colors.dark.textSecondary,
+    paddingVertical: 40,
+  },
 });

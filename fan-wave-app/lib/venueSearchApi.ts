@@ -163,6 +163,14 @@ export async function searchVenues(
       `radius=${radius}m q="${q}"`
   );
 
+  // Structured single-line trace — matches the `searchVenuesByName` line
+  // format so the device log shows the full tier cascade at a glance.
+  const traceLine = (status: VenueSearchStatus, hits: number) =>
+    console.log(
+      `[venueSearchApi] tier=overpass status=${status} hits=${hits} ` +
+        `coords=(${lat.toFixed(4)},${lon.toFixed(4)}) q="${q}"`
+    );
+
   const venues = await overpassBreaker.execute(async () => {
     const response = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
@@ -217,6 +225,7 @@ export async function searchVenues(
   // empty-venues-with-no-error is a legitimate "OSM has nothing" result.
   if (venues.length === 0) {
     if (overpassBreaker.wasShortCircuited) {
+      traceLine('breaker_open', 0);
       return {
         venues,
         status: 'breaker_open',
@@ -224,6 +233,7 @@ export async function searchVenues(
       };
     }
     if (overpassBreaker.lastError) {
+      traceLine('api_error', 0);
       return {
         venues,
         status: 'api_error',
@@ -232,6 +242,164 @@ export async function searchVenues(
     }
   }
 
+  traceLine('ok', venues.length);
+  return { venues, status: 'ok' };
+}
+
+// ---------------------------------------------------------------------------
+// searchVenuesByName – Nominatim name-search fallback
+//
+// v8.2 user-test #4 (Brass Tap, Dallas): Overpass goes down or rate-limits
+// for minutes at a time and the breaker leaves users stuck on "Search
+// temporarily unavailable". Nominatim's `/search` endpoint can find venues
+// by name + city — not as precise as Overpass (no radius / amenity tag
+// filter), but it's a different infrastructure path and is usually up when
+// Overpass isn't. We only fall back to this when the user actually typed a
+// query, because Nominatim can't do "all bars within 30 km".
+//
+// Public API of `searchVenues` is unchanged; this is wired into
+// `create-watch-party.tsx` only.
+// ---------------------------------------------------------------------------
+const NOMINATIM_TYPE_MAP: Record<string, Venue['type']> = {
+  bar: 'bar',
+  pub: 'pub',
+  restaurant: 'restaurant',
+  cafe: 'cafe',
+  nightclub: 'bar',
+  biergarten: 'pub',
+  fast_food: 'restaurant',
+};
+
+export async function searchVenuesByName(
+  query: string,
+  city: string | null,
+  centerLat?: number,
+  centerLon?: number
+): Promise<VenueSearchResult> {
+  const q = query.trim();
+  if (q.length < 2) {
+    return { venues: [], status: 'ok' };
+  }
+
+  const cityPart = (city || '').split(',')[0]?.trim() ?? '';
+  const fullQuery = cityPart ? `${q} ${cityPart}` : q;
+  const cacheKey = `nameSearch_${fullQuery.toLowerCase()}`;
+  const cached = getCached<Venue[]>(cacheKey);
+  if (cached) {
+    console.log(
+      `[venueSearchApi] tier=nominatim_name status=ok hits=${cached.length} ` +
+        `q="${q}" city="${cityPart}" (cache)`
+    );
+    return { venues: cached, status: 'ok' };
+  }
+
+  const url =
+    `https://nominatim.openstreetmap.org/search` +
+    `?q=${encodeURIComponent(fullQuery)}` +
+    `&format=json&limit=10&addressdetails=1&extratags=1` +
+    `&countrycodes=us,ca,mx`;
+
+  console.log(
+    `[venueSearchApi] Nominatim name-search request q="${fullQuery}"`
+  );
+
+  const venues = await nominatimBreaker.execute(async () => {
+    await respectNominatimRateLimit();
+
+    const response = await fetch(url, {
+      // User-Agent is required by Nominatim ToS — without it we get
+      // 403/blocked. Keep this in sync with the other Nominatim calls.
+      headers: { 'User-Agent': 'FanSphere/1.0' },
+    });
+
+    console.log(
+      `[venueSearchApi] Nominatim name-search response status=${response.status}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`Nominatim name-search HTTP ${response.status}`);
+    }
+
+    const results = await response.json();
+    const out: Venue[] = [];
+
+    for (const r of results || []) {
+      const lat = parseFloat(r.lat);
+      const lon = parseFloat(r.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+
+      const addr = r.address || {};
+      const name =
+        addr.bar ||
+        addr.pub ||
+        addr.restaurant ||
+        addr.cafe ||
+        addr.amenity ||
+        // Nominatim typically puts the venue name as the first comma-split
+        // segment of display_name when the place is a POI.
+        (typeof r.display_name === 'string'
+          ? r.display_name.split(',')[0]?.trim()
+          : '') ||
+        q;
+
+      const street = addr.road || '';
+      const houseNumber = addr.house_number || '';
+      const cityStr = addr.city || addr.town || addr.village || '';
+      const addrParts = [houseNumber, street, cityStr]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const address = addrParts || r.display_name || 'Address not available';
+
+      // Derive type from Nominatim's class/type fields; default to 'bar' to
+      // match the historical default in the Overpass branch.
+      const rawType: string =
+        (r.type as string) || (r.class as string) || '';
+      const type: Venue['type'] = NOMINATIM_TYPE_MAP[rawType] ?? 'bar';
+
+      const distance =
+        Number.isFinite(centerLat) && Number.isFinite(centerLon)
+          ? calculateDistance(centerLat as number, centerLon as number, lat, lon)
+          : 0;
+
+      out.push({ name, address, lat, lon, type, distance });
+    }
+
+    if (Number.isFinite(centerLat) && Number.isFinite(centerLon)) {
+      out.sort((a, b) => a.distance - b.distance);
+    }
+
+    setCache(cacheKey, out);
+    return out;
+  }, [] as Venue[]);
+
+  if (venues.length === 0) {
+    if (nominatimBreaker.wasShortCircuited) {
+      console.log(
+        `[venueSearchApi] tier=nominatim_name status=breaker_open hits=0 q="${q}"`
+      );
+      return {
+        venues,
+        status: 'breaker_open',
+        errorMessage:
+          'Name-search fallback temporarily unavailable (cooling down).',
+      };
+    }
+    if (nominatimBreaker.lastError) {
+      console.log(
+        `[venueSearchApi] tier=nominatim_name status=api_error hits=0 q="${q}"`
+      );
+      return {
+        venues,
+        status: 'api_error',
+        errorMessage: nominatimBreaker.lastError.message,
+      };
+    }
+  }
+
+  console.log(
+    `[venueSearchApi] tier=nominatim_name status=ok hits=${venues.length} q="${q}"`
+  );
   return { venues, status: 'ok' };
 }
 

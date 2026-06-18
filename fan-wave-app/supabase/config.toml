@@ -335,6 +335,16 @@ deno_version = 2
 [functions.sync-team-logos]
 verify_jwt = false
 
+# sync-game-schedules is invoked by pg_cron (migration 058) with the vault
+# service_role_key as Bearer. The function does its own auth check
+# (accepts service_role_key OR CRON_SHARED_SECRET, see v060 edge fn deploy)
+# so platform JWT validation must be skipped — otherwise every cron call
+# 401s before reaching the function body. This was the root cause of the
+# v8.2 "Soccer Cup schedule still shows fake teams" bug: after the v8.2
+# redeploy reverted to the default verify_jwt=true, ESPN sync never ran.
+[functions.sync-game-schedules]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

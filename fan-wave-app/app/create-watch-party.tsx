@@ -22,6 +22,7 @@ import { Colors } from '@/constants/Colors';
 import { SPORTS } from '@/constants/Sports';
 import {
   searchVenues,
+  searchVenuesByName,
   geocodeCity,
   searchAddress,
   resetVenueBreakers,
@@ -313,8 +314,30 @@ export default function CreateWatchPartyScreen() {
       lastSearchFailedRef.current = false;
     }
 
+    // v8.2 user-test #4: DEV (or AsyncStorage `verbose_search_errors=1`)
+    // builds get the tier + error appended to the user-facing toast so QA
+    // reports tell us WHAT failed instead of just "search broke again".
+    // Prod release builds keep the friendly copy; full context still hits
+    // `console.error`.
+    let verboseFlag = false;
     try {
-      const { venues, status, errorMessage } = await searchVenues(
+      verboseFlag = (await AsyncStorage.getItem('verbose_search_errors')) === '1';
+    } catch {
+      // ignore
+    }
+    const showDebug = __DEV__ || verboseFlag;
+    const debugSuffix = (
+      tier: string,
+      err: string | undefined
+    ): string =>
+      showDebug
+        ? ` (coord_source=${coordSource}@${
+            (userCity || 'unknown').split(',')[0]?.trim().toLowerCase()
+          }, tier=${tier}, err=${err ?? 'n/a'})`
+        : '';
+
+    try {
+      const primary = await searchVenues(
         searchLat,
         searchLon,
         venueQuery,
@@ -322,40 +345,87 @@ export default function CreateWatchPartyScreen() {
       );
 
       console.log(
-        `[create-watch-party] venue search status=${status} hits=${venues.length} ` +
-          `coordSource=${coordSource} center=(${searchLat.toFixed(3)},${searchLon.toFixed(3)})`
+        `[create-watch-party] venue search tier=overpass status=${primary.status} hits=${primary.venues.length} ` +
+          `coordSource=${coordSource} center=(${searchLat.toFixed(3)},${searchLon.toFixed(3)}) q="${venueQuery.trim()}"`
       );
 
-      setVenueResults(venues);
+      // Happy path: Overpass returned hits.
+      if (primary.status === 'ok' && primary.venues.length > 0) {
+        setVenueResults(primary.venues);
+        setVenueLoading(false);
+        return;
+      }
 
-      if (status === 'breaker_open') {
-        lastSearchFailedRef.current = true;
-        setSearchError(
-          'Search temporarily unavailable — tap Search again in a moment to retry.'
+      // Overpass either failed or returned zero hits with a query the user
+      // is actively typing — try the Nominatim name-search fallback so we
+      // don't strand them on "Search temporarily unavailable" when their
+      // venue (e.g. "Brass Tap") exists in OSM and Nominatim can find it.
+      const shouldFallback =
+        primary.status === 'api_error' ||
+        primary.status === 'breaker_open' ||
+        (primary.status === 'ok' && primary.venues.length === 0);
+
+      if (shouldFallback) {
+        const fallback = await searchVenuesByName(
+          venueQuery,
+          userCity,
+          searchLat,
+          searchLon
         );
-      } else if (status === 'api_error') {
-        lastSearchFailedRef.current = true;
-        console.error(
-          '[create-watch-party] Overpass error:',
-          errorMessage
+
+        console.log(
+          `[create-watch-party] venue search tier=nominatim_name status=${fallback.status} hits=${fallback.venues.length} q="${venueQuery.trim()}"`
         );
-        setSearchError(
-          'Search temporarily unavailable. Check your connection and tap Search to retry, or "Enter venue manually".'
-        );
-      } else if (venues.length === 0) {
-        // True empty — the API answered with zero matches.
-        setSearchError(
-          `No venues found within 30 km of ${userCity ?? 'your location'} matching "${venueQuery.trim()}". Try a shorter name, or "Enter venue manually".`
-        );
+
+        if (fallback.status === 'ok' && fallback.venues.length > 0) {
+          setVenueResults(fallback.venues);
+          setVenueLoading(false);
+          return;
+        }
+
+        // Both tiers came back empty/failed. Pick the most informative
+        // error: prefer Overpass's diagnostic since that's the primary
+        // path users expect to work.
+        setVenueResults([]);
+
+        if (primary.status === 'breaker_open') {
+          lastSearchFailedRef.current = true;
+          console.error(
+            '[create-watch-party] Overpass breaker_open; fallback also failed:',
+            { primary: primary.errorMessage, fallback: fallback.errorMessage }
+          );
+          setSearchError(
+            'Search temporarily unavailable — tap Search again in a moment to retry.' +
+              debugSuffix('overpass→breaker_open', primary.errorMessage)
+          );
+        } else if (primary.status === 'api_error') {
+          lastSearchFailedRef.current = true;
+          console.error(
+            '[create-watch-party] Overpass api_error; fallback also failed:',
+            { primary: primary.errorMessage, fallback: fallback.errorMessage }
+          );
+          setSearchError(
+            'Search temporarily unavailable. Check your connection and tap Search to retry, or "Enter venue manually".' +
+              debugSuffix('overpass→api_error', primary.errorMessage)
+          );
+        } else {
+          // Both tiers truly returned zero matches.
+          setSearchError(
+            `No venues found within 30 km of ${userCity ?? 'your location'} matching "${venueQuery.trim()}". Try a shorter name, or "Enter venue manually".` +
+              debugSuffix('nominatim_name→empty', fallback.errorMessage)
+          );
+        }
       }
     } catch (e: any) {
-      // searchVenues no longer throws under normal conditions, but guard
-      // anyway so a future regression never silently shows [].
+      // searchVenues / searchVenuesByName no longer throw under normal
+      // conditions, but guard anyway so a future regression never silently
+      // shows [].
       lastSearchFailedRef.current = true;
       console.error('[create-watch-party] unexpected venue search error:', e);
       setVenueResults([]);
       setSearchError(
-        'Something went wrong searching for venues. Tap Search to retry, or "Enter venue manually".'
+        'Something went wrong searching for venues. Tap Search to retry, or "Enter venue manually".' +
+          debugSuffix('unexpected', e?.message)
       );
     } finally {
       setVenueLoading(false);

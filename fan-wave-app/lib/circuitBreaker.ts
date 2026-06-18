@@ -123,15 +123,18 @@ export class CircuitBreaker {
 }
 
 // Pre-configured breakers for external services.
-// Overpass: 3 failures (was 2 — too eager) before opening for 60s (was 120s);
-// Brass Tap P0 had users locked out for 2 minutes after a single bad query.
+// v8.2 user-test #4 (Brass Tap, Dallas): Overpass under load takes minutes
+// to time out. Cut the breaker reset to 30s and the failure threshold to 2
+// so we trip OPEN faster and the Nominatim name-search fallback in
+// `searchVenuesByName` takes over sooner. Users were sitting on "Search
+// temporarily unavailable" while Overpass was still half-replying.
 export const nominatimBreaker = new CircuitBreaker({
   threshold: 3,
   resetTimeout: 60_000,
   name: 'nominatim',
 });
 export const overpassBreaker = new CircuitBreaker({
-  threshold: 3,
-  resetTimeout: 60_000,
+  threshold: 2,
+  resetTimeout: 30_000,
   name: 'overpass',
 });

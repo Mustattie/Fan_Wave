@@ -221,16 +221,22 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // ---- Authentication: require a shared secret distinct from the
-    // service-role JWT. We had to decouple because the project's
-    // SUPABASE_SERVICE_ROLE_KEY env (auto-injected, immutable per-deploy)
-    // diverged from the Dashboard's currently-displayed service-role key
-    // (looks like a JWT rotation happened) — cron callers couldn't match
-    // it. Using a custom CRON_SHARED_SECRET we set via `supabase secrets
-    // set` lets us guarantee both sides hold the same value. ----
-    const cronSecret = Deno.env.get("CRON_SHARED_SECRET");
-    const authHeader = req.headers.get("authorization");
-    if (!cronSecret || !authHeader || authHeader !== `Bearer ${cronSecret}`) {
+    // ---- Authentication: accept either CRON_SHARED_SECRET (the explicit
+    // shared bearer that survives JWT rotations) OR the auto-injected
+    // SUPABASE_SERVICE_ROLE_KEY (the bearer pg_cron actually sends via
+    // vault in migration 058). The prod operational state on 2026-06-17:
+    // CRON_SHARED_SECRET was either never set or fell out of sync with
+    // the vault, and every cron call had been 401'ing for ~8 days post-
+    // prod-cutover. Accepting both bearers stops the bleed regardless of
+    // which side the operator chooses to keep aligned. Whichever pair
+    // matches first wins; both empty is still 401.
+    const cronSecret = Deno.env.get("CRON_SHARED_SECRET") ?? "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const authHeader = req.headers.get("authorization") ?? "";
+    const ok =
+      (cronSecret.length > 0 && authHeader === `Bearer ${cronSecret}`) ||
+      (serviceKey.length > 0 && authHeader === `Bearer ${serviceKey}`);
+    if (!ok) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         {

@@ -65,9 +65,18 @@ function MomentClipImage({ uri }: { uri: string }) {
 }
 
 function MomentClipVideo({ uri }: { uri: string }) {
+  // Source is the bare `uri` (no conditional) so the underlying Android
+  // MediaPlayer is created ONCE per card and survives scroll. The
+  // previous WC-tab crash on rapid scroll was driven by recreating
+  // MediaCodec instances faster than Android could release them; we
+  // keep them stable here and rely on FlatList virtualization
+  // (windowSize / removeClippedSubviews) to cap how many are alive.
   const player = useVideoPlayer(uri, (p) => {
     p.loop = false;
-    p.muted = false;
+    // Muted preview — matches feed convention and prevents multiple
+    // audio streams from playing simultaneously if more than one clip
+    // ends up visible during a scroll.
+    p.muted = true;
   });
   return (
     <VideoView
@@ -517,6 +526,16 @@ export default function MomentsFeed({
         renderItem={renderMomentCard}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        // Virtualization caps — each moment card may host a video clip
+        // (expo-video MediaPlayer). On Android there's a global
+        // MediaCodec pool (~8 slots); without these caps a fast scroll
+        // through a video-heavy moments feed exhausts the pool and the
+        // app force-closes with no JS-catchable error. Same pattern as
+        // the Clips tab fix.
+        windowSize={3}
+        maxToRenderPerBatch={2}
+        initialNumToRender={3}
+        removeClippedSubviews={true}
         ListHeaderComponent={
           // Per new product design (v7): no per-action paywalls. Subscribe
           // happens at signup; inside the app, all features are open. DB

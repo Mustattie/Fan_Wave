@@ -10,7 +10,6 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
-  Linking,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -18,6 +17,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router';
 import { Search, Plus, X, Users, UserPlus } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
+import {
+  loadContactsWithPhones,
+  pickPhoneForContact,
+  openSmsInvite,
+  buildGroupInviteBody,
+} from '@/lib/inviteContacts';
 import { Colors } from '@/constants/Colors';
 import { GroupCard } from '@/components/GroupCard';
 import { SectionHeader } from '@/components/SectionHeader';
@@ -59,6 +64,12 @@ export default function GroupsScreen() {
   const [suggestedGroups, setSuggestedGroups] = useState<any[]>([]);
   const [loadingMyGroups, setLoadingMyGroups] = useState(true);
   const [loadingSuggested, setLoadingSuggested] = useState(true);
+  // Discover sub-tabs (Issue #6 v8.2): replicate Soccer Cup → Fan Groups
+  // pattern (All / By City / By Sport) so the green Join CTA is reachable
+  // on the main Groups tab. Default to "All" so users always see *something*
+  // when their city has no groups yet.
+  const [discoverTab, setDiscoverTab] = useState<'all' | 'city' | 'sport'>('all');
+  const [discoverSport, setDiscoverSport] = useState<string>('nfl');
   const [isCreating, setIsCreating] = useState(false);
   const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
   // Current auth user id — needed to hide the Join CTA on groups the user
@@ -162,24 +173,67 @@ export default function GroupsScreen() {
     fetchMyGroups();
   }, []);
 
-  // Fetch suggested groups from Supabase on mount
+  // Discover-section fetch (Issue #6 v8.2). Queries `chat_rooms` directly
+  // rather than the browse_public_groups RPC so we can express the
+  // All / By City / By Sport filters in a single composable query and so
+  // a missing/buggy RPC can't silently zero out the list (which is what
+  // hid the Join button in v8.1). RLS migration 002 already allows
+  // SELECT on visibility='public' rows for any authenticated user, so
+  // this is safe from the client.
   useEffect(() => {
-    const fetchSuggested = async () => {
+    const fetchDiscover = async () => {
       setLoadingSuggested(true);
       try {
-        const { data, error } = await supabase.rpc('browse_public_groups', {
-          p_city: city,
-        });
+        // Need an authed user to compute "exclude my groups"
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
+        let query = supabase
+          .from('chat_rooms')
+          .select('*')
+          .eq('visibility', 'public')
+          .order('member_count', { ascending: false })
+          .limit(30);
+
+        if (discoverTab === 'city') {
+          if (!city) {
+            // Show empty state below — caller knows by discoverTab + !city
+            setSuggestedGroups([]);
+            setLoadingSuggested(false);
+            return;
+          }
+          query = query.ilike('city', city);
+        } else if (discoverTab === 'sport') {
+          // Resolve sport_id from the selected pill so we can filter by it
+          const sportNameMap: Record<string, string> = {
+            nfl: 'NFL',
+            nba: 'NBA',
+            mlb: 'MLB',
+            soccer: 'Soccer',
+          };
+          const sportName = sportNameMap[discoverSport];
+          if (sportName) {
+            const { data: sportRow } = await supabase
+              .from('sports')
+              .select('id')
+              .ilike('name', sportName)
+              .maybeSingle();
+            if (sportRow?.id) {
+              query = query.eq('sport_id', sportRow.id);
+            }
+          }
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
 
-        if (data && data.length > 0) {
-          const memberIds = new Set(myGroups.map((g) => g.id));
-          const filtered = data.filter((g: any) => !memberIds.has(g.id));
-          setSuggestedGroups(filtered);
-        } else {
-          setSuggestedGroups([]);
-        }
+        const memberIds = new Set(myGroups.map((g) => g.id));
+        const filtered = (data || []).filter(
+          (g: any) =>
+            !memberIds.has(g.id) && (!user || g.owner_id !== user.id),
+        );
+        setSuggestedGroups(filtered);
       } catch {
         setSuggestedGroups([]);
       } finally {
@@ -187,15 +241,8 @@ export default function GroupsScreen() {
       }
     };
 
-    if (city) {
-      fetchSuggested();
-    } else {
-      // No home_city on profile yet — don't leave the suggested-groups
-      // skeleton spinning forever. Show the empty state instead.
-      setSuggestedGroups([]);
-      setLoadingSuggested(false);
-    }
-  }, [city, myGroups]);
+    fetchDiscover();
+  }, [discoverTab, discoverSport, city, myGroups]);
 
   // Team search with debounce
   useEffect(() => {
@@ -367,22 +414,14 @@ export default function GroupsScreen() {
       setMyGroups((prev) => [mapChatRoomToDisplay(room), ...prev]);
 
       // Dispatch SMS invites for private groups — uses the device's native
-      // SMS composer so the user reviews and sends. No DB invite table yet.
+      // SMS composer so the user reviews and sends. Centralised in
+      // lib/inviteContacts so the fan-group detail-page invite reuses
+      // the same SMS deep-link logic.
       if (selectedVisibility === 'private' && invitedFriends.length > 0) {
-        const inviteLink = `https://fansphere.org/group/${room.id}`;
-        const body = encodeURIComponent(
-          `Join my Fan Sphere group "${newGroupName.trim()}": ${inviteLink}`,
+        await openSmsInvite(
+          invitedFriends,
+          buildGroupInviteBody({ id: room.id, name: newGroupName.trim() }),
         );
-        // Android uses ? for body; iOS tolerates it. Multi-recipient via
-        // comma-separated numbers works on both.
-        const numbers = invitedFriends.map((f) => f.phone.replace(/\s+/g, '')).join(',');
-        const smsUrl = `sms:${numbers}?body=${body}`;
-        try {
-          const supported = await Linking.canOpenURL(smsUrl);
-          if (supported) await Linking.openURL(smsUrl);
-        } catch {
-          // SMS composer not available — silently skip.
-        }
       }
       // Success path: clear inputs + close the modal.
       setNewGroupName('');
@@ -426,30 +465,16 @@ export default function GroupsScreen() {
   };
 
   const openContactPicker = useCallback(async () => {
-    const { status } = await Contacts.requestPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(
-        'Contacts permission denied',
-        'Enable Contacts access in Settings to invite friends.',
-      );
-      return;
-    }
     setContactPickerOpen(true);
     setContactsLoading(true);
-    try {
-      const { data } = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
-      });
-      const withPhones = data
-        .filter((c) => c.phoneNumbers && c.phoneNumbers.length > 0 && c.name)
-        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-      setContactsList(withPhones);
-    } catch {
-      Alert.alert('Could not load contacts', 'Please try again.');
+    const list = await loadContactsWithPhones();
+    if (list === null) {
       setContactPickerOpen(false);
-    } finally {
       setContactsLoading(false);
+      return;
     }
+    setContactsList(list);
+    setContactsLoading(false);
   }, []);
 
   const addContactToInvites = useCallback((name: string, phone: string) => {
@@ -461,28 +486,12 @@ export default function GroupsScreen() {
   }, []);
 
   const handlePickContact = useCallback(
-    (contact: Contacts.Contact) => {
-      const phones = contact.phoneNumbers || [];
-      const name = contact.name || 'Unknown';
-      if (phones.length === 1) {
-        addContactToInvites(name, phones[0].number || '');
+    async (contact: Contacts.Contact) => {
+      const picked = await pickPhoneForContact(contact);
+      if (picked) {
+        addContactToInvites(picked.name, picked.phone);
         setContactPickerOpen(false);
-        return;
       }
-      Alert.alert(
-        `Pick a number for ${name}`,
-        undefined,
-        [
-          ...phones.map((p) => ({
-            text: `${p.label ? `${p.label}: ` : ''}${p.number}`,
-            onPress: () => {
-              addContactToInvites(name, p.number || '');
-              setContactPickerOpen(false);
-            },
-          })),
-          { text: 'Cancel', style: 'cancel' as const },
-        ],
-      );
     },
     [addContactToInvites],
   );
@@ -540,23 +549,134 @@ export default function GroupsScreen() {
                 <GroupCard key={group.id} group={group} />
               ))}
 
-            <SectionHeader title="Suggested Groups" />
+            <SectionHeader title="Discover" />
 
-            {/* Loading skeleton for suggested groups */}
+            {/* Discover sub-tab pills — All / By City / By Sport.
+                Inline TouchableOpacity row so we don't need a new component
+                file (per Issue #6 v8.2 constraints). */}
+            <View style={styles.discoverPillRow}>
+              {(
+                [
+                  { id: 'all', label: 'All' },
+                  { id: 'city', label: 'By City' },
+                  { id: 'sport', label: 'By Sport' },
+                ] as const
+              ).map((tab) => (
+                <TouchableOpacity
+                  key={tab.id}
+                  style={[
+                    styles.discoverPill,
+                    discoverTab === tab.id && styles.discoverPillActive,
+                  ]}
+                  onPress={() => setDiscoverTab(tab.id)}
+                >
+                  <Text
+                    style={[
+                      styles.discoverPillText,
+                      discoverTab === tab.id && styles.discoverPillTextActive,
+                    ]}
+                  >
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Sport sub-pills appear only when "By Sport" is active. */}
+            {discoverTab === 'sport' && (
+              <View style={styles.discoverSportRow}>
+                {SPORT_PILLS.map((s) => (
+                  <TouchableOpacity
+                    key={s.id}
+                    style={[
+                      styles.discoverSportPill,
+                      discoverSport === s.id && styles.discoverSportPillActive,
+                    ]}
+                    onPress={() => setDiscoverSport(s.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.discoverSportPillText,
+                        discoverSport === s.id &&
+                          styles.discoverSportPillTextActive,
+                      ]}
+                    >
+                      {s.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Loading skeleton */}
             {loadingSuggested && (
               <View style={styles.loadingSkeleton}>
                 <ActivityIndicator size="small" color={Colors.dark.accent} />
                 <Text style={styles.loadingText}>
-                  Discovering groups near you...
+                  {discoverTab === 'city'
+                    ? `Discovering groups in ${city || 'your city'}...`
+                    : 'Discovering groups...'}
                 </Text>
               </View>
             )}
 
-            {!loadingSuggested && suggestedGroups.length === 0 && (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>No groups in your area yet — start one!</Text>
-              </View>
-            )}
+            {/* Empty states — make each one tab-specific so the user is
+                never left staring at a silent "no groups" with no next
+                action. Especially important for "By City" since most
+                cities won't have a group yet at launch. */}
+            {!loadingSuggested &&
+              suggestedGroups.length === 0 &&
+              discoverTab === 'city' &&
+              !city && (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyText}>
+                    Set your home city in Profile to discover local fan groups.
+                  </Text>
+                </View>
+              )}
+
+            {!loadingSuggested &&
+              suggestedGroups.length === 0 &&
+              discoverTab === 'city' &&
+              !!city && (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyText}>
+                    No public groups in {city} yet — be the first, create one!
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.emptyCta}
+                    onPress={handleOpenCreateModal}
+                  >
+                    <Text style={styles.emptyCtaText}>Create a Group</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+            {!loadingSuggested &&
+              suggestedGroups.length === 0 &&
+              discoverTab === 'sport' && (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyText}>
+                    No public groups for this sport yet — start one!
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.emptyCta}
+                    onPress={handleOpenCreateModal}
+                  >
+                    <Text style={styles.emptyCtaText}>Create a Group</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+            {!loadingSuggested &&
+              suggestedGroups.length === 0 &&
+              discoverTab === 'all' && (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyText}>
+                    No public groups yet — be the first to start one!
+                  </Text>
+                </View>
+              )}
           </>
         }
         renderItem={({ item: group }: { item: any }) => {
@@ -1237,6 +1357,70 @@ const styles = StyleSheet.create({
   createButtonText: {
     color: '#fff',
     fontSize: 14,
+    fontWeight: '700',
+  },
+  // Discover sub-tabs (Issue #6 v8.2)
+  discoverPillRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  discoverPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: Colors.dark.surface,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  discoverPillActive: {
+    backgroundColor: Colors.dark.accent,
+    borderColor: Colors.dark.accent,
+  },
+  discoverPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.dark.textSecondary,
+  },
+  discoverPillTextActive: {
+    color: '#fff',
+  },
+  discoverSportRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  discoverSportPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: Colors.dark.surface,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  discoverSportPillActive: {
+    backgroundColor: Colors.dark.accent + '33',
+    borderColor: Colors.dark.accent,
+  },
+  discoverSportPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.dark.textSecondary,
+  },
+  discoverSportPillTextActive: {
+    color: Colors.dark.accent,
+  },
+  emptyCta: {
+    marginTop: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: Colors.dark.accent,
+  },
+  emptyCtaText: {
+    color: '#fff',
+    fontSize: 13,
     fontWeight: '700',
   },
 });

@@ -39,6 +39,13 @@ export default function RSVPHistoryScreen() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        // watch_party_rsvps.user_id stores auth.users.id (the RPC at
+        // migration 059 writes auth.uid() and create-watch-party.tsx
+        // auto-RSVP writes the same). The earlier "fix" to look up
+        // public.users.id was a regression — reverted to user.id here
+        // so the new mig-059 RSVPs actually surface. v8.2 P0 was the
+        // RPC 404-ing (different bug, fixed by mig 059), not a column
+        // mismatch.
         const { data, error } = await supabase
           .from('watch_party_rsvps')
           .select(`

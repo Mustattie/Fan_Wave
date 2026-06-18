@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Star,
@@ -77,23 +78,24 @@ export default function ProfileScreen() {
         }
       }
 
-      // Fetch stats: group count
+      // Stats. user_id columns across writes use auth.users.id (RPC mig 059
+      // uses auth.uid(); direct INSERT paths pass user.id). The earlier
+      // profileData?.id || user.id pattern preferred public.users.id which
+      // never matched and the counters always read 0.
       const { count: groupCount } = await supabase
         .from('chat_room_members')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', profileData?.id || user.id);
+        .eq('user_id', user.id);
 
-      // Fetch stats: party RSVP count
       const { count: partyCount } = await supabase
         .from('watch_party_rsvps')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', profileData?.id || user.id);
+        .eq('user_id', user.id);
 
-      // Fetch stats: clips count
       const { count: clipCount } = await supabase
         .from('media_clips')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', profileData?.id || user.id);
+        .eq('user_id', user.id);
 
       setStats({
         groups: groupCount || 0,
@@ -237,9 +239,17 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.profileHeader}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>👤</Text>
-          </View>
+          {profile?.avatar_url ? (
+            <Image
+              source={{ uri: profile.avatar_url }}
+              style={styles.avatar}
+              contentFit="cover"
+            />
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>👤</Text>
+            </View>
+          )}
           <Text style={styles.name}>{displayName}</Text>
           {handle ? <Text style={styles.handle}>{handle}</Text> : null}
 
