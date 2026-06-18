@@ -30,3 +30,6 @@ fan-wave-app/AuthKey.p8
 # Apple submission video evidence — already uploaded to ASC, too large for git
 Delete_Account_Demo.mp4
 *.MP4
+
+# Local APK/IPA artifacts converted by the build watcher — not source
+builds/
