@@ -43,6 +43,22 @@ export function GroupCard({ group, onPress, showUnread = true }: GroupCardProps)
             {(group.onlineCount ?? 0) > 0 && ` · ${group.onlineCount ?? 0} online`}
           </Text>
         </View>
+        {/* v8.4 UAT feedback: My Groups cards now show a prominent
+            green "Invite" CTA in the same position the Discover-tab
+            cards show "Join". Owners of public groups previously only
+            had a tiny share icon in the footer, which read as
+            asymmetry with the Discover section's bold Join buttons. */}
+        <TouchableOpacity
+          style={styles.inviteButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            shareGroup({ id: group.id, name: group.name, memberCount: group.memberCount });
+          }}
+          activeOpacity={0.85}
+        >
+          <Share2 size={12} color="#fff" />
+          <Text style={styles.inviteButtonText}>Invite</Text>
+        </TouchableOpacity>
         {showUnread && (
           <View style={styles.rightColumn}>
             <Text style={styles.time}>{group.lastMessageTime}</Text>
@@ -61,24 +77,15 @@ export function GroupCard({ group, onPress, showUnread = true }: GroupCardProps)
         </Text>
       ) : null}
 
-      <View style={styles.bottomRow}>
-        {group.tags && group.tags.length > 0 && (
-          <View style={styles.tagRow}>
-            {group.tags.map((tag) => (
-              <View key={tag} style={styles.tag}>
-                <Text style={styles.tagText}>{tag}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-        <TouchableOpacity
-          style={styles.shareBtn}
-          onPress={(e) => { e.stopPropagation(); shareGroup({ id: group.id, name: group.name, memberCount: group.memberCount }); }}
-          activeOpacity={0.7}
-        >
-          <Share2 size={12} color={Colors.dark.textSecondary} />
-        </TouchableOpacity>
-      </View>
+      {group.tags && group.tags.length > 0 && (
+        <View style={styles.tagRow}>
+          {group.tags.map((tag) => (
+            <View key={tag} style={styles.tag}>
+              <Text style={styles.tagText}>{tag}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
@@ -167,14 +174,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.dark.textSecondary,
   },
-  bottomRow: {
+  inviteButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: Colors.dark.success,
   },
-  shareBtn: {
-    padding: 6,
-    borderRadius: 8,
-    backgroundColor: Colors.dark.surfaceLight,
+  inviteButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

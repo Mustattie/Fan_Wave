@@ -1,0 +1,111 @@
+appId: org.fansphere.app
+name: "D0b — Post-sign-in tab crash regression"
+tags:
+  - smoke
+  - tab_regression
+  - v8_4
+---
+# Taps every bottom tab post-sign-in and asserts the v8.4 root
+# ErrorBoundary never renders. Would have caught the v8.3 Soccer Cup
+# "Cannot read property 'replace' of null" crash — that bug shipped
+# because no scenario exercised every tab end-to-end post-sign-in.
+#
+# Run this against every APK BEFORE handing it to UAT. It's fast
+# (~45s) and catches the most common regression class: a render-tree
+# crash on a freshly opened tab.
+
+- launchApp:
+    clearState: false
+    stopApp: true
+
+- runFlow: flows/_sign_in.yaml
+
+# Home — first tab the app lands on. Confirm the user got there.
+- assertVisible:
+    text: ".*Home.*|.*Today.*|.*Watch Parties.*"
+- assertNotVisible:
+    text: "Something went wrong"
+- takeScreenshot: screenshots/v84_smoke_01_home
+
+# Discover
+- tapOn:
+    text: "Discover"
+- waitForAnimationToEnd
+- assertNotVisible:
+    text: "Something went wrong"
+- takeScreenshot: screenshots/v84_smoke_02_discover
+
+# Clips — the v8.3 P0 5-second native crash would surface here after
+# a brief wait. Pause to let autoplay-on-visible exercise the player.
+- tapOn:
+    text: "Clips"
+- waitForAnimationToEnd
+- assertNotVisible:
+    text: "Something went wrong"
+# Hold for 6 seconds. v8.3 force-closed the app around the 5-second
+# mark on Clips tab. If v8.4 stayed open through this, the
+# removeClippedSubviews + stable-player fix worked.
+- waitForAnimationToEnd:
+    timeout: 6000
+- assertNotVisible:
+    text: "Something went wrong"
+- takeScreenshot: screenshots/v84_smoke_03_clips_after_6s
+
+# Soccer Cup — the v8.3 stage.replace crash lived here. v8.4 fixes
+# this at both the call site (defensive ??) and the data load
+# boundary (mapper normalisation). Mig 060 wiped seeded games with
+# stage set, so this tab now exercises the null-stage path.
+- tapOn:
+    text: "Soccer Cup"
+- waitForAnimationToEnd
+- assertNotVisible:
+    text: "Something went wrong"
+- takeScreenshot: screenshots/v84_smoke_04_soccer_cup
+
+# Tap into the Schedule sub-tab specifically — that's where the
+# crash originated in v8.3 (WCSchedule.tsx).
+- tapOn:
+    text: "Schedule"
+    optional: true
+- waitForAnimationToEnd
+- assertNotVisible:
+    text: "Something went wrong"
+- takeScreenshot: screenshots/v84_smoke_05_soccer_cup_schedule
+
+# Groups — Discover sub-tabs added in v8.3 query chat_rooms directly.
+- tapOn:
+    text: "Groups"
+- waitForAnimationToEnd
+- assertNotVisible:
+    text: "Something went wrong"
+- takeScreenshot: screenshots/v84_smoke_06_groups
+
+# Discover sub-tab inside Groups — exercises the public chat_rooms
+# query path added in v8.3.
+- tapOn:
+    text: "Discover"
+    optional: true
+- waitForAnimationToEnd
+- assertNotVisible:
+    text: "Something went wrong"
+
+# Profile — reads users.avatar_url via expo-image. v8.4 made avatar
+# rendering URL-cache-friendly via UUID paths.
+- tapOn:
+    text: "Profile"
+- waitForAnimationToEnd
+- assertNotVisible:
+    text: "Something went wrong"
+- takeScreenshot: screenshots/v84_smoke_07_profile
+
+# Final round-trip: tap back to Clips. v8.4 added focusEpoch so
+# paused players resume on tab focus. The "frozen on return" symptom
+# would manifest here. We can't directly assert "video is playing"
+# in Maestro, but we CAN assert the tab renders without the error
+# boundary, which is the regression we're actually guarding against.
+- tapOn:
+    text: "Clips"
+- waitForAnimationToEnd
+- assertNotVisible:
+    text: "Something went wrong"
+- takeScreenshot: screenshots/v84_smoke_08_clips_after_round_trip
