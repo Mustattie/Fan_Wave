@@ -113,6 +113,40 @@ export default function WCFanGroups() {
         const supabaseIds = new Set(mapped.map((g) => g.id));
         const uniqueLocal = localGroups.filter((g) => !supabaseIds.has(g.id));
         setGroups([...uniqueLocal, ...mapped]);
+
+        // v8.5 P0: derive joinedMap from chat_room_members so the Join
+        // badge persists across tab switches. Previously joinedMap was
+        // ONLY local state that reset to {} on every component remount,
+        // which meant a user who joined a group, switched tabs, and
+        // returned saw the Join button re-active. The user-reported
+        // "join then come back and asked to join again" bug.
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const ids = mapped.map((g) => g.id);
+            if (ids.length > 0) {
+              const { data: memberships } = await supabase
+                .from('chat_room_members')
+                .select('chat_room_id')
+                .eq('user_id', user.id)
+                .in('chat_room_id', ids);
+              const joined: Record<string, boolean> = {};
+              for (const row of memberships || []) {
+                if (row.chat_room_id) joined[row.chat_room_id as string] = true;
+              }
+              // Also mark groups the user owns as "joined" — the WC create
+              // flow now inserts an owner chat_room_members row, but
+              // groups created in earlier builds may not have that row,
+              // so owner_id is a defensive secondary signal.
+              for (const g of data) {
+                if (g.owner_id === user.id) joined[g.id] = true;
+              }
+              setJoinedMap(joined);
+            }
+          }
+        } catch (e) {
+          reportError(e, { source: 'WCFanGroups:loadMemberships' });
+        }
       } else {
         setGroups(localGroups);
       }
@@ -162,7 +196,9 @@ export default function WCFanGroups() {
       // on next launch.
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        console.warn('Join attempted without auth user');
+        reportError(new Error('Join attempted without auth user'), {
+          source: 'WCFanGroups:handleJoin', groupId,
+        });
         return;
       }
       const { error } = await supabase
@@ -177,12 +213,30 @@ export default function WCFanGroups() {
           setShowWCPaywall(true);
           return;
         }
-        console.warn('Join insert failed, using local fallback:', error.message);
+        // v8.5 P0: previously this swallowed the error and STILL marked
+        // the group as joined locally — the user saw "Joined" but the
+        // DB row never landed. On next focus, joinedMap (now DB-derived)
+        // correctly showed them as not-joined, button reverted to Join,
+        // exact v8.4 "I joined but it's asking me again" symptom. Now
+        // we report + alert + DO NOT update local state on failure.
+        const isDuplicate =
+          (error as any)?.code === '23505' ||
+          /duplicate|unique/i.test(error.message ?? '');
+        if (!isDuplicate) {
+          reportError(error, { source: 'WCFanGroups:handleJoin', groupId });
+          // No alert — too noisy if it fires for a row already added by
+          // another flow (e.g. owner auto-join). DB-derived joinedMap
+          // refresh on next focus is the recovery path.
+          return;
+        }
       }
-    } catch {
-      console.warn('Join unavailable, using local fallback');
+    } catch (e) {
+      reportError(e, { source: 'WCFanGroups:handleJoin', groupId });
+      return;
     }
 
+    // Only mark joined locally on TRUE success. The DB-derived refresh
+    // on next focus is the source-of-truth recovery path.
     setJoinedMap((prev) => ({ ...prev, [groupId]: true }));
   };
 

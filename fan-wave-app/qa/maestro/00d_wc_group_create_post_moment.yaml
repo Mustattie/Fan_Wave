@@ -1,0 +1,96 @@
+appId: org.fansphere.app
+name: "D0d — Create WC group then post moment (v8.5 P0)"
+tags:
+  - smoke
+  - groups
+  - worldcup
+  - v8_5
+---
+# v8.5 P0 regression guard: v8.4 shipped a bug where creating a WC
+# fan group via /create-wc-group did NOT insert the owner into
+# chat_room_members. When the owner immediately tried to Post a
+# Moment, the match_moments RLS WITH CHECK rejected the row (it
+# requires is_chat_room_member(), not owner_id) and the user saw
+# "You may need to join this group before posting." — in their own
+# group they just created.
+#
+# v8.5 (app/create-wc-group.tsx) now inserts chat_room_members with
+# role='owner' immediately after chat_rooms insert.
+
+- launchApp:
+    clearState: false
+    stopApp: true
+
+- runFlow: flows/_sign_in.yaml
+
+- tapOn:
+    text: "Soccer Cup"
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Fan Groups"
+- waitForAnimationToEnd
+
+# Tap the "Team Fans" template card — the simplest WC create path.
+- tapOn:
+    text: ".*Team Fans.*|.*Team.*"
+    optional: true
+
+- waitForAnimationToEnd
+
+# Pick a country to populate the auto-name.
+- tapOn:
+    text: "USA"
+    optional: true
+
+- tapOn:
+    text: "Group Name"
+    optional: true
+- inputText: " v85"
+
+- tapOn:
+    text: "Create Group"
+
+- extendedWaitUntil:
+    visible:
+      text: ".*Created.*"
+    timeout: 15000
+
+# View the new group.
+- tapOn:
+    text: "View Group"
+    optional: true
+
+- waitForAnimationToEnd
+
+# Switch to Highlights tab so we can Post a Moment.
+- tapOn:
+    text: "Highlights"
+    optional: true
+
+- tapOn:
+    text: "Post a Moment"
+
+- waitForAnimationToEnd
+
+# Pick the first moment type.
+- tapOn:
+    index: 0
+    optional: true
+
+- tapOn:
+    text: "Comment"
+    optional: true
+- inputText: "v8.5 smoke test"
+
+- tapOn:
+    text: "Post"
+
+# v8.5 fix: owner is now a chat_room_members row. The Post should
+# succeed without the "you may need to join" alert that plagued v8.4.
+- assertNotVisible:
+    text: "may need to join this group"
+- assertNotVisible:
+    text: "Couldn't post moment"
+
+- takeScreenshot: screenshots/v85_owner_posts_moment_success

@@ -91,6 +91,31 @@ export default function DiscoverScreen() {
         if (data && data.length > 0) {
           return data.map(mapChatRoomToDisplay);
         }
+
+        // v8.5 P0: the RPC uses `city = p_city` (strict equality) which
+        // returns 0 rows for "Dallas" users when seeded groups have
+        // city='Dallas, TX', NULL, or are WC groups (city left blank).
+        // Fall back to a direct, broader query so Trending isn't a sad
+        // empty state.
+        if (city) {
+          // PostgREST .or() uses commas as separators, so a city value
+          // like "Dallas, TX" embedded into `city.ilike.%Dallas, TX%`
+          // breaks the parser (3 clauses instead of 2). Strip to the
+          // metro name BEFORE building the filter.
+          const cityKey = city.split(',')[0]?.trim() ?? '';
+          if (cityKey) {
+            const { data: broad } = await supabase
+              .from('chat_rooms')
+              .select('*')
+              .eq('visibility', 'public')
+              .or(`city.ilike.%${cityKey}%,city.is.null`)
+              .order('member_count', { ascending: false })
+              .limit(20);
+            if (broad && broad.length > 0) {
+              return broad.map(mapChatRoomToDisplay);
+            }
+          }
+        }
         return [];
       } catch {
         return [];
@@ -108,11 +133,16 @@ export default function DiscoverScreen() {
   const fetchWatchParties = useCallback(
     async (_sport?: string, cursor?: string | null) => {
       try {
+        // v8.5 P0: 2h grace so freshly-hosted parties (whose preset clock
+        // may already be a few minutes past at create-time) stay visible
+        // until the event actually plays out. Mirrors useWatchParties.
+        const startedAfter =
+          cursor || new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
         const baseSelect = (q: any) =>
           q
             .from('watch_parties')
             .select('*, sport:sports!sport_id(*)')
-            .gt('starts_at', cursor || new Date().toISOString())
+            .gt('starts_at', startedAfter)
             .order('starts_at', { ascending: true })
             .limit(20);
 

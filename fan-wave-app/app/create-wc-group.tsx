@@ -17,6 +17,7 @@ import { ArrowLeft, Users } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { reportError } from '@/lib/errorReporting';
 
 const WC_CREATED_GROUPS_KEY = 'wc_created_groups';
 
@@ -163,6 +164,33 @@ export default function CreateWCGroupScreen() {
 
       if (data) {
         groupData.id = data.id;
+
+        // v8.5 P0: insert the owner as a chat_room_members row so the
+        // match_moments / messages RLS gates (which require
+        // is_chat_room_member, not just owner_id) accept their inserts.
+        // Without this, the creator immediately bounces off "You may need
+        // to join this group before posting." on Post a Moment — the
+        // exact UAT artifact shown in the v8.4 screenshots. We swallow
+        // duplicate-key errors so a race or retry doesn't surface as
+        // failure.
+        const { error: memberError } = await supabase
+          .from('chat_room_members')
+          .insert({
+            chat_room_id: data.id,
+            user_id: user.id,
+            role: 'owner',
+          });
+        if (memberError) {
+          const mCode = (memberError as any)?.code;
+          const mMsg = (memberError.message ?? '').toLowerCase();
+          const isDup = mCode === '23505' || mMsg.includes('duplicate');
+          if (!isDup) {
+            reportError(memberError, {
+              source: 'create-wc-group:ownerMember',
+              roomId: data.id,
+            });
+          }
+        }
       }
     } catch {
       Alert.alert('Error', 'Could not create group. Please check your connection.');

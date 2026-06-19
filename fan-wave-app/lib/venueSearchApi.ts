@@ -283,7 +283,16 @@ export async function searchVenuesByName(
 
   const cityPart = (city || '').split(',')[0]?.trim() ?? '';
   const fullQuery = cityPart ? `${q} ${cityPart}` : q;
-  const cacheKey = `nameSearch_${fullQuery.toLowerCase()}`;
+  // Cache key MUST include the center coords. Without them, a Dallas user
+  // and a Chicago user searching the same query would share a cache
+  // entry, and whoever queried first would poison results for the
+  // other. The viewbox the URL ships depends on center, so the cache
+  // partitioning has to match.
+  const centerKey =
+    Number.isFinite(centerLat) && Number.isFinite(centerLon)
+      ? `${(centerLat as number).toFixed(2)}_${(centerLon as number).toFixed(2)}`
+      : 'nocenter';
+  const cacheKey = `nameSearch_${fullQuery.toLowerCase()}_${centerKey}`;
   const cached = getCached<Venue[]>(cacheKey);
   if (cached) {
     console.log(
@@ -293,14 +302,34 @@ export async function searchVenuesByName(
     return { venues: cached, status: 'ok' };
   }
 
+  // v8.5 P0: previously this Nominatim call had NO viewbox / bounded
+  // params, so a search for "Chillis" from a McKinney user returned
+  // results in Hamilton ON (~1300 mi), Moss Point MS (~800 mi), Palm
+  // Coast FL (~1000 mi), etc. We now clamp results to a ~110 km bounding
+  // box around the user's center and pass bounded=1 so Nominatim
+  // EXCLUDES out-of-bbox hits instead of merely deprioritising them.
+  // The viewbox is wider than the Overpass radius (30 km) on purpose:
+  // Nominatim is the fallback when Overpass had no hits, and a slightly
+  // wider net here is still vastly better than the global default.
+  let viewboxParam = '';
+  if (Number.isFinite(centerLat) && Number.isFinite(centerLon)) {
+    const cLat = centerLat as number;
+    const cLon = centerLon as number;
+    const delta = 1.0; // ~110 km bounding box
+    viewboxParam =
+      `&viewbox=${cLon - delta},${cLat + delta},${cLon + delta},${cLat - delta}` +
+      `&bounded=1`;
+  }
+
   const url =
     `https://nominatim.openstreetmap.org/search` +
     `?q=${encodeURIComponent(fullQuery)}` +
     `&format=json&limit=10&addressdetails=1&extratags=1` +
-    `&countrycodes=us,ca,mx`;
+    `&countrycodes=us,ca,mx` +
+    viewboxParam;
 
   console.log(
-    `[venueSearchApi] Nominatim name-search request q="${fullQuery}"`
+    `[venueSearchApi] Nominatim name-search request q="${fullQuery}" bbox=${viewboxParam ? 'on' : 'off'}`
   );
 
   const venues = await nominatimBreaker.execute(async () => {

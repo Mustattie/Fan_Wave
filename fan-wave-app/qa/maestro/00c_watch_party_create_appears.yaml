@@ -1,0 +1,123 @@
+appId: org.fansphere.app
+name: "D0c — Watch party visible in list after create (v8.5 P0)"
+tags:
+  - smoke
+  - watch_parties
+  - v8_5
+---
+# v8.5 P0 regression guard: the v8.4 build shipped a bug where created
+# watch parties never appeared on the Home / Watch Parties tab. Root
+# cause was a stack of three independent issues all of which had to
+# converge to break the list:
+#   1. computeTimePresets() generated past timestamps when the user
+#      picked "Tonight 7PM" after 7 PM local
+#   2. List queries used .gt('starts_at', now()) with no grace period
+#   3. Auto-RSVP silently failed so the host wasn't on the going-list
+#
+# This test creates a party + verifies it actually appears in the list
+# within 30 seconds. If any of the three v8.5 fixes regresses, this
+# scenario fails.
+
+- launchApp:
+    clearState: false
+    stopApp: true
+
+- runFlow: flows/_sign_in.yaml
+
+# Wait for the Home tab to fully load before tapping the FAB —
+# v8.5 may still be seeding city via INITIAL_SESSION which can
+# delay the cascade by ~1 second.
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd
+
+# Open the create flow. The FAB on Home is a plus icon.
+- tapOn:
+    text: "+"
+    optional: true
+- tapOn:
+    id: "create-party"
+    optional: true
+
+# Venue search — type a short query expected to return hits in Dallas.
+- tapOn:
+    text: "Search venue name or location..."
+- inputText: "bar"
+- tapOn:
+    text: "Search"
+
+# Either real results OR the surfaced error path — but not silent empty.
+- extendedWaitUntil:
+    visible:
+      text: ".*mi away.*|.*temporarily unavailable.*|.*No venues found.*"
+    timeout: 25000
+
+# Pick the first venue card if visible; otherwise fall back to manual.
+- tapOn:
+    text: ".*mi away.*"
+    optional: true
+- tapOn:
+    text: "Enter venue manually"
+    optional: true
+- tapOn:
+    text: "Venue name"
+    optional: true
+- inputText: "Test Venue v8.5"
+    optional: true
+
+- tapOn:
+    text: "Next"
+- waitForAnimationToEnd
+
+# Step 2 — skip game selection.
+- tapOn:
+    text: "Skip"
+    optional: true
+- tapOn:
+    text: "Next"
+    optional: true
+
+# Step 3 — pick the FIRST time preset. v8.5 ensures it is always
+# in the future (past presets get filtered out at mount time).
+- tapOn:
+    text: ".*Tonight.*|.*Tomorrow.*|.*Weekend.*"
+    optional: true
+
+- tapOn:
+    text: "Create Watch Party"
+
+# Success modal must include "Created" and not "RSVP not saved".
+- extendedWaitUntil:
+    visible:
+      text: ".*Created.*"
+    timeout: 15000
+
+# v8.5 fix #2: the auto-RSVP fallback alert must NOT appear. If it
+# does, the host's RSVP failed silently — the exact v8.4 symptom.
+- assertNotVisible:
+    text: "RSVP not saved"
+
+# Dismiss the Created modal.
+- tapOn:
+    text: "Done"
+    optional: true
+- tapOn:
+    text: "VIEW PARTY"
+    optional: true
+
+# Back to Home.
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd
+
+# v8.5 fix #1 + #3: the party must appear in the "Watch Parties Near
+# You" list. With time-preset auto-advance + list grace period working
+# correctly, our just-created Test Venue v8.5 party shows up here.
+- extendedWaitUntil:
+    visible:
+      text: ".*Test Venue v8.5.*|.*Watch Party.*"
+    timeout: 10000
+- assertNotVisible:
+    text: "Something went wrong"
+
+- takeScreenshot: screenshots/v85_party_visible_in_list

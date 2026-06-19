@@ -33,6 +33,7 @@ import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mapGameToDisplay, type GameDisplay } from '@/lib/mappers';
 import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
+import { reportError } from '@/lib/errorReporting';
 
 const C = Colors.dark;
 
@@ -95,29 +96,55 @@ const ATMOSPHERES: { key: Atmosphere; label: string; emoji: string }[] = [
 ];
 
 function computeTimePresets(): { label: string; value: string }[] {
-  const today = new Date();
+  // v8.5 P0: previously this function computed "Tonight 7PM" by setHours(19)
+  // regardless of current time. A user creating at 7:48 PM picked
+  // "Tonight 7PM" and got a starts_at in the PAST — every list query
+  // (.gt('starts_at', now())) then excluded the party so it vanished from
+  // Watch Parties + Soccer Cup tabs.
+  // Fix: drop any preset whose computed time is already past + always
+  // include forward-looking fallbacks so the row never empties out.
+  const now = new Date();
 
   const makeDate = (dayOffset: number, hours: number): string => {
-    const d = new Date(today);
+    const d = new Date(now);
     d.setDate(d.getDate() + dayOffset);
     d.setHours(hours, 0, 0, 0);
     return d.toISOString();
   };
 
   // "This Weekend" = next Saturday at 3 PM
-  const dayOfWeek = today.getDay(); // 0=Sun, 6=Sat
+  const dayOfWeek = now.getDay(); // 0=Sun, 6=Sat
   const daysUntilSaturday = (6 - dayOfWeek + 7) % 7 || 7;
 
-  return [
+  const candidates = [
     { label: 'Tonight 7PM', value: makeDate(0, 19) },
     { label: 'Tonight 8PM', value: makeDate(0, 20) },
     { label: 'Tomorrow 7PM', value: makeDate(1, 19) },
     { label: 'Tomorrow 8PM', value: makeDate(1, 20) },
     { label: 'This Weekend', value: makeDate(daysUntilSaturday, 15) },
   ];
+
+  // Drop presets whose computed time is already in the past relative to
+  // now (with a 15-minute grace so "Tonight 7PM" at exactly 7:00 still
+  // shows up).
+  const cutoff = Date.now() - 15 * 60 * 1000;
+  const future = candidates.filter((p) => new Date(p.value).getTime() > cutoff);
+
+  // Guarantee at least three forward-looking presets so the row never
+  // collapses to one option late at night.
+  if (future.length < 3) {
+    future.push({ label: 'Tomorrow Noon', value: makeDate(1, 12) });
+    future.push({ label: 'Tomorrow 6PM', value: makeDate(1, 18) });
+  }
+  return future;
 }
 
-const TIME_PRESETS = computeTimePresets();
+// NOTE: do NOT export a module-level constant. computeTimePresets() must
+// run fresh on every screen mount, otherwise a user who sits on the
+// Create screen for an hour can still select a preset whose computed
+// time is now in the past (Hermes module init only happens once per
+// process). The component reads `useMemo(computeTimePresets, [])` so
+// each mount gets a fresh snapshot.
 
 // ---------------------------------------------------------------------------
 // Component
@@ -165,6 +192,10 @@ export default function CreateWatchPartyScreen() {
   const [description, setDescription] = useState('');
   const [atmosphere, setAtmosphere] = useState<Atmosphere>('moderate');
   const [capacity, setCapacity] = useState(50);
+  // useMemo runs once per mount — gives a fresh "what's still in the
+  // future?" snapshot each time the user opens the Create flow, so a
+  // user who returned to a stale screen never picks a past preset.
+  const TIME_PRESETS = React.useMemo(() => computeTimePresets(), []);
   const [selectedTime, setSelectedTime] = useState(TIME_PRESETS[0].value);
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [invitedFriends, setInvitedFriends] = useState<{ name: string; phone: string }[]>([]);
@@ -198,21 +229,69 @@ export default function CreateWatchPartyScreen() {
     let cancelled = false;
     (async () => {
       let storedCity: string | null = null;
+      let storedState: string | null = null;
       try {
         storedCity = await AsyncStorage.getItem('user_city');
+        storedState = await AsyncStorage.getItem('user_state');
       } catch {
         // ignore — fallthrough to GPS/default below
+      }
+
+      // v8.5 P0: previously this read AsyncStorage 'user_city' ONLY.
+      // If AsyncStorage was empty (fresh install, cache cleared) the cascade
+      // fell through to Chicago even though users.home_city had the right
+      // value in Supabase. We now fetch home_city + home_state from the
+      // public.users table (keyed by auth_id) as a tier-0 source-of-truth,
+      // then write back to AsyncStorage so subsequent screens hit the warm
+      // cache.
+      if (!storedCity) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { data: profile } = await supabase
+              .from('users')
+              .select('home_city, home_state')
+              .eq('auth_id', user.id)
+              .maybeSingle();
+            const dbCity = (profile?.home_city ?? '').toString().trim();
+            const dbState = (profile?.home_state ?? '').toString().trim();
+            if (dbCity) {
+              storedCity = dbCity;
+              storedState = dbState || null;
+              try {
+                await AsyncStorage.setItem('user_city', dbCity);
+                if (dbState) {
+                  await AsyncStorage.setItem('user_state', dbState);
+                }
+              } catch {
+                // best-effort cache seed
+              }
+            }
+          }
+        } catch {
+          // network/auth failure — fall through to GPS/default
+        }
       }
 
       if (storedCity) {
         if (!cancelled) setUserCity(storedCity);
 
+        // Build a state-qualified query for geocoding so Nominatim
+        // doesn't pick the wrong "Dallas" (TX vs OR vs PA vs GA).
+        // Strip any state already embedded in the city string first to
+        // avoid "Dallas, TX, TX" double-tacking.
+        const cityForGeocode = (() => {
+          const stripped = storedCity.split(',')[0]?.trim() ?? storedCity;
+          if (storedState) return `${stripped}, ${storedState}`;
+          return storedCity;
+        })();
+
         // (1) Try real geocode first.
         try {
-          const geo = await geocodeCity(storedCity);
+          const geo = await geocodeCity(cityForGeocode);
           if (!cancelled && geo) {
             console.log(
-              `[create-watch-party] coords from geocode "${storedCity}" → (${geo.lat}, ${geo.lon})`
+              `[create-watch-party] coords from geocode "${cityForGeocode}" → (${geo.lat}, ${geo.lon})`
             );
             setSearchLat(geo.lat);
             setSearchLon(geo.lon);
@@ -638,12 +717,50 @@ export default function CreateWatchPartyScreen() {
       if (insertError) throw insertError;
       if (!partyRow) throw new Error('Failed to create party');
 
-      // Auto-RSVP as 'going'
-      await supabase.from('watch_party_rsvps').insert({
-        watch_party_id: partyRow.id,
-        user_id: userId,
-        status: 'going',
-      });
+      // Auto-RSVP as 'going'. v8.5 P0: previously this insert had no error
+      // check, so an RLS rejection (e.g. WC-pass gate, transient auth
+      // refresh race) silently produced a party with no RSVP row — the
+      // creator looked like a non-attendee and "RSVP still not saving"
+      // got reported across 4 UAT cycles. We now check the error, retry
+      // once after a 250ms delay (covers fast double-create races), and
+      // surface a visible Alert if both attempts fail so the user is no
+      // longer left guessing.
+      const tryRsvp = async () => {
+        return supabase.from('watch_party_rsvps').insert({
+          watch_party_id: partyRow.id,
+          user_id: userId,
+          status: 'going',
+        });
+      };
+      const first = await tryRsvp();
+      if (first.error) {
+        const code = (first.error as any)?.code;
+        const msg = (first.error.message ?? '').toLowerCase();
+        const isDup = code === '23505' || msg.includes('duplicate');
+        if (!isDup) {
+          await new Promise((r) => setTimeout(r, 250));
+          const retry = await tryRsvp();
+          if (retry.error) {
+            const rCode = (retry.error as any)?.code;
+            const rMsg = (retry.error.message ?? '').toLowerCase();
+            const rDup = rCode === '23505' || rMsg.includes('duplicate');
+            if (!rDup) {
+              reportError(retry.error, {
+                source: 'create-watch-party:autoRsvp',
+                partyId: partyRow.id,
+                attempt: 2,
+              });
+              // Surface a non-blocking Alert. We don't roll back the
+              // party — the row is still created and other users can
+              // RSVP — but the host should know to tap RSVP themselves.
+              Alert.alert(
+                'Party created — RSVP not saved',
+                'Your watch party was created, but we couldn\'t auto-RSVP you. Open the party and tap RSVP to mark yourself as going.'
+              );
+            }
+          }
+        }
+      }
 
       // Save invited friends for private parties
       if (invitedFriends.length > 0) {

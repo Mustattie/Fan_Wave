@@ -236,6 +236,48 @@ export default function RootLayout() {
     // RevenueCat SDK init — safe no-op if API keys aren't configured yet.
     configureRevenueCat().catch(() => {});
 
+    // v8.5 P0: seed AsyncStorage 'user_city' from users.home_city so
+    // the venue-search center cascade (create-watch-party.tsx) and
+    // the Discover/My Groups city filters all hit the right value.
+    // CRITICAL: must run for BOTH 'SIGNED_IN' (fresh sign-in) AND
+    // 'INITIAL_SESSION' (persisted-session app boot). v8.4 only fixed
+    // the Groups tab's write path — if a user signed in days ago and
+    // had never opened the Groups tab, AsyncStorage was empty and the
+    // venue-search center cascade fell through to Chicago even though
+    // public.users.home_city='Dallas'. Reported by the founder on
+    // 2026-06-19 ("I set my base city as Dallas and not sure why
+    // system always defaults to Chicago").
+    const seedUserCityFromProfile = (userId: string) => {
+      // Wrap in Promise.resolve so the catch() handler is type-safe —
+      // the Supabase builder returns a PromiseLike, not a real Promise.
+      // Cold-boot networking can throw; catch so we don't surface an
+      // unhandled promise rejection (which RN logs as a yellow warning
+      // + lands in Sentry as noise).
+      //
+      // We seed BOTH city and state. The geocoder (Nominatim) is
+      // ambiguous on city alone — "Dallas" matches Dallas TX, OR, PA,
+      // GA — so the venue-search center cascade builds its query as
+      // "City, ST" when state is available.
+      Promise.resolve(
+        supabase
+          .from('users')
+          .select('home_city, home_state')
+          .eq('auth_id', userId)
+          .maybeSingle()
+      )
+        .then(({ data }) => {
+          const city = (data?.home_city ?? '').toString().trim();
+          const state = (data?.home_state ?? '').toString().trim();
+          if (city) {
+            AsyncStorage.setItem('user_city', city).catch(() => {});
+          }
+          if (state) {
+            AsyncStorage.setItem('user_state', state).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session);
@@ -246,6 +288,13 @@ export default function RootLayout() {
           startAnalyticsFlush();
           // Tie the RevenueCat user to our auth.users.id so webhooks can map back.
           configureRevenueCat(session.user.id).catch(() => {});
+
+          seedUserCityFromProfile(session.user.id);
+        } else if (event === 'INITIAL_SESSION' && session) {
+          // Existing persisted session on app boot — re-seed the city
+          // cache so the venue search center reflects current profile
+          // even when the user hasn't signed out/in since editing it.
+          seedUserCityFromProfile(session.user.id);
         } else if (event === 'SIGNED_OUT') {
           clearUserContext();
           clearPushToken();

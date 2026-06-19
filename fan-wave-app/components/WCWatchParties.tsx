@@ -89,11 +89,19 @@ export default function WCWatchParties() {
       // bypassed the migration 053 watch_party_rsvps WC gate and made
       // newly-created Soccer Cup parties invisible to the DB-side query.
       const { WC_EVENT_ID: SOCCER_CUP_EVENT_ID } = await import('@/constants/WorldCupIds');
+      // Soccer sport_id (seed migration 006) — accept parties tagged via
+      // either event_id OR sport_id so a watch party created from the
+      // generic FAB that the user marked as "soccer" still shows on the
+      // Soccer Cup tab.
+      const SOCCER_SPORT_ID = 'a0000000-0000-0000-0000-000000000004';
+      // v8.5 P0: 2h grace period — same fix as useWatchParties (a host who
+      // picked "Tonight 7PM" at 7:48 PM should still see their own party).
+      const startedAfter = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase
         .from('watch_parties')
         .select('*')
-        .eq('event_id', SOCCER_CUP_EVENT_ID)
-        .gt('starts_at', new Date().toISOString())
+        .or(`event_id.eq.${SOCCER_CUP_EVENT_ID},sport_id.eq.${SOCCER_SPORT_ID}`)
+        .gt('starts_at', startedAfter)
         .order('starts_at', { ascending: true });
 
       if (!error && data) {

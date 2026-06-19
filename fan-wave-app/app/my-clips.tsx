@@ -11,10 +11,26 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { ArrowLeft, Play, X, Eye, Heart, MessageCircle, Share2, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
+
+// v8.5 P0: previously every clip card rendered as a featureless black
+// tile because the screen relied on a `color` column the media_clips
+// schema doesn't have. We now (a) prefer the persisted thumbnail_url,
+// then media_url, and (b) when neither is available, derive a stable
+// gradient seed from the row id so the grid is at least readable.
+const PALETTE = [
+  '#1a3a5c', '#4c3a6e', '#5c1a4e', '#6e2a3a', '#3a5c1a',
+  '#1a5c5c', '#3a1a5c', '#5c3a1a', '#2a4a7c', '#6e2a6e',
+];
+function deriveTileColor(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
 
 const { width } = Dimensions.get('window');
 const COLUMN_GAP = 12;
@@ -31,6 +47,8 @@ interface Clip {
   shares: number;
   color: string;
   created_at: string;
+  thumbnail_url?: string | null;
+  media_url?: string | null;
 }
 
 export default function MyClipsScreen() {
@@ -100,17 +118,37 @@ export default function MyClipsScreen() {
     return n.toString();
   };
 
-  const renderClip = ({ item }: { item: Clip }) => (
+  const renderClip = ({ item }: { item: Clip }) => {
+    // Only render via Image when we actually have a thumbnail. Earlier
+    // versions tried media_url as a fallback, but expo-image cannot
+    // decode .mp4 — it would silently fail and the user would see
+    // a black tile (the exact v8.4 "distorted clips" symptom). The
+    // deterministic gradient + Play badge is a cleaner fallback.
+    const thumbUri = item.thumbnail_url || null;
+    const tileColor = item.color || deriveTileColor(item.id);
+    return (
     <TouchableOpacity
       style={styles.clipCard}
       onPress={() => setSelectedClip(item)}
       activeOpacity={0.8}
     >
-      <View style={[styles.clipThumb, { backgroundColor: item.color }]}>
-        <Play size={28} color="#fff" fill="#fff" />
-        <View style={styles.durationBadge}>
-          <Text style={styles.durationText}>{item.duration}</Text>
+      <View style={[styles.clipThumb, { backgroundColor: tileColor }]}>
+        {thumbUri ? (
+          <Image
+            source={{ uri: thumbUri }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            cachePolicy="disk"
+          />
+        ) : null}
+        <View style={styles.clipPlayBadge}>
+          <Play size={22} color="#fff" fill="#fff" />
         </View>
+        {item.duration ? (
+          <View style={styles.durationBadge}>
+            <Text style={styles.durationText}>{item.duration}</Text>
+          </View>
+        ) : null}
       </View>
       <Text style={styles.clipTitle} numberOfLines={1}>
         {item.title}
@@ -126,7 +164,8 @@ export default function MyClipsScreen() {
         </View>
       </View>
     </TouchableOpacity>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -275,6 +314,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    overflow: 'hidden',
+  },
+  clipPlayBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   durationBadge: {
     position: 'absolute',

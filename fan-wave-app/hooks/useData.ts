@@ -95,13 +95,20 @@ export function useWatchParties(city: string, limit = 3) {
       if (cached) return cached;
 
       try {
+        // v8.5 P0: previously this filtered .gt('starts_at', now()) which
+        // hid newly-created parties whose user-picked time preset (e.g.
+        // "Tonight 7PM") was already in the past at create-time. We now
+        // allow parties that started up to 2h ago so a freshly-hosted
+        // party isn't invisible to the host while everyone arrives.
+        const startedAfter = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+
         // Local-city query first.
         const { data: localData, error: localError } = await withTimeout(
           () => supabase
             .from('watch_parties')
             .select('*, sport:sports!sport_id(*)')
             .ilike('venue_city', city)
-            .gt('starts_at', new Date().toISOString())
+            .gt('starts_at', startedAfter)
             .order('starts_at', { ascending: true })
             .limit(limit),
           FETCH_TIMEOUT
@@ -121,7 +128,7 @@ export function useWatchParties(city: string, limit = 3) {
             () => supabase
               .from('watch_parties')
               .select('*, sport:sports!sport_id(*)')
-              .gt('starts_at', new Date().toISOString())
+              .gt('starts_at', startedAfter)
               .order('starts_at', { ascending: true })
               .limit(limit),
             FETCH_TIMEOUT
@@ -147,11 +154,13 @@ export function useWatchPartiesInfinite(city: string) {
   return useInfiniteQuery<WatchPartyDisplay[]>({
     queryKey: ['watchPartiesInfinite', city],
     queryFn: async ({ pageParam }) => {
+      // 2h grace — mirrors useWatchParties (v8.5 P0)
+      const startedAfter = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       let query = supabase
         .from('watch_parties')
         .select('*, sport:sports!sport_id(*)')
         .ilike('venue_city', city)
-        .gt('starts_at', new Date().toISOString())
+        .gt('starts_at', startedAfter)
         .order('starts_at', { ascending: true })
         .limit(PAGE_SIZE);
 

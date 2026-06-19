@@ -13,10 +13,30 @@ import { ArrowLeft, Camera } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 import { reportError } from '@/lib/errorReporting';
+
+// v8.5 P0: parse "Dallas" or "Dallas, TX" or "Dallas, Texas" so the user
+// can type either format. State is two-letter code uppercase when we can
+// recognise it; otherwise stored as-typed and let geocoding figure it
+// out. Returns null state when the input has no comma — the caller
+// MUST treat that as "clear the previously-stored state" so a user who
+// moves "Dallas, TX" → "Boston" doesn't end up geocoding "Boston, TX".
+function parseCityState(input: string): { city: string; state: string | null } {
+  const trimmed = (input || '').trim();
+  if (!trimmed) return { city: '', state: null };
+  const parts = trimmed.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return { city: parts[0] || '', state: null };
+  const city = parts[0];
+  const rawState = parts[1];
+  // Two-letter abbreviation already? Keep uppercase. Else pass through.
+  const state =
+    rawState.length === 2 ? rawState.toUpperCase() : rawState;
+  return { city, state };
+}
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -39,14 +59,19 @@ export default function EditProfileScreen() {
 
       const { data } = await supabase
         .from('users')
-        .select('display_name, bio, home_city, avatar_url')
+        .select('display_name, bio, home_city, home_state, avatar_url')
         .eq('auth_id', user.id)
         .single();
 
       if (data) {
         setDisplayName(data.display_name || '');
         setBio(data.bio || '');
-        setHomeCity(data.home_city || '');
+        // Present as "City, ST" when both present so the user sees what
+        // they previously stored. They can edit either part.
+        const cityShown = data.home_state
+          ? `${data.home_city || ''}, ${data.home_state}`.replace(/^, /, '')
+          : data.home_city || '';
+        setHomeCity(cityShown);
         setAvatarUrl(data.avatar_url);
       }
     } catch {
@@ -155,17 +180,38 @@ export default function EditProfileScreen() {
 
       const uploadedUrl = await uploadAvatar(user.id);
 
+      // Parse city + state out of the single input so the geocoder gets
+      // an unambiguous "Dallas, TX" instead of an ambiguous "Dallas".
+      // No state in the input ⇒ explicitly NULL home_state so a move
+      // from "Dallas, TX" → "Boston" doesn't leave "Boston, TX" stale.
+      const parsed = parseCityState(homeCity);
+
       const { error } = await supabase
         .from('users')
         .update({
           display_name: displayName.trim(),
           bio: bio.trim(),
-          home_city: homeCity.trim() || null,
+          home_city: parsed.city || null,
+          home_state: parsed.state,
           ...(uploadedUrl ? { avatar_url: uploadedUrl } : {}),
         })
         .eq('auth_id', user.id);
 
       if (error) throw error;
+
+      // v8.5 P0: keep AsyncStorage in sync so the venue-search center
+      // cascade in create-watch-party.tsx hits the new value immediately
+      // — without waiting for the next SIGNED_IN/INITIAL_SESSION event.
+      if (parsed.city) {
+        await AsyncStorage.setItem('user_city', parsed.city).catch(() => {});
+      } else {
+        await AsyncStorage.removeItem('user_city').catch(() => {});
+      }
+      if (parsed.state) {
+        await AsyncStorage.setItem('user_state', parsed.state).catch(() => {});
+      } else {
+        await AsyncStorage.removeItem('user_state').catch(() => {});
+      }
 
       // Reflect the new avatar locally so the user sees it without a
       // re-fetch on next focus.
