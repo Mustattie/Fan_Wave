@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { Search, MapPin } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { SportPillRow } from '@/components/SportPill';
@@ -18,6 +19,7 @@ import { WatchPartyCard } from '@/components/WatchPartyCard';
 import { GroupCard } from '@/components/GroupCard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { supabase } from '@/lib/supabase';
+import { subscribeToWatchParties } from '@/lib/realtime';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   mapWatchPartyToDisplay,
@@ -130,19 +132,35 @@ export default function DiscoverScreen() {
   // section, but parties always show the full local lineup.
   // Fallback: when the user has no home_city on file we show all upcoming
   // parties instead of an empty list.
+  //
+  // v8.7+ P0: also accepts a search string so the global search bar
+  // filters Watch Parties + Venues (party.venue_name) too — not just the
+  // Groups section. Symptom that drove this: user typed "England" and
+  // only Fan Groups filtered; Watch Parties and Venues ignored the
+  // query.
   const fetchWatchParties = useCallback(
-    async (_sport?: string, cursor?: string | null) => {
+    async (_sport?: string, cursor?: string | null, search?: string) => {
       try {
         // v8.5 P0: 2h grace so freshly-hosted parties (whose preset clock
         // may already be a few minutes past at create-time) stay visible
         // until the event actually plays out. Mirrors useWatchParties.
         const startedAfter =
           cursor || new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+        const applySearch = (q: any) => {
+          if (!search) return q;
+          const safe = search.replace(/[%,]/g, ' ').trim();
+          if (!safe) return q;
+          return q.or(
+            `title.ilike.%${safe}%,venue_name.ilike.%${safe}%,venue_city.ilike.%${safe}%`,
+          );
+        };
         const baseSelect = (q: any) =>
-          q
-            .from('watch_parties')
-            .select('*, sport:sports!sport_id(*)')
-            .gt('starts_at', startedAfter)
+          applySearch(
+            q
+              .from('watch_parties')
+              .select('*, sport:sports!sport_id(*)')
+              .gt('starts_at', startedAfter),
+          )
             .order('starts_at', { ascending: true })
             .limit(20);
 
@@ -174,16 +192,41 @@ export default function DiscoverScreen() {
   const loadMoreParties = useCallback(async () => {
     if (!hasMoreParties || loadingMore || !partyCursor) return;
     setLoadingMore(true);
-    const { items, hasMore } = await fetchWatchParties(activeFilter, partyCursor);
+    const { items, hasMore } = await fetchWatchParties(activeFilter, partyCursor, searchQuery);
     setWatchParties((prev) => [...prev, ...items]);
     setHasMoreParties(hasMore);
     if (items.length > 0) {
       setPartyCursor(items[items.length - 1]?.startsAt ?? null);
     }
     setLoadingMore(false);
-  }, [hasMoreParties, loadingMore, partyCursor, activeFilter, fetchWatchParties]);
+  }, [hasMoreParties, loadingMore, partyCursor, activeFilter, fetchWatchParties, searchQuery]);
 
   const [partiesBroadened, setPartiesBroadened] = useState(false);
+  // v8.7+ P0: track which groups the current user is already a member of
+  // so the Trending Groups Join CTA renders "✓ Joined" instead of "Join"
+  // on cards the user already belongs to.
+  const [myGroupIds, setMyGroupIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('chat_room_members')
+        .select('chat_room_id')
+        .eq('user_id', user.id);
+      setMyGroupIds(new Set((data || []).map((r: any) => r.chat_room_id)));
+    })();
+  }, []);
+
+  const handleGroupJoined = useCallback((groupId: string) => {
+    setMyGroupIds((prev) => {
+      if (prev.has(groupId)) return prev;
+      const next = new Set(prev);
+      next.add(groupId);
+      return next;
+    });
+  }, []);
 
   const loadData = useCallback(
     async (sport?: string, search?: string) => {
@@ -191,7 +234,7 @@ export default function DiscoverScreen() {
       try {
         const [groupResults, partyResult] = await Promise.all([
           fetchGroups(sport, search),
-          fetchWatchParties(sport),
+          fetchWatchParties(sport, null, search),
         ]);
         setGroups(groupResults);
         setWatchParties(partyResult.items);
@@ -223,6 +266,31 @@ export default function DiscoverScreen() {
   useEffect(() => {
     loadData(activeFilter);
   }, [city]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // v8.7 P0: refetch on tab focus so a watch party created on another
+  // screen (Home + create-watch-party) surfaces immediately when the user
+  // navigates here. Without this, Discover only refreshes when `city`
+  // changes, which produced the "shows on Home but not Discover" report.
+  useFocusEffect(
+    useCallback(() => {
+      loadData(activeFilter, searchQuery);
+    }, [activeFilter, searchQuery, loadData]),
+  );
+
+  // v8.7 P0: realtime — if a party is INSERTed for this city while the
+  // user is on Discover, mirror it into local state instead of waiting
+  // for the next focus. Mirrors the Home tab subscription pattern.
+  useEffect(() => {
+    if (!city) return;
+    const unsubscribe = subscribeToWatchParties(city, (row) => {
+      const display = mapWatchPartyToDisplay(row);
+      setWatchParties((prev) => {
+        if (prev.some((p) => p.id === display.id)) return prev;
+        return [display, ...prev];
+      });
+    });
+    return unsubscribe;
+  }, [city]);
 
   const handleFilterChange = useCallback(
     (filterId: string) => {
@@ -316,7 +384,14 @@ export default function DiscoverScreen() {
           />
           {groups.length > 0 ? (
             groups.slice(0, 4).map((group) => (
-              <GroupCard key={group.id} group={group} showUnread={false} />
+              <GroupCard
+                key={group.id}
+                group={group}
+                showUnread={false}
+                joinable
+                isMember={myGroupIds.has(group.id)}
+                onJoinSuccess={handleGroupJoined}
+              />
             ))
           ) : (
             <Text style={styles.emptyText}>No groups here yet — be the first to start one!</Text>

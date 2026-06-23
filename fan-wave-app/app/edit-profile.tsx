@@ -18,6 +18,7 @@ import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 import { reportError } from '@/lib/errorReporting';
+import { queryClient } from '@/hooks/useQueryClient';
 
 // v8.5 P0: parse "Dallas" or "Dallas, TX" or "Dallas, Texas" so the user
 // can type either format. State is two-letter code uppercase when we can
@@ -219,6 +220,16 @@ export default function EditProfileScreen() {
         setAvatarUrl(uploadedUrl);
         setNewAvatarUri(null);
       }
+
+      // v8.6 P0: invalidate every cache slot keyed on the OLD city so the
+      // user's next render of Home / Discover / My Groups picks up the
+      // newly-saved home_city instead of holding the previous value for
+      // up to 30s (staleTime). Without this, the user sees Discover header
+      // and Watch-Parties-Near-You stuck on the old city after Save.
+      queryClient.invalidateQueries({ queryKey: ['userCity'] });
+      queryClient.invalidateQueries({ queryKey: ['watchParties'] });
+      queryClient.invalidateQueries({ queryKey: ['watchPartiesInfinite'] });
+      queryClient.invalidateQueries({ queryKey: ['myGroups'] });
 
       Alert.alert('Saved', 'Your profile has been updated.', [
         { text: 'OK', onPress: () => router.back() },

@@ -99,30 +99,38 @@ export default function HomeScreen() {
 
   const loading = gamesLoading || partiesLoading || groupsLoading;
 
-  // Realtime subscriptions — only active when tab is focused
+  // Realtime subscriptions — only active when tab is focused.
+  // v8.6 P0: useFocusEffect now depends on `city` so the channel filter
+  // re-binds when the user changes their home city. The v8.5 closure
+  // captured an empty city on cold-boot (useUserCity returned '' until
+  // the AsyncStorage seed finished) and never re-subscribed — so a Dallas
+  // INSERT never reached this Home tab and the user saw their freshly-
+  // created watch party arrive ~2 min later when the staleTime refetch
+  // finally hit. cityRef stays for the per-payload writeback (the inner
+  // setQueryData reads the latest city even mid-stream).
   const cityRef = useRef(city);
   cityRef.current = city;
 
   useFocusEffect(
     useCallback(() => {
       const unsubGames = subscribeToGames((_updatedGame) => {
-        // Invalidate ALL ['games', limit] cache entries (we used to write
-        // straight to ['games', 10] but the home feed now requests
-        // useGames(30), so the previous setQueryData targeted a queryKey
-        // that doesn't exist and every live update was silently dropped).
-        // Invalidate triggers React Query to refetch with the actual
-        // current key — also clears AsyncStorage cache via the queryFn.
         queryClient.invalidateQueries({ queryKey: ['games'] });
       });
 
       let unsubParties: (() => void) | undefined;
-      if (cityRef.current) {
+      if (city) {
         unsubParties = subscribeToWatchParties(
-          cityRef.current,
+          city,
           (newParty) => {
             queryClient.setQueryData(['watchParties', cityRef.current, 3], (prev: any[] | undefined) =>
               [mapWatchPartyToDisplay(newParty), ...(prev || [])].slice(0, 5)
             );
+            // Belt-and-braces: invalidate so the infinite-scroll cache on
+            // Discover and any other consumer of ['watchParties'] also
+            // refreshes immediately — fixes the "I created a party but
+            // it's not on the list" symptom even when the channel filter
+            // race somehow lost the INSERT.
+            queryClient.invalidateQueries({ queryKey: ['watchPartiesInfinite'] });
           },
           (updatedParty) => {
             queryClient.setQueryData(['watchParties', cityRef.current, 3], (prev: any[] | undefined) =>
@@ -136,7 +144,7 @@ export default function HomeScreen() {
         unsubGames();
         unsubParties?.();
       };
-    }, [])
+    }, [city])
   );
 
   const onRefresh = useCallback(async () => {

@@ -24,6 +24,7 @@ import { initErrorReporting, setUserContext, clearUserContext, reportError } fro
 import { configureRevenueCat, useEntitlementsRealtime, useSubscriptionState } from '@/lib/entitlements';
 import { useGamesRealtime } from '@/lib/realtime';
 import { useAppStateFocus } from '@/lib/appState';
+import { queryClient } from '@/hooks/useQueryClient';
 
 // Custom ErrorBoundary so React render-tree crashes (the "Something went
 // wrong / Cannot read property 'X' of null" screen) ALSO get reported to
@@ -220,17 +221,35 @@ export default function RootLayout() {
     // signal (set in onboarding-city, back-filled by migration 020). Survives
     // AsyncStorage wipes (reinstall, device switch, Expo Go cache clear).
     // Note: users.auth_id links to auth.uid; users.id is separate.
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return;
-      const { data } = await supabase
-        .from('users')
-        .select('onboarded_at')
-        .eq('auth_id', user.id)
-        .maybeSingle();
-      if (data?.onboarded_at) {
-        setOnboardingComplete(true);
-        AsyncStorage.setItem('onboarding_complete', 'true').catch(() => {});
+    //
+    // v8.7+ P0: previously this ran ONCE on mount, BEFORE the SIGNED_IN
+    // event fires for a fresh signup. The user object was null at this
+    // point, the check returned early, and `onboardingComplete` stayed
+    // false in React state for the entire session. AsyncStorage was the
+    // only thing keeping the user out of an onboarding loop — and any
+    // AsyncStorage clear (Expo Go cache, app reinstall, crash) put the
+    // user permanently on onboarding-sports despite having a complete
+    // server profile. Hoisted into a reusable helper called from BOTH
+    // mount AND onAuthStateChange so SIGNED_IN / INITIAL_SESSION both
+    // refresh the flag.
+    const refreshOnboardedFromServer = async (userId: string) => {
+      try {
+        const { data } = await supabase
+          .from('users')
+          .select('onboarded_at')
+          .eq('auth_id', userId)
+          .maybeSingle();
+        if (data?.onboarded_at) {
+          setOnboardingComplete(true);
+          AsyncStorage.setItem('onboarding_complete', 'true').catch(() => {});
+        }
+      } catch {
+        // Network failure — AsyncStorage path still owns the decision.
       }
+    };
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) refreshOnboardedFromServer(user.id);
     }).catch(() => {});
 
     // RevenueCat SDK init — safe no-op if API keys aren't configured yet.
@@ -274,6 +293,18 @@ export default function RootLayout() {
           if (state) {
             AsyncStorage.setItem('user_state', state).catch(() => {});
           }
+          // v8.6 P0: invalidate the userCity React Query so consumers
+          // (Home, Discover, useWatchParties, useWatchPartiesInfinite,
+          // useMyGroups) re-fetch with the just-seeded value instead of
+          // continuing to use whatever stale string the first render
+          // pulled out of AsyncStorage. Without this the city seed only
+          // takes effect after a tab switch — the symptom behind "Even
+          // though i changed my location to Dallas, its still showing
+          // Chicago on the Home page" from the 2026-06-20 UAT.
+          queryClient.invalidateQueries({ queryKey: ['userCity'] });
+          queryClient.invalidateQueries({ queryKey: ['watchParties'] });
+          queryClient.invalidateQueries({ queryKey: ['watchPartiesInfinite'] });
+          queryClient.invalidateQueries({ queryKey: ['myGroups'] });
         })
         .catch(() => {});
     };
@@ -290,11 +321,16 @@ export default function RootLayout() {
           configureRevenueCat(session.user.id).catch(() => {});
 
           seedUserCityFromProfile(session.user.id);
+          // v8.7+ P0: also re-check onboarded_at now that we have a real
+          // session. Fresh signups miss the mount-time getUser() because
+          // the session hadn't propagated yet.
+          refreshOnboardedFromServer(session.user.id);
         } else if (event === 'INITIAL_SESSION' && session) {
           // Existing persisted session on app boot — re-seed the city
           // cache so the venue search center reflects current profile
           // even when the user hasn't signed out/in since editing it.
           seedUserCityFromProfile(session.user.id);
+          refreshOnboardedFromServer(session.user.id);
         } else if (event === 'SIGNED_OUT') {
           clearUserContext();
           clearPushToken();

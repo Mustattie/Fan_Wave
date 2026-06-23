@@ -113,12 +113,27 @@ export default function CreateWCGroupScreen() {
     if (!isValid) return;
     setIsCreating(true);
 
+    // v8.5 P0: read user's home city as a fallback so user-created groups
+    // are filterable under WCFanGroups "By City" even when the user
+    // didn't pick a city from the optional chip row. DB probe (2026-06-19)
+    // showed 5 reviewer-owned WC groups all stored city=null and
+    // tags=["Soccer Cup"] only — invisible to the City filter.
+    let homeCityFallback: string | null = null;
+    try {
+      homeCityFallback = await AsyncStorage.getItem('user_city');
+    } catch {
+      // ignore — fallback stays null
+    }
+    const cityForGroup =
+      selectedCity ||
+      (homeCityFallback ? homeCityFallback.split(',')[0]?.trim() ?? null : null);
+
     const tags = ['Soccer Cup'];
     if (selectedCountry) {
       const country = COUNTRIES.find(c => c.code === selectedCountry);
       if (country) tags.push(country.name);
     }
-    if (selectedCity) tags.push(selectedCity);
+    if (cityForGroup) tags.push(cityForGroup);
     if (template === 'travel') tags.push('Travel');
 
     const groupData = {
@@ -149,7 +164,9 @@ export default function CreateWCGroupScreen() {
           visibility: 'public',
           avatar_url: groupData.icon,
           tags,
-          city: selectedCity || null,
+          // v8.5 P0: use the cityForGroup fallback (user home_city) so
+          // user-created groups are discoverable under By City filters.
+          city: cityForGroup,
           owner_id: user.id,
           member_count: 1,
         })

@@ -64,6 +64,12 @@ export default function GroupsScreen() {
   const [suggestedGroups, setSuggestedGroups] = useState<any[]>([]);
   const [loadingMyGroups, setLoadingMyGroups] = useState(true);
   const [loadingSuggested, setLoadingSuggested] = useState(true);
+  // v8.7+ P0: top-level segmented toggle so the Discover section + Join
+  // CTAs are reachable in one tap. Previously a user with N joined groups
+  // had to scroll past N cards to reach the Discover header — at N=11
+  // the user reported "groups have no Join button" because Discover was
+  // effectively invisible.
+  const [topTab, setTopTab] = useState<'joined' | 'discover'>('joined');
   // Discover sub-tabs (Issue #6 v8.2): replicate Soccer Cup → Fan Groups
   // pattern (All / By City / By Sport) so the green Join CTA is reachable
   // on the main Groups tab. Default to "All" so users always see *something*
@@ -504,9 +510,13 @@ export default function GroupsScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text style={styles.title}>My Groups</Text>
+          <Text style={styles.title}>
+            {topTab === 'joined' ? 'My Groups' : 'Discover Groups'}
+          </Text>
           <Text style={styles.subtitle}>
-            {myGroups.length} groups
+            {topTab === 'joined'
+              ? `${myGroups.length} groups`
+              : 'Find fan groups to join'}
           </Text>
         </View>
         <TouchableOpacity style={styles.headerAction} onPress={handleOpenCreateModal}>
@@ -514,169 +524,211 @@ export default function GroupsScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.searchBar}>
-        <Search size={18} color={Colors.dark.textMuted} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search my groups..."
-          placeholderTextColor={Colors.dark.textMuted}
-        />
+      {/* v8.7+ Joined / Discover segmented toggle. Lets a user with many
+          joined groups reach the public-group Discover list in one tap
+          instead of scrolling past every card. */}
+      <View style={styles.topTabRow}>
+        <TouchableOpacity
+          style={[styles.topTabBtn, topTab === 'joined' && styles.topTabBtnActive]}
+          onPress={() => setTopTab('joined')}
+          activeOpacity={0.85}
+        >
+          <Text
+            style={[
+              styles.topTabText,
+              topTab === 'joined' && styles.topTabTextActive,
+            ]}
+          >
+            Joined
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.topTabBtn, topTab === 'discover' && styles.topTabBtnActive]}
+          onPress={() => setTopTab('discover')}
+          activeOpacity={0.85}
+        >
+          <Text
+            style={[
+              styles.topTabText,
+              topTab === 'discover' && styles.topTabTextActive,
+            ]}
+          >
+            Discover
+          </Text>
+        </TouchableOpacity>
       </View>
+
+      {topTab === 'joined' && (
+        <View style={styles.searchBar}>
+          <Search size={18} color={Colors.dark.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search my groups..."
+            placeholderTextColor={Colors.dark.textMuted}
+          />
+        </View>
+      )}
 
       <FlatList
         style={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        data={suggestedGroups}
+        data={topTab === 'discover' ? suggestedGroups : []}
         keyExtractor={(item: any) => item.id}
         ListHeaderComponent={
           <>
-            {/* Loading skeleton for my groups */}
-            {loadingMyGroups && (
+            {/* My Groups view — only shown when "Joined" tab is active. */}
+            {topTab === 'joined' && loadingMyGroups && (
               <View style={styles.loadingSkeleton}>
                 <ActivityIndicator size="small" color={Colors.dark.accent} />
                 <Text style={styles.loadingText}>Loading your groups...</Text>
               </View>
             )}
 
-            {!loadingMyGroups && myGroups.length === 0 && (
+            {topTab === 'joined' && !loadingMyGroups && myGroups.length === 0 && (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyText}>Your crew awaits — join a fan group!</Text>
+                <TouchableOpacity
+                  style={styles.emptyCta}
+                  onPress={() => setTopTab('discover')}
+                >
+                  <Text style={styles.emptyCtaText}>Browse Groups</Text>
+                </TouchableOpacity>
               </View>
             )}
 
-            {!loadingMyGroups &&
+            {topTab === 'joined' &&
+              !loadingMyGroups &&
               myGroups.map((group) => (
                 <GroupCard key={group.id} group={group} />
               ))}
 
-            <SectionHeader title="Discover" />
+            {/* Discover view — sub-tab pills + suggested groups with Join CTAs.
+                Shown only when "Discover" tab is active. */}
+            {topTab === 'discover' && (
+              <>
+                <SectionHeader title="Discover" />
 
-            {/* Discover sub-tab pills — All / By City / By Sport.
-                Inline TouchableOpacity row so we don't need a new component
-                file (per Issue #6 v8.2 constraints). */}
-            <View style={styles.discoverPillRow}>
-              {(
-                [
-                  { id: 'all', label: 'All' },
-                  { id: 'city', label: 'By City' },
-                  { id: 'sport', label: 'By Sport' },
-                ] as const
-              ).map((tab) => (
-                <TouchableOpacity
-                  key={tab.id}
-                  style={[
-                    styles.discoverPill,
-                    discoverTab === tab.id && styles.discoverPillActive,
-                  ]}
-                  onPress={() => setDiscoverTab(tab.id)}
-                >
-                  <Text
-                    style={[
-                      styles.discoverPillText,
-                      discoverTab === tab.id && styles.discoverPillTextActive,
-                    ]}
-                  >
-                    {tab.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Sport sub-pills appear only when "By Sport" is active. */}
-            {discoverTab === 'sport' && (
-              <View style={styles.discoverSportRow}>
-                {SPORT_PILLS.map((s) => (
-                  <TouchableOpacity
-                    key={s.id}
-                    style={[
-                      styles.discoverSportPill,
-                      discoverSport === s.id && styles.discoverSportPillActive,
-                    ]}
-                    onPress={() => setDiscoverSport(s.id)}
-                  >
-                    <Text
+                {/* Discover sub-tab pills — All / By City / By Sport. */}
+                <View style={styles.discoverPillRow}>
+                  {(
+                    [
+                      { id: 'all', label: 'All' },
+                      { id: 'city', label: 'By City' },
+                      { id: 'sport', label: 'By Sport' },
+                    ] as const
+                  ).map((tab) => (
+                    <TouchableOpacity
+                      key={tab.id}
                       style={[
-                        styles.discoverSportPillText,
-                        discoverSport === s.id &&
-                          styles.discoverSportPillTextActive,
+                        styles.discoverPill,
+                        discoverTab === tab.id && styles.discoverPillActive,
                       ]}
+                      onPress={() => setDiscoverTab(tab.id)}
                     >
-                      {s.label}
+                      <Text
+                        style={[
+                          styles.discoverPillText,
+                          discoverTab === tab.id && styles.discoverPillTextActive,
+                        ]}
+                      >
+                        {tab.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Sport sub-pills appear only when "By Sport" is active. */}
+                {discoverTab === 'sport' && (
+                  <View style={styles.discoverSportRow}>
+                    {SPORT_PILLS.map((s) => (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={[
+                          styles.discoverSportPill,
+                          discoverSport === s.id && styles.discoverSportPillActive,
+                        ]}
+                        onPress={() => setDiscoverSport(s.id)}
+                      >
+                        <Text
+                          style={[
+                            styles.discoverSportPillText,
+                            discoverSport === s.id &&
+                              styles.discoverSportPillTextActive,
+                          ]}
+                        >
+                          {s.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+
+                {loadingSuggested && (
+                  <View style={styles.loadingSkeleton}>
+                    <ActivityIndicator size="small" color={Colors.dark.accent} />
+                    <Text style={styles.loadingText}>
+                      {discoverTab === 'city'
+                        ? `Discovering groups in ${city || 'your city'}...`
+                        : 'Discovering groups...'}
                     </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+                  </View>
+                )}
+
+                {!loadingSuggested &&
+                  suggestedGroups.length === 0 &&
+                  discoverTab === 'city' &&
+                  !city && (
+                    <View style={styles.emptyState}>
+                      <Text style={styles.emptyText}>
+                        Set your home city in Profile to discover local fan groups.
+                      </Text>
+                    </View>
+                  )}
+
+                {!loadingSuggested &&
+                  suggestedGroups.length === 0 &&
+                  discoverTab === 'city' &&
+                  !!city && (
+                    <View style={styles.emptyState}>
+                      <Text style={styles.emptyText}>
+                        No public groups in {city} yet — be the first, create one!
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.emptyCta}
+                        onPress={handleOpenCreateModal}
+                      >
+                        <Text style={styles.emptyCtaText}>Create a Group</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                {!loadingSuggested &&
+                  suggestedGroups.length === 0 &&
+                  discoverTab === 'sport' && (
+                    <View style={styles.emptyState}>
+                      <Text style={styles.emptyText}>
+                        No public groups for this sport yet — start one!
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.emptyCta}
+                        onPress={handleOpenCreateModal}
+                      >
+                        <Text style={styles.emptyCtaText}>Create a Group</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                {!loadingSuggested &&
+                  suggestedGroups.length === 0 &&
+                  discoverTab === 'all' && (
+                    <View style={styles.emptyState}>
+                      <Text style={styles.emptyText}>
+                        No public groups yet — be the first to start one!
+                      </Text>
+                    </View>
+                  )}
+              </>
             )}
-
-            {/* Loading skeleton */}
-            {loadingSuggested && (
-              <View style={styles.loadingSkeleton}>
-                <ActivityIndicator size="small" color={Colors.dark.accent} />
-                <Text style={styles.loadingText}>
-                  {discoverTab === 'city'
-                    ? `Discovering groups in ${city || 'your city'}...`
-                    : 'Discovering groups...'}
-                </Text>
-              </View>
-            )}
-
-            {/* Empty states — make each one tab-specific so the user is
-                never left staring at a silent "no groups" with no next
-                action. Especially important for "By City" since most
-                cities won't have a group yet at launch. */}
-            {!loadingSuggested &&
-              suggestedGroups.length === 0 &&
-              discoverTab === 'city' &&
-              !city && (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>
-                    Set your home city in Profile to discover local fan groups.
-                  </Text>
-                </View>
-              )}
-
-            {!loadingSuggested &&
-              suggestedGroups.length === 0 &&
-              discoverTab === 'city' &&
-              !!city && (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>
-                    No public groups in {city} yet — be the first, create one!
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.emptyCta}
-                    onPress={handleOpenCreateModal}
-                  >
-                    <Text style={styles.emptyCtaText}>Create a Group</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-            {!loadingSuggested &&
-              suggestedGroups.length === 0 &&
-              discoverTab === 'sport' && (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>
-                    No public groups for this sport yet — start one!
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.emptyCta}
-                    onPress={handleOpenCreateModal}
-                  >
-                    <Text style={styles.emptyCtaText}>Create a Group</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-            {!loadingSuggested &&
-              suggestedGroups.length === 0 &&
-              discoverTab === 'all' && (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>
-                    No public groups yet — be the first to start one!
-                  </Text>
-                </View>
-              )}
           </>
         }
         renderItem={({ item: group }: { item: any }) => {
@@ -1359,6 +1411,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  // v8.7+ top-level Joined / Discover segmented toggle
+  topTabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  topTabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: Colors.dark.surface,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    alignItems: 'center',
+  },
+  topTabBtnActive: {
+    backgroundColor: Colors.dark.accent,
+    borderColor: Colors.dark.accent,
+  },
+  topTabText: {
+    color: Colors.dark.textSecondary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  topTabTextActive: {
+    color: '#fff',
+  },
+
   // Discover sub-tabs (Issue #6 v8.2)
   discoverPillRow: {
     flexDirection: 'row',

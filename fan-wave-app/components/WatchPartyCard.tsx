@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Share2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { shareWatchParty } from '@/lib/sharing';
+import { useMyRsvps } from '@/hooks/useData';
+import { queryClient } from '@/hooks/useQueryClient';
 import type { WatchPartyDisplay } from '@/lib/mappers';
 
 interface WatchPartyCardProps {
@@ -13,8 +15,25 @@ interface WatchPartyCardProps {
 
 export function WatchPartyCard({ party }: WatchPartyCardProps) {
   const router = useRouter();
-  const [rsvpStatus, setRsvpStatus] = useState<'none' | 'going' | 'interested'>('none');
+  const { data: myRsvps = {} } = useMyRsvps();
+  // v8.7+ P0: hydrate from the shared cache so the same party renders the
+  // same "Going / Interested / RSVP" label on Home, Discover, and any other
+  // surface. Previously each card mounted with rsvpStatus='none' regardless
+  // of DB state — the v8.6 UAT "RSVP doesn't persist across tabs" symptom.
+  const cachedStatus = myRsvps[party.id];
+  const initialStatus: 'none' | 'going' | 'interested' =
+    cachedStatus === 'going' || cachedStatus === 'interested' ? cachedStatus : 'none';
+  const [rsvpStatus, setRsvpStatus] = useState<'none' | 'going' | 'interested'>(initialStatus);
   const [rsvpLoading, setRsvpLoading] = useState(false);
+
+  // Keep local state in sync when the shared cache refreshes (focus refetch,
+  // realtime invalidation, etc.). Without this the card snapshots the cache
+  // value on mount only and drifts.
+  useEffect(() => {
+    const next: 'none' | 'going' | 'interested' =
+      cachedStatus === 'going' || cachedStatus === 'interested' ? cachedStatus : 'none';
+    setRsvpStatus(next);
+  }, [cachedStatus]);
 
   const handleCardPress = () => {
     router.push(`/watch-party/${party.id}` as any);
@@ -51,6 +70,9 @@ export function WatchPartyCard({ party }: WatchPartyCardProps) {
       // Only update local state on success — prior code optimistically set
       // "Going" even when the RPC threw, masking the bug from the user.
       setRsvpStatus(nextStatus === 'declined' ? 'none' : nextStatus);
+      // Invalidate the shared RSVP cache so every other WatchPartyCard on
+      // every other screen reflects the same Going/Interested/none label.
+      queryClient.invalidateQueries({ queryKey: ['myRsvps'] });
     } catch (e: any) {
       Alert.alert('RSVP failed', e?.message ?? 'Network error — please try again.');
     } finally {

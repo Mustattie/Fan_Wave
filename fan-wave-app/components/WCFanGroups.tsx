@@ -61,13 +61,28 @@ export default function WCFanGroups() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All Groups');
   const [groups, setGroups] = useState<WCFanGroupItem[]>([]);
+  const [groupRaw, setGroupRaw] = useState<any[]>([]);
   const [joinedMap, setJoinedMap] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+  // v8.5 P0: track the user's home city so the By City filter can
+  // surface groups in their metro, not just groups that happen to have
+  // a hardcoded city in their tags.
+  const [userCity, setUserCity] = useState<string | null>(null);
   // WC-pass paywall — migration 053 chat_room_members_insert RLS rejects
   // join attempts on `worldcup`-typed rooms unless has_wc_access() is TRUE.
   // Without this trigger the Join button was silently no-op for free users.
   const [showWCPaywall, setShowWCPaywall] = useState(false);
   const hasWCAccess = useHasWCAccess();
+
+  useFocusEffect(
+    useCallback(() => {
+      // Re-read user_city on every focus so a profile edit reflects in
+      // the By City filter without an app restart.
+      AsyncStorage.getItem('user_city').then((stored) => {
+        setUserCity(stored ? stored.split(',')[0]?.trim() ?? null : null);
+      });
+    }, [])
+  );
 
   // ── Load groups (Supabase + local) ─────────────────────
 
@@ -109,6 +124,12 @@ export default function WCFanGroups() {
           tags: g.tags || ['Soccer Cup'],
           isPublic: g.is_public !== false,
         }));
+        // v8.5 P0: stash the raw row so the By City filter can read the
+        // actual chat_rooms.city column (the canonical field) in addition
+        // to tags. v8.4 the filter only checked tags — which never
+        // matched user-created groups (those had city=null, tags=
+        // ["Soccer Cup"] only). DB-backed match closes the gap.
+        setGroupRaw(data);
         // Deduplicate: only include local groups not already in Supabase results
         const supabaseIds = new Set(mapped.map((g) => g.id));
         const uniqueLocal = localGroups.filter((g) => !supabaseIds.has(g.id));
@@ -159,6 +180,19 @@ export default function WCFanGroups() {
 
   // ── Filtering ──────────────────────────────────────────
 
+  // v8.5 P0: rewrite the filter to combine tags + chat_rooms.city +
+  // user's home city. The v8.4 filter only checked tags against a
+  // hardcoded city list, which excluded every user-created group (those
+  // had city=null + tags=["Soccer Cup"] only). New logic:
+  //   By City → group.city matches user's city OR any tag includes
+  //             the user's city OR any tag matches a known metro.
+  const KNOWN_METROS = [
+    'New York', 'Dallas', 'Los Angeles', 'Miami', 'Chicago',
+    'Houston', 'Toronto', 'Mexico City', 'Mckinney', 'Plano', 'Frisco',
+  ];
+  const rawById = new Map<string, any>(groupRaw.map((r) => [r.id, r]));
+  const userCityLower = (userCity || '').toLowerCase();
+
   const filteredGroups = groups.filter((g) => {
     const matchesSearch =
       !searchQuery ||
@@ -170,7 +204,20 @@ export default function WCFanGroups() {
       return matchesSearch && g.tags.some((t) => !['Soccer Cup', 'Travel', 'Hub'].includes(t));
     }
     if (activeFilter === 'By City') {
-      return matchesSearch && g.tags.some((t) => ['New York', 'Dallas', 'Los Angeles', 'Miami', 'Chicago', 'Houston', 'Toronto', 'Mexico City'].includes(t));
+      const raw = rawById.get(g.id);
+      const groupCity: string = (raw?.city ?? '').toString().toLowerCase();
+      const hasUserCityInTags =
+        userCityLower &&
+        g.tags.some((t) => t.toLowerCase() === userCityLower);
+      const hasMetroInTags = g.tags.some((t) => KNOWN_METROS.includes(t));
+      const matchesUserCity =
+        userCityLower &&
+        groupCity &&
+        groupCity.toLowerCase().includes(userCityLower);
+      return (
+        matchesSearch &&
+        (matchesUserCity || hasUserCityInTags || hasMetroInTags)
+      );
     }
     if (activeFilter === 'Travel Fans') {
       return matchesSearch && g.tags.includes('Travel');

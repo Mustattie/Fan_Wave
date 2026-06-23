@@ -15,14 +15,13 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Globe, Lock, UserPlus, X, Users, Search } from 'lucide-react-native';
+import { Globe, Lock, UserPlus, X, Users, Search, MapPin, CheckCircle2 } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
 import * as Location from 'expo-location';
 import { Colors } from '@/constants/Colors';
 import { SPORTS } from '@/constants/Sports';
 import {
   searchVenues,
-  searchVenuesByName,
   geocodeCity,
   searchAddress,
   resetVenueBreakers,
@@ -34,6 +33,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mapGameToDisplay, type GameDisplay } from '@/lib/mappers';
 import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
 import { reportError } from '@/lib/errorReporting';
+import { invalidateCache } from '@/lib/cache';
+import { queryClient } from '@/hooks/useQueryClient';
 
 const C = Colors.dark;
 
@@ -381,23 +382,66 @@ export default function CreateWatchPartyScreen() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const lastSearchFailedRef = useRef(false);
 
+  // v8.7+ P0: opt-in device-GPS for venue distances. Search center stays at
+  // the user's home_city (so a McKinney user still gets the full Dallas-
+  // metro catchment), but `userLocation` — when granted — overrides the
+  // returned `distanceMeters` so each row reads "5 mi" instead of
+  // "33 mi from downtown Dallas".
+  //
+  // Stays OFF by default; only requests permission when the user taps
+  // "Use my location". Apple/Play guidelines + sensible UX both prefer
+  // just-in-time prompts tied to a clear action.
+  const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+  const [locationStatus, setLocationStatus] = useState<
+    'idle' | 'requesting' | 'denied' | 'active'
+  >('idle');
+
+  const handleUseMyLocation = useCallback(async () => {
+    if (locationStatus === 'requesting') return;
+    setLocationStatus('requesting');
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLocationStatus('denied');
+        Alert.alert(
+          'Location permission needed',
+          'Enable location access in Settings to see distances from where you actually are. We only use this for distance display — your position is never stored.',
+        );
+        return;
+      }
+      // getCurrentPositionAsync gives a fresh, accurate fix.
+      // getLastKnownPositionAsync would be faster but can be hours stale on
+      // Android. For a one-tap action the ~1 s wait is fine.
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      if (!pos?.coords) {
+        setLocationStatus('denied');
+        return;
+      }
+      setUserLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+      setLocationStatus('active');
+    } catch (e: any) {
+      console.warn('[create-watch-party] location request failed', e?.message);
+      setLocationStatus('denied');
+    }
+  }, [locationStatus]);
+
+  const handleClearMyLocation = useCallback(() => {
+    setUserLocation(null);
+    setLocationStatus('idle');
+  }, []);
+
   const handleVenueSearch = useCallback(async () => {
     if (!venueQuery.trim()) return;
     setVenueLoading(true);
     setSearchError(null);
 
-    // If the previous search hit the breaker, this tap is the user's
-    // explicit retry — clear OPEN state so we actually hit the network.
     if (lastSearchFailedRef.current) {
       resetVenueBreakers();
       lastSearchFailedRef.current = false;
     }
 
-    // v8.2 user-test #4: DEV (or AsyncStorage `verbose_search_errors=1`)
-    // builds get the tier + error appended to the user-facing toast so QA
-    // reports tell us WHAT failed instead of just "search broke again".
-    // Prod release builds keep the friendly copy; full context still hits
-    // `console.error`.
     let verboseFlag = false;
     try {
       verboseFlag = (await AsyncStorage.getItem('verbose_search_errors')) === '1';
@@ -405,111 +449,60 @@ export default function CreateWatchPartyScreen() {
       // ignore
     }
     const showDebug = __DEV__ || verboseFlag;
-    const debugSuffix = (
-      tier: string,
-      err: string | undefined
-    ): string =>
+    const debugSuffix = (err: string | undefined): string =>
       showDebug
         ? ` (coord_source=${coordSource}@${
             (userCity || 'unknown').split(',')[0]?.trim().toLowerCase()
-          }, tier=${tier}, err=${err ?? 'n/a'})`
+          }, tier=places, err=${err ?? 'n/a'})`
         : '';
 
     try {
-      const primary = await searchVenues(
+      const result = await searchVenues(
         searchLat,
         searchLon,
         venueQuery,
-        30000
+        30000,
+        userLocation,
       );
 
       console.log(
-        `[create-watch-party] venue search tier=overpass status=${primary.status} hits=${primary.venues.length} ` +
+        `[create-watch-party] venue search tier=places status=${result.status} hits=${result.venues.length} ` +
           `coordSource=${coordSource} center=(${searchLat.toFixed(3)},${searchLon.toFixed(3)}) q="${venueQuery.trim()}"`
       );
 
-      // Happy path: Overpass returned hits.
-      if (primary.status === 'ok' && primary.venues.length > 0) {
-        setVenueResults(primary.venues);
+      if (result.status === 'ok' && result.venues.length > 0) {
+        setVenueResults(result.venues);
         setVenueLoading(false);
         return;
       }
 
-      // Overpass either failed or returned zero hits with a query the user
-      // is actively typing — try the Nominatim name-search fallback so we
-      // don't strand them on "Search temporarily unavailable" when their
-      // venue (e.g. "Brass Tap") exists in OSM and Nominatim can find it.
-      const shouldFallback =
-        primary.status === 'api_error' ||
-        primary.status === 'breaker_open' ||
-        (primary.status === 'ok' && primary.venues.length === 0);
+      setVenueResults([]);
 
-      if (shouldFallback) {
-        const fallback = await searchVenuesByName(
-          venueQuery,
-          userCity,
-          searchLat,
-          searchLon
+      if (result.status === 'ok') {
+        setSearchError(
+          `No venues found within 30 km of ${userCity ?? 'your location'} matching "${venueQuery.trim()}". Try a shorter name, or "Enter venue manually".` +
+            debugSuffix(undefined)
         );
-
-        console.log(
-          `[create-watch-party] venue search tier=nominatim_name status=${fallback.status} hits=${fallback.venues.length} q="${venueQuery.trim()}"`
+      } else {
+        lastSearchFailedRef.current = true;
+        console.error('[create-watch-party] venue search failed:', result.errorMessage);
+        setSearchError(
+          'Search temporarily unavailable. Check your connection and tap Search to retry, or "Enter venue manually".' +
+            debugSuffix(result.errorMessage)
         );
-
-        if (fallback.status === 'ok' && fallback.venues.length > 0) {
-          setVenueResults(fallback.venues);
-          setVenueLoading(false);
-          return;
-        }
-
-        // Both tiers came back empty/failed. Pick the most informative
-        // error: prefer Overpass's diagnostic since that's the primary
-        // path users expect to work.
-        setVenueResults([]);
-
-        if (primary.status === 'breaker_open') {
-          lastSearchFailedRef.current = true;
-          console.error(
-            '[create-watch-party] Overpass breaker_open; fallback also failed:',
-            { primary: primary.errorMessage, fallback: fallback.errorMessage }
-          );
-          setSearchError(
-            'Search temporarily unavailable — tap Search again in a moment to retry.' +
-              debugSuffix('overpass→breaker_open', primary.errorMessage)
-          );
-        } else if (primary.status === 'api_error') {
-          lastSearchFailedRef.current = true;
-          console.error(
-            '[create-watch-party] Overpass api_error; fallback also failed:',
-            { primary: primary.errorMessage, fallback: fallback.errorMessage }
-          );
-          setSearchError(
-            'Search temporarily unavailable. Check your connection and tap Search to retry, or "Enter venue manually".' +
-              debugSuffix('overpass→api_error', primary.errorMessage)
-          );
-        } else {
-          // Both tiers truly returned zero matches.
-          setSearchError(
-            `No venues found within 30 km of ${userCity ?? 'your location'} matching "${venueQuery.trim()}". Try a shorter name, or "Enter venue manually".` +
-              debugSuffix('nominatim_name→empty', fallback.errorMessage)
-          );
-        }
       }
     } catch (e: any) {
-      // searchVenues / searchVenuesByName no longer throw under normal
-      // conditions, but guard anyway so a future regression never silently
-      // shows [].
       lastSearchFailedRef.current = true;
       console.error('[create-watch-party] unexpected venue search error:', e);
       setVenueResults([]);
       setSearchError(
         'Something went wrong searching for venues. Tap Search to retry, or "Enter venue manually".' +
-          debugSuffix('unexpected', e?.message)
+          debugSuffix(e?.message)
       );
     } finally {
       setVenueLoading(false);
     }
-  }, [venueQuery, searchLat, searchLon, coordSource, userCity]);
+  }, [venueQuery, searchLat, searchLon, coordSource, userCity, userLocation]);
 
   // -----------------------------------------------------------------------
   // Address autocomplete (debounced)
@@ -706,6 +699,29 @@ export default function CreateWatchPartyScreen() {
           .ilike('name', selectedGame.sport)
           .maybeSingle();
         if (sportRow) partyData.sport_id = sportRow.id;
+
+        // v8.7+ P0: if the user came in from the Home FAB (no event= param)
+        // and linked a Soccer Cup match, ALSO stamp event_id so the party
+        // surfaces on the Soccer Cup tab. The WC tab's filter is
+        // `event_id.eq.X OR sport_id.eq.Y`; sport_id alone matches, but
+        // any non-WC soccer party (e.g. a Premier League watch party
+        // tagged with sport_id=Soccer) would otherwise appear there too.
+        // Stamping event_id makes the row authoritative.
+        if (!isSoccerCupContext && selectedGame?.id) {
+          try {
+            const { data: gameRow } = await supabase
+              .from('games')
+              .select('event_id')
+              .eq('id', selectedGame.id)
+              .maybeSingle();
+            if (gameRow?.event_id === SOCCER_CUP_EVENT_ID) {
+              partyData.event_id = SOCCER_CUP_EVENT_ID;
+            }
+          } catch {
+            // Non-fatal: party still gets sport_id and surfaces via the
+            // OR clause. Logging-only would just bloat the console.
+          }
+        }
       }
 
       const { data: partyRow, error: insertError } = await supabase
@@ -774,6 +790,19 @@ export default function CreateWatchPartyScreen() {
         );
       }
 
+      // v8.5 P0 (round 2): purge the AsyncStorage offline-fallback +
+      // React Query cache for watch parties so the just-created party
+      // is visible on the next Home/Discover fetch. Without this, the
+      // stale offline-fallback layer could serve the prior empty list
+      // back through a getStaleCache call inside the queryFn catch
+      // (network blip during refetch), causing the v8.4 "party doesn't
+      // appear for 2 minutes" symptom to re-emerge.
+      if (userCity) {
+        await invalidateCache('watchParties', userCity).catch(() => {});
+      }
+      queryClient.invalidateQueries({ queryKey: ['watchParties'] });
+      queryClient.invalidateQueries({ queryKey: ['watchPartiesInfinite'] });
+
       setCreating(false);
       Alert.alert('Watch Party Created!', `"${partyData.title}" is live.`, [
         {
@@ -832,6 +861,42 @@ export default function CreateWatchPartyScreen() {
 
       {!manualEntry ? (
         <>
+          {/* v8.7+ Opt-in GPS for accurate distance display.
+              Search is still anchored to home_city (broader catchment),
+              but distances show "X mi from you" when location is on. */}
+          <View style={styles.locationRow}>
+            {locationStatus === 'active' && userLocation ? (
+              <View style={styles.locationActivePill}>
+                <CheckCircle2 size={14} color={C.success} />
+                <Text style={styles.locationActiveText}>Using your location</Text>
+                <TouchableOpacity
+                  onPress={handleClearMyLocation}
+                  hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
+                >
+                  <X size={14} color={C.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.locationCta}
+                onPress={handleUseMyLocation}
+                disabled={locationStatus === 'requesting'}
+                activeOpacity={0.8}
+              >
+                {locationStatus === 'requesting' ? (
+                  <ActivityIndicator size="small" color={C.accent} />
+                ) : (
+                  <MapPin size={14} color={C.accent} />
+                )}
+                <Text style={styles.locationCtaText}>
+                  {locationStatus === 'requesting'
+                    ? 'Getting your location…'
+                    : '📍 Use my location for distances'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
           <View style={styles.searchRow}>
             <TextInput
               style={styles.searchInput}
@@ -855,6 +920,16 @@ export default function CreateWatchPartyScreen() {
             <View style={styles.searchErrorBox}>
               <Text style={styles.searchErrorText}>{searchError}</Text>
             </View>
+          )}
+
+          {/* Distance-mode hint — only shown once results are in so a
+              first-time user isn't reading legalese before they search. */}
+          {!venueLoading && venueResults.length > 0 && (
+            <Text style={styles.distanceHint}>
+              {locationStatus === 'active'
+                ? 'Distances from your current location'
+                : `Distances from ${userCity || 'your city'} — tap "Use my location" above for accurate mileage`}
+            </Text>
           )}
 
           {venueResults.map((v, i) => {
@@ -1458,6 +1533,50 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+
+  // GPS opt-in
+  locationRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  locationCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: C.accent + '14',
+    borderWidth: 1,
+    borderColor: C.accent + '55',
+  },
+  locationCtaText: {
+    color: C.accent,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  locationActivePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: C.success + '18',
+    borderWidth: 1,
+    borderColor: C.success + '55',
+  },
+  locationActiveText: {
+    color: C.success,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  distanceHint: {
+    fontSize: 12,
+    color: C.textMuted,
+    marginBottom: 8,
+    paddingHorizontal: 2,
   },
 
   // Search

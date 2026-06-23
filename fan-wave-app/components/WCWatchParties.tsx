@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Search, Share2 } from 'lucide-react-native';
 import { shareWatchParty } from '@/lib/sharing';
 import { Colors } from '@/constants/Colors';
@@ -71,9 +72,16 @@ export default function WCWatchParties() {
 
   // ── Supabase fetch attempt ─────────────────────────────
 
-  useEffect(() => {
-    fetchParties();
-  }, []);
+  // v8.7+ P0: was a one-shot `useEffect(()=>{},[])` — newly-created
+  // parties on Home or Discover never surfaced on this tab until the
+  // app was cold-restarted. useFocusEffect refetches whenever the
+  // Soccer Cup tab regains focus so a party created from the WC tab
+  // FAB (or from Home → linked to a WC game) appears immediately.
+  useFocusEffect(
+    useCallback(() => {
+      fetchParties();
+    }, []),
+  );
 
   const fetchParties = async () => {
     setLoading(true);

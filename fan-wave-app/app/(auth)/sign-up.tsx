@@ -47,7 +47,7 @@ export default function SignUpScreen() {
     const trimmedEmail = email.trim();
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: trimmedEmail,
         password,
         options: {
@@ -59,6 +59,30 @@ export default function SignUpScreen() {
       });
 
       if (error) throw error;
+
+      // v8.7+ P0: Supabase's signUp endpoint returns a fake-success response
+      // for already-confirmed emails (anti-enumeration). The tell is an empty
+      // `identities` array on the returned user. Without this check the user
+      // gets routed to a "Check your email" screen for an email that was
+      // never actually sent — the exact dead-end users reported when trying
+      // to sign up with their existing address.
+      //
+      // We surface this client-side. The server still returns the same fake
+      // response so attackers can't enumerate; the legitimate user (who knows
+      // their own email already exists) gets routed to sign-in.
+      const identities = data?.user?.identities;
+      if (Array.isArray(identities) && identities.length === 0) {
+        await supabase.auth.signOut();
+        Alert.alert(
+          'Account already exists',
+          `An account with ${trimmedEmail} is already registered. Sign in instead, or use "Forgot password" if you don't remember it.`,
+          [
+            { text: 'Sign In', onPress: () => router.replace('/(auth)/sign-in') },
+            { text: 'Cancel', style: 'cancel' },
+          ],
+        );
+        return;
+      }
 
       // Confirm Email is enabled in Supabase. signUp may return a temporary
       // session before the user verifies — sign it out so the user can't slip

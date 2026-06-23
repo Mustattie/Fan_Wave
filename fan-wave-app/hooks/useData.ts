@@ -91,15 +91,17 @@ export function useWatchParties(city: string, limit = 3) {
   return useQuery<WatchPartyDisplay[]>({
     queryKey: ['watchParties', city, limit],
     queryFn: async () => {
-      const cached = await getCache<WatchPartyDisplay[]>('watchParties', city);
-      if (cached) return cached;
-
+      // v8.5 P0 (round 2): the old pattern read AsyncStorage FIRST
+      // (1-hour TTL on the watchParties bucket per lib/cache.ts) and
+      // returned the cached list before going to DB. That meant: user
+      // creates a party → Realtime fires setQueryData (party visible) →
+      // staleTime=0 triggers next refetch → queryFn runs → AsyncStorage
+      // returns stale empty list → party DISAPPEARS until cache TTL
+      // expires (up to an hour). UAT artefact: party appeared "after
+      // 2 minutes" (random refetch jitter). New strategy: always hit DB
+      // on queryFn; AsyncStorage is ONLY an offline fallback inside
+      // the catch.
       try {
-        // v8.5 P0: previously this filtered .gt('starts_at', now()) which
-        // hid newly-created parties whose user-picked time preset (e.g.
-        // "Tonight 7PM") was already in the past at create-time. We now
-        // allow parties that started up to 2h ago so a freshly-hosted
-        // party isn't invisible to the host while everyone arrives.
         const startedAfter = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 
         // Local-city query first.
@@ -137,6 +139,9 @@ export function useWatchParties(city: string, limit = 3) {
         }
 
         const mapped = rows.map(mapWatchPartyToDisplay);
+        // Write-through: keep an offline-fallback copy. Reads happen
+        // ONLY inside the catch below; this is no longer a hit-first
+        // cache.
         await setCache('watchParties', mapped, city);
         return mapped;
       } catch {
@@ -145,6 +150,58 @@ export function useWatchParties(city: string, limit = 3) {
       }
     },
     enabled: !!city,
+    // Hit DB at most once per 30s on focus/refetch — prevents thrashing
+    // the API while still letting newly-created parties surface quickly
+    // once the user comes back to the tab.
+    staleTime: 30 * 1000,
+  });
+}
+
+// ─── My RSVPs (shared across all WatchPartyCard instances) ──
+//
+// v8.7+ P0: WatchPartyCard previously held rsvpStatus in component-local
+// state initialised to 'none'. Effect: user RSVPs on Home → that card's
+// state flips to 'going' → on Discover, a *different* WatchPartyCard
+// instance for the same party renders fresh at 'none', showing the
+// generic RSVP button. The user reported "RSVP not persisting" across
+// tabs because of this split-state.
+//
+// Fix: lift "what parties has the current user RSVPed to" up to a single
+// React Query cache. Every WatchPartyCard reads from it; the RSVP handler
+// invalidates after a successful insert. As a bonus, this also doubles
+// as the source-of-truth that rsvp-history.tsx can fall back to when its
+// nested PostgREST select misbehaves (silent .catch on schema-cache
+// drift was the v8.5-onwards "history blank" report).
+export function useMyRsvps() {
+  return useQuery<Record<string, 'going' | 'interested' | 'declined'>>({
+    queryKey: ['myRsvps'],
+    queryFn: async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return {};
+        const { data, error } = await withTimeout(
+          () => supabase
+            .from('watch_party_rsvps')
+            .select('watch_party_id, status')
+            .eq('user_id', user.id),
+          FETCH_TIMEOUT,
+        );
+        if (error) {
+          console.warn('[useMyRsvps] query error', error.code, error.message);
+          return {};
+        }
+        const map: Record<string, 'going' | 'interested' | 'declined'> = {};
+        (data || []).forEach((r: any) => {
+          if (r.watch_party_id && r.status) map[r.watch_party_id] = r.status;
+        });
+        return map;
+      } catch (e: any) {
+        console.warn('[useMyRsvps] exception', e?.message);
+        return {};
+      }
+    },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -188,13 +245,18 @@ export function useMyGroups(limit = 3) {
   return useQuery<ChatRoomDisplay[]>({
     queryKey: ['myGroups', limit],
     queryFn: async () => {
-      const cached = await getCache<ChatRoomDisplay[]>('groups');
+      const { data: { user } } = await withTimeout(() => supabase.auth.getUser(), FETCH_TIMEOUT);
+      if (!user) return [];
+
+      // Cache must be user-scoped — Bulls Nation Chicago surfaced in
+      // production UAT for a Dallas user because the global 'groups'
+      // cache was bleeding membership lists across auth identities
+      // (dev seed users, prior reviewer logins, etc.).
+      const cacheKey = user.id;
+      const cached = await getCache<ChatRoomDisplay[]>('groups', cacheKey);
       if (cached) return cached;
 
       try {
-        const { data: { user } } = await withTimeout(() => supabase.auth.getUser(), FETCH_TIMEOUT);
-        if (!user) return [];
-
         const { data, error } = await withTimeout(
           () => supabase
             .from('chat_room_members')
@@ -208,10 +270,10 @@ export function useMyGroups(limit = 3) {
         const mapped = data && data.length > 0
           ? data.map((d: any) => mapChatRoomToDisplay(d.chat_room))
           : [];
-        await setCache('groups', mapped);
+        await setCache('groups', mapped, cacheKey);
         return mapped;
       } catch {
-        const stale = await getStaleCache<ChatRoomDisplay[]>('groups');
+        const stale = await getStaleCache<ChatRoomDisplay[]>('groups', cacheKey);
         return stale?.data ?? [];
       }
     },
@@ -220,13 +282,52 @@ export function useMyGroups(limit = 3) {
 
 // ─── User City ──────────────────────────────────────────────
 
+// v8.6 P0: DB-backed source of truth for the user's home city. The v8.5
+// implementation read AsyncStorage with staleTime:Infinity, which meant a
+// profile change ("Chicago" → "Dallas") was invisible to every consumer
+// until the app was reinstalled — the screenshot fingerprint was Home
+// showing Chicago, IL after a Dallas save, and the user's freshly-created
+// Dallas watch party not appearing for ~2 min (the Home query filtered
+// by venue_city='Chicago', so the Realtime INSERT for Dallas never
+// matched the channel filter either). DB is now the primary read with
+// short staleTime + refetch on focus; AsyncStorage is offline fallback.
+//
+// Companion edits:
+//   • edit-profile.tsx invalidates ['userCity'] + ['watchParties'] on save
+//     so the new city propagates without a tab switch.
+//   • app/(tabs)/index.tsx Realtime useFocusEffect now depends on [city]
+//     so the channel filter re-binds when the user changes city.
 export function useUserCity() {
   return useQuery<string>({
     queryKey: ['userCity'],
     queryFn: async () => {
+      try {
+        const { data: { user } } = await withTimeout(
+          () => supabase.auth.getUser(),
+          FETCH_TIMEOUT
+        );
+        if (user) {
+          const { data } = await withTimeout(
+            () => supabase
+              .from('users')
+              .select('home_city')
+              .eq('auth_id', user.id)
+              .maybeSingle(),
+            FETCH_TIMEOUT
+          );
+          const dbCity = (data?.home_city || '').toString().trim();
+          if (dbCity) {
+            AsyncStorage.setItem('user_city', dbCity).catch(() => {});
+            return dbCity;
+          }
+        }
+      } catch {
+        // Network down — fall through to AsyncStorage fallback.
+      }
       const storedCity = await AsyncStorage.getItem('user_city');
       return storedCity || '';
     },
-    staleTime: Infinity,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }

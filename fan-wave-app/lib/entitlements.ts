@@ -1,7 +1,32 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { supabase } from './supabase';
+
+// ---------------------------------------------------------------------------
+// Expo Go detection — used to grant fake Premium entitlement so paywalls
+// don't crash on RC's missing native module. AND-gated with __DEV__ so a
+// misreported environment in a production EAS build can never silently
+// flip a paying user into free-Premium.
+//
+// SDK 50+ prefers ExecutionEnvironment.storeClient; appOwnership is the
+// pre-50 path that still works on current Expo Go. Belt-and-suspenders.
+// ---------------------------------------------------------------------------
+function isExpoGo(): boolean {
+  if (!__DEV__) return false;
+  try {
+    if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) {
+      return true;
+    }
+    if ((Constants as any).appOwnership === 'expo') {
+      return true;
+    }
+  } catch {
+    // ignore — fall through to false
+  }
+  return false;
+}
 
 // ---------------------------------------------------------------------------
 // Entitlement state — read from the denormalized columns on users
@@ -112,7 +137,11 @@ export function useSubscriptionState() {
       // to see free-tier paywalls when they navigate to Subscription, but
       // also needs them to exercise every create flow so they can validate
       // the app. We grant access at both layers.
-      if (isReviewerEmail(user.email)) {
+      //
+      // v8.7+ P0: also grant fake Premium in Expo Go so the paywall sheets
+      // don't crash on the RevenueCat stub. Strictly __DEV__-only via
+      // isExpoGo(); production EAS builds never hit this path.
+      if (isReviewerEmail(user.email) || isExpoGo()) {
         return { ...derived, hasPremiumAccess: true, hasWCAccess: true };
       }
       return derived;
@@ -276,6 +305,18 @@ async function findPackageForPlan(
 }
 
 export async function purchasePremium(plan: 'monthly' | 'annual'): Promise<PurchaseResult> {
+  // Expo Go has no RC native module; calling Purchases.purchasePackage() in
+  // that environment throws "no singleton instance" and surfaces a generic
+  // "purchase could not start" Alert. Short-circuit to a clear error so dev
+  // testers see what's actually happening instead of debugging RC.
+  if (isExpoGo()) {
+    return {
+      kind: 'error',
+      error: new Error(
+        'Purchases are not available in Expo Go. Test in an EAS preview or production build.',
+      ),
+    };
+  }
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const Purchases = require('react-native-purchases').default;
@@ -302,6 +343,14 @@ export async function purchasePremium(plan: 'monthly' | 'annual'): Promise<Purch
 }
 
 export async function purchaseWCPass(): Promise<PurchaseResult> {
+  if (isExpoGo()) {
+    return {
+      kind: 'error',
+      error: new Error(
+        'Purchases are not available in Expo Go. Test in an EAS preview or production build.',
+      ),
+    };
+  }
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const Purchases = require('react-native-purchases').default;

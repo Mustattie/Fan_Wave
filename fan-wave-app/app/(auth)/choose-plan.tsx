@@ -82,6 +82,22 @@ export default function ChoosePlanScreen() {
           Subscriptions auto-renew unless cancelled at least 24h before the period ends. Manage anywhere
           in your {STORE_NAME} account settings.
         </Text>
+
+        {/* v8.7+ P0: until this lands, choose-plan had no escape hatch — a
+            user who couldn't complete a purchase (Expo Go, RC outage,
+            unsupported region) was permanently stuck on this screen.
+            Skip routes to wc-pass-offer, which already has its own Skip
+            to /(tabs). Per-feature PaywallGate components still gate
+            actual Premium actions (clip post, group create, etc.), so
+            the funnel isn't broken — it just moves from a hard block to
+            a contextual prompt at the moment the user actually needs it. */}
+        <TouchableOpacity
+          style={styles.skipBtn}
+          onPress={() => router.replace('/(auth)/wc-pass-offer')}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.skipBtnText}>Skip — Explore the app first</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <PremiumPaywall
@@ -128,4 +144,16 @@ const styles = StyleSheet.create({
   planPricePeriod: { fontSize: 14, fontWeight: '600', color: Colors.dark.textSecondary },
   planEffective: { fontSize: 12, color: Colors.dark.textMuted, marginTop: 4 },
   legalCopy: { fontSize: 11, lineHeight: 16, color: Colors.dark.textMuted, textAlign: 'center' },
+  skipBtn: {
+    marginTop: 18,
+    alignSelf: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  skipBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.dark.textSecondary,
+    textDecorationLine: 'underline',
+  },
 });

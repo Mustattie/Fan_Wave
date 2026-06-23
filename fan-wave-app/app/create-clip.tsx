@@ -13,6 +13,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { SPORTS } from '@/constants/Sports';
@@ -159,6 +160,25 @@ export default function CreateClipScreen() {
         return;
       }
       // Unknown validation error — let the server reject.
+    }
+
+    // v8.7+ P0: Expo Go's bundled native modules don't reliably handle the
+    // video upload path (expo-file-system createUploadTask on Android Hermes
+    // + expo-video preview state). UAT 2026-06-23 reported a hard Hermes
+    // crash on the SECOND clip post that ejected the user out of the app
+    // and reset onboarding state — uncatchable from JS because the SIGABRT
+    // originates in libmedia / native upload code. Block the post entirely
+    // in Expo Go and tell the tester to use an EAS preview build.
+    const inExpoGo =
+      __DEV__ &&
+      (Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
+        (Constants as any).appOwnership === 'expo');
+    if (inExpoGo) {
+      Alert.alert(
+        'Posting clips needs the production app',
+        'Clip uploads use native modules that aren\'t bundled in Expo Go. Test this flow in an EAS preview / production build.',
+      );
+      return;
     }
 
     setPosting(true);

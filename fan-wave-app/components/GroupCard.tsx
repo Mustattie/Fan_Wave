@@ -1,19 +1,37 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Share2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { shareGroup } from '@/lib/sharing';
+import { supabase } from '@/lib/supabase';
 import type { ChatRoomDisplay } from '@/lib/mappers';
 
 interface GroupCardProps {
   group: ChatRoomDisplay;
   onPress?: () => void;
   showUnread?: boolean;
+  // v8.7+ P0: surfaces like Discover "Trending Groups", Home "Suggested
+  // Groups", and Soccer Cup → Fan Groups need a Join CTA inline on the
+  // card so fans can actually join without navigating into the group
+  // detail screen first. Previously GroupCard had no Join affordance,
+  // which the user flagged in v8.7 UAT: "How then can interested fans
+  // join these fan groups if there is no join button". The default stays
+  // false so existing surfaces (My Groups, chat-list) don't change.
+  joinable?: boolean;
+  isMember?: boolean;
+  onJoinSuccess?: (groupId: string) => void;
 }
 
-export function GroupCard({ group, onPress, showUnread = true }: GroupCardProps) {
+export function GroupCard({
+  group,
+  onPress,
+  showUnread = true,
+  joinable = false,
+  isMember = false,
+  onJoinSuccess,
+}: GroupCardProps) {
   const router = useRouter();
+  const [joining, setJoining] = useState(false);
+  const [joinedLocally, setJoinedLocally] = useState(false);
 
   const handlePress = () => {
     if (onPress) {
@@ -22,6 +40,58 @@ export function GroupCard({ group, onPress, showUnread = true }: GroupCardProps)
       router.push(`/fan-group/${group.id}`);
     }
   };
+
+  // v8.7+: client-side Join handler. Mirrors the Groups tab Discover
+  // section flow (app/(tabs)/groups.tsx:281–352) but inlined on the card
+  // so any consumer (Discover, Home, future surfaces) gets the same CTA
+  // without reimplementing the insert/RLS-error logic.
+  const handleJoin = async (e: any) => {
+    // Stop the press bubbling to the card-level navigation.
+    e?.stopPropagation?.();
+    if (joining || joinedLocally || isMember) return;
+    setJoining(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Sign in required', 'Please sign in to join a group.');
+        return;
+      }
+      const { error } = await supabase.from('chat_room_members').insert({
+        chat_room_id: group.id,
+        user_id: user.id,
+        role: 'member',
+      });
+      if (error) {
+        const code: string | undefined = (error as any)?.code;
+        const msg: string = (error.message ?? '').toLowerCase();
+        const isDup = code === '23505' || msg.includes('duplicate');
+        const isRls =
+          code === '42501' ||
+          msg.includes('row-level security') ||
+          msg.includes('violates row-level security policy');
+        if (isDup) {
+          setJoinedLocally(true);
+          onJoinSuccess?.(group.id);
+        } else if (isRls) {
+          Alert.alert(
+            'Premium required',
+            'Upgrade to Premium to join more groups.',
+          );
+        } else {
+          Alert.alert('Could not join', 'Please try again.');
+        }
+        return;
+      }
+      setJoinedLocally(true);
+      onJoinSuccess?.(group.id);
+    } catch {
+      Alert.alert('Could not join', 'Please try again.');
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  const showJoinedState = isMember || joinedLocally;
 
   return (
     <TouchableOpacity
@@ -43,31 +113,32 @@ export function GroupCard({ group, onPress, showUnread = true }: GroupCardProps)
             {(group.onlineCount ?? 0) > 0 && ` · ${group.onlineCount ?? 0} online`}
           </Text>
         </View>
-        {/* v8.4 UAT feedback: My Groups cards now show a prominent
-            green "Invite" CTA in the same position the Discover-tab
-            cards show "Join". Owners of public groups previously only
-            had a tiny share icon in the footer, which read as
-            asymmetry with the Discover section's bold Join buttons. */}
-        <TouchableOpacity
-          style={styles.inviteButton}
-          onPress={(e) => {
-            e.stopPropagation();
-            shareGroup({ id: group.id, name: group.name, memberCount: group.memberCount });
-          }}
-          activeOpacity={0.85}
-        >
-          <Share2 size={12} color="#fff" />
-          <Text style={styles.inviteButtonText}>Invite</Text>
-        </TouchableOpacity>
-        {showUnread && (
-          <View style={styles.rightColumn}>
-            <Text style={styles.time}>{group.lastMessageTime}</Text>
-            {(group.unreadCount ?? 0) > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{group.unreadCount ?? 0}</Text>
-              </View>
+        {joinable ? (
+          <TouchableOpacity
+            style={[styles.joinBtn, showJoinedState && styles.joinedBtn]}
+            onPress={handleJoin}
+            disabled={joining || showJoinedState}
+            activeOpacity={0.85}
+          >
+            {joining ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={[styles.joinBtnText, showJoinedState && styles.joinedBtnText]}>
+                {showJoinedState ? '✓ Joined' : 'Join'}
+              </Text>
             )}
-          </View>
+          </TouchableOpacity>
+        ) : (
+          showUnread && (
+            <View style={styles.rightColumn}>
+              <Text style={styles.time}>{group.lastMessageTime}</Text>
+              {(group.unreadCount ?? 0) > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{group.unreadCount ?? 0}</Text>
+                </View>
+              )}
+            </View>
+          )
         )}
       </View>
 
@@ -174,18 +245,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.dark.textSecondary,
   },
-  inviteButton: {
-    flexDirection: 'row',
+  joinBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.dark.accent,
+    minWidth: 64,
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: Colors.dark.success,
+    justifyContent: 'center',
   },
-  inviteButtonText: {
+  joinedBtn: {
+    backgroundColor: Colors.dark.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.dark.success,
+  },
+  joinBtnText: {
     color: '#fff',
     fontSize: 12,
     fontWeight: '700',
+  },
+  joinedBtnText: {
+    color: Colors.dark.success,
   },
 });

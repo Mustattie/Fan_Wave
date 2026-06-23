@@ -13,7 +13,7 @@ import {
   ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Heart, MessageCircle, Repeat2, Share2, UserPlus, Download, Plus, Trash2, Slash } from 'lucide-react-native';
+import { Heart, MessageCircle, Repeat2, Share2, UserPlus, Download, Plus, Trash2, Slash, Pause, Play } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -52,10 +52,13 @@ function ClipCard({
   onExport,
   onDelete,
   onBlock,
-  isVisible,
+  isActive,
   isFollowingPoster,
   isOwner,
-  focusEpoch,
+  sharedPlayer,
+  isPlaying,
+  isReady,
+  onTogglePlay,
 }: {
   clip: ClipDisplay;
   isLiked: boolean;
@@ -66,100 +69,42 @@ function ClipCard({
   onExport: (clip: ClipDisplay) => void;
   onDelete: (clip: ClipDisplay) => void;
   onBlock: (clip: ClipDisplay) => void;
-  isVisible: boolean;
+  // v8.6 P0: was `isVisible`. Now strictly the SINGLE active card. Only
+  // the active card mounts <VideoView> attached to the shared player —
+  // see ClipsScreen for the architectural rewrite.
+  isActive: boolean;
   isFollowingPoster: boolean;
   isOwner: boolean;
-  // Increments every time the Clips tab regains focus. Drives the
-  // play-on-visible effect to re-fire after a tab switch so paused
-  // players resume instead of staying frozen on return — the v8.3
-  // UAT artifact "when i went back the other time all clips were
-  // frozen, they were not playing."
-  focusEpoch: number;
+  // The ONE expo-video player instance owned by ClipsScreen. Inactive
+  // cards do not receive it (only the active one renders VideoView).
+  sharedPlayer: ReturnType<typeof useVideoPlayer> | null;
+  isPlaying: boolean;
+  isReady: boolean;
+  onTogglePlay: () => void;
 }) {
-  const [isPlaying, setIsPlaying] = useState(false);
-  // Tracks expo-video player readiness so we can hide the raw VideoView
-  // (which paints solid black before the first frame is decoded) and show a
-  // loading placeholder instead. Without this, freshly-posted clips paint a
-  // black void on first viewport entry until the user taps.
-  const [isReady, setIsReady] = useState(false);
   const lastTapRef = useRef<number>(0);
   const heartAnimOpacity = useRef(new Animated.Value(0)).current;
   const heartAnimScale = useRef(new Animated.Value(0.5)).current;
 
-  // CRITICAL: source MUST be stable for the lifetime of this card.
-  // Previously we passed `isVisible ? clip.videoUrl : null` which forced
-  // expo-video to tear down and recreate the underlying Android
-  // MediaPlayer / MediaCodec on every visibility flip. During a fast
-  // scroll the OS could not release codec slots fast enough, producing
-  // an uncatchable SIGABRT in libmedia (the JS try/catch around
-  // player.play() cannot intercept a native crash). We now create the
-  // player once per card and only pause/play it.
-  const player = useVideoPlayer(clip.videoUrl, (p) => {
-    p.loop = true;
-    // Feed-style mute-by-default. Users can unmute via the play overlay
-    // (or future per-card mute toggle). Muted autoplay is also required
-    // by iOS to start playback without a user gesture.
-    p.muted = true;
-  });
-
-  // Subscribe to player status so we can render a placeholder while the
-  // source is loading. expo-video status values: 'idle' | 'loading' |
-  // 'readyToPlay' | 'error'. We treat 'readyToPlay' as the cue to swap
-  // the placeholder for the live VideoView.
+  // v8.6 P0 ROOT CAUSE FIX
+  // ─────────────────────────────────────────────────────────────────────
+  // Pre-v8.6 each ClipCard called useVideoPlayer(clip.videoUrl, ...) at
+  // mount, so every card in the FlatList window (windowSize=3 →
+  // 3–5 alive at once) allocated its own Android MediaCodec slot the
+  // moment the hook ran — BEFORE isVisible was even evaluated. The
+  // device has ~8 codec slots. On the SECOND/THIRD open of the Clips
+  // tab the previously-mounted slots had not yet been released by the
+  // OS (hook cleanup is async on native), the new mount couldn't get a
+  // slot, and the native layer SIGABRTed inside libmedia — uncatchable
+  // in JS. The visual "overlap" on first open was the same root cause:
+  // two cards both held decoder surfaces while FlatList settled.
   //
-  // The `mounted` flag guards against the player being GC'd between the
-  // native callback firing and React scheduling the state update — which
-  // is how the previous version could call setIsReady on an unmounted
-  // card mid-scroll.
-  useEffect(() => {
-    if (!player) return;
-    let mounted = true;
-    setIsReady(false);
-    const sub = player.addListener('statusChange', ({ status }) => {
-      if (!mounted) return;
-      setIsReady(status === 'readyToPlay');
-    });
-    return () => {
-      mounted = false;
-      try {
-        sub.remove();
-      } catch {
-        /* listener may already be detached if the player was released */
-      }
-    };
-  }, [player]);
-
-  // Autoplay-on-visible (feed pattern). Pauses + rewinds when scrolled
-  // off-screen so the next card paints its first frame, not the previous
-  // card's last frame. Because the player itself never changes, this is
-  // just a pause/play toggle — no MediaPlayer churn.
-  useEffect(() => {
-    if (!player) return;
-    if (isVisible && isReady) {
-      try {
-        player.play();
-        setIsPlaying(true);
-      } catch {
-        /* player can be torn down mid-render; safe to ignore */
-      }
-    } else if (!isVisible) {
-      try {
-        player.pause();
-      } catch {
-        /* ignore */
-      }
-      setIsPlaying(false);
-    }
-  }, [isVisible, isReady, player, focusEpoch]);
-
-  const togglePlay = useCallback(() => {
-    if (isPlaying) {
-      player.pause();
-    } else {
-      player.play();
-    }
-    setIsPlaying(!isPlaying);
-  }, [isPlaying, player]);
+  // The fix: lift useVideoPlayer to ClipsScreen so there is ONE player
+  // for the entire screen. Active card attaches <VideoView player={
+  // sharedPlayer} /> and gets the codec slot. Inactive cards render a
+  // static gradient + title placeholder — zero native codecs in use.
+  // Max one MediaCodec slot in flight at any time. The unreleased-slot
+  // exhaustion path is removed entirely.
 
   const showHeartAnimation = useCallback(() => {
     heartAnimOpacity.setValue(1);
@@ -181,23 +126,29 @@ function ClipCard({
     ]).start();
   }, [heartAnimOpacity, heartAnimScale]);
 
+  // v8.5 P0 (round 2): the v8.4 handleMediaPress used a 310ms setTimeout
+  // to differentiate single-tap-pause from double-tap-like. Result: a
+  // single tap felt unresponsive (310ms is past the perception threshold
+  // for "did anything happen?"), the user tapped again thinking nothing
+  // had registered, second tap arrived inside the 300ms window → counted
+  // as double-tap → like animation fired INSTEAD of pause. The pause
+  // gesture was effectively unreachable. New behaviour: single tap
+  // immediately toggles play/pause. Double-tap ALSO triggers like (in
+  // addition to the toggle, which the user won't notice because the
+  // toggle reverts on the second tap). Always-visible pause button in
+  // the corner is the redundant always-works path.
   const handleMediaPress = useCallback(() => {
     const now = Date.now();
-    if (now - lastTapRef.current < 300) {
+    const isDoubleTap = now - lastTapRef.current < 300;
+    lastTapRef.current = now;
+    onTogglePlay();
+    if (isDoubleTap) {
       if (!isLiked) {
         onLike(clip.id);
       }
       showHeartAnimation();
-      lastTapRef.current = 0;
-    } else {
-      lastTapRef.current = now;
-      setTimeout(() => {
-        if (lastTapRef.current !== 0 && Date.now() - lastTapRef.current >= 280) {
-          togglePlay();
-        }
-      }, 310);
     }
-  }, [isLiked, onLike, clip.id, showHeartAnimation, togglePlay]);
+  }, [isLiked, onLike, clip.id, showHeartAnimation, onTogglePlay]);
 
   const displayLikes = clip.like_count ?? clip.likes;
   const displayComments = clip.comment_count ?? clip.comments;
@@ -210,28 +161,71 @@ function ClipCard({
         onPress={handleMediaPress}
         style={[styles.clipMedia, { backgroundColor: clip.bgColors[0] }]}
       >
-        <VideoView
-          player={player}
-          style={styles.video}
-          // nativeControls disabled — they overlap the caption/metadata
-          // bar (causing the visual "previous clip's caption bleeds into
-          // next clip's video" artifact) and conflict with the
-          // double-tap-to-like gesture. We render our own play overlay.
-          nativeControls={false}
-          contentFit="cover"
-        />
+        {/* v8.6 P0: only the ACTIVE card mounts <VideoView>. Inactive
+            cards render the gradient placeholder + title preview only —
+            zero MediaCodec slots in use. The shared player belongs to
+            ClipsScreen; when activeClipId changes the parent calls
+            sharedPlayer.replace() to swap source without re-allocating
+            the codec. */}
+        {isActive && sharedPlayer ? (
+          <VideoView
+            player={sharedPlayer}
+            style={styles.video}
+            nativeControls={false}
+            contentFit="cover"
+          />
+        ) : (
+          <View
+            style={[styles.video, { backgroundColor: clip.bgColors[0] }]}
+            // Gradient-coloured placeholder. Title overlay below gives
+            // the card enough identity that the feed doesn't look blank
+            // mid-scroll. Animated thumbnails can be added in a future
+            // build once media_clips.thumbnail_url is generated server-
+            // side at upload (see qa/pre-eas-build-checklist.md).
+          />
+        )}
         {/* Loading placeholder — masks the solid-black first paint that
-            expo-video shows before the source is decoded. Removed once
-            the player reports 'readyToPlay'. */}
-        {!isReady && (
+            expo-video shows before the source is decoded. Only relevant
+            when this card is active and the codec is preparing. */}
+        {isActive && !isReady && (
           <View style={[styles.videoLoadingOverlay, { backgroundColor: clip.bgColors[0] }]}>
             <ActivityIndicator size="small" color="#fff" />
           </View>
         )}
-        {isReady && !isPlaying && (
+        {isActive && isReady && !isPlaying && (
           <View style={styles.playOverlay}>
             <Text style={styles.playIcon}>▶</Text>
           </View>
+        )}
+        {/* Inactive cards: explicit "tap to play" affordance so users
+            scrolling fast know the card is interactive. */}
+        {!isActive && (
+          <View style={styles.playOverlay}>
+            <Text style={styles.playIcon}>▶</Text>
+          </View>
+        )}
+
+        {/* v8.5 P0 (round 2): always-visible pause/play button in the top
+            right. The gesture-only single-tap pause was unreliable
+            (310ms delay made users think nothing happened). This is the
+            redundant always-works path. Only shown on the ACTIVE card
+            because inactive cards have no playback state of their own. */}
+        {isActive && isReady && (
+          <TouchableOpacity
+            style={styles.pauseButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              onTogglePlay();
+            }}
+            hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+            activeOpacity={0.7}
+          >
+            {isPlaying ? (
+              <Pause size={16} color="#fff" fill="#fff" />
+            ) : (
+              <Play size={16} color="#fff" fill="#fff" />
+            )}
+          </TouchableOpacity>
         )}
 
         {displayViews > 0 && (
@@ -325,6 +319,26 @@ export default function ClipsScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // v8.6 P0: ONE shared player for the whole feed. Replaces the
+  // per-card useVideoPlayer that exhausted MediaCodec slots and SIGABRTed
+  // libmedia. The source is set to null on mount and the parent calls
+  // sharedPlayer.replace() whenever activeClipId changes. The codec slot
+  // is acquired the first time a clip becomes active and re-used for
+  // every subsequent active clip — no allocation churn.
+  const sharedPlayer = useVideoPlayer(null as any, (p) => {
+    p.loop = true;
+    p.muted = true;
+  });
+  const [isSharedPlaying, setIsSharedPlaying] = useState(false);
+  const [isSharedReady, setIsSharedReady] = useState(false);
+  // v8.7+ P0: user explicitly requested "stop clips auto-playing unless
+  // user clicks play". Active-card detection still drives codec slot
+  // allocation (no change to the MediaCodec exhaustion fix), but the
+  // shared player now loads paused and waits for an explicit user tap on
+  // the play overlay before starting playback. Once the user taps play
+  // once in the session, subsequent active-card swaps auto-play (so the
+  // feed still feels like a feed mid-scroll after the user has opted in).
+  const [autoplayEnabled, setAutoplayEnabled] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -332,21 +346,98 @@ export default function ClipsScreen() {
     });
   }, []);
   const [likedClipIds, setLikedClipIds] = useState<Set<string>>(new Set());
-  const [visibleClipIds, setVisibleClipIds] = useState<Set<string>>(new Set());
+  // v8.5 P0 (round 2): switched from a Set of "visible" ids to a single
+  // active id. The v8.4 50% visibility threshold + Set let multiple
+  // ClipCards see isVisible=true during a scroll, all calling
+  // player.play() concurrently. Android MediaCodec has ~8 slots; this
+  // saturated them and crashed the app from libmedia (uncatchable in
+  // JS). Now: at most ONE clip is "active" → at most ONE MediaCodec
+  // decode in flight. Others paint a still placeholder.
+  const [activeClipId, setActiveClipId] = useState<string | null>(null);
   // Custom share sheet (v8.3): TikTok / IG Stories / Copy Link / More apps.
   // The sheet wraps the legacy expo-sharing system-share path as its
   // "More apps..." row, so existing behavior remains as a fallback.
   const [shareTarget, setShareTarget] = useState<ClipDisplay | null>(null);
 
-  // focusEpoch bumps on every tab focus. ClipCard's play-on-visible effect
-  // depends on this so paused players resume after a tab switch instead of
-  // staying frozen — v8.3 UAT: "when i went back the other time all clips
-  // were frozen, they were not playing."
-  const [focusEpoch, setFocusEpoch] = useState(0);
+  // v8.6 P0: when activeClipId changes, swap the shared player's source.
+  // This is the single point of codec-source mutation; per-card effects
+  // are gone. If activeClipId is null (none visible), we pause; we do NOT
+  // call replace(null) because some expo-video releases dispose the
+  // codec, which the next play call would have to re-acquire. Keeping
+  // the last source loaded but paused makes the next active swap cheap.
+  useEffect(() => {
+    if (!sharedPlayer) return;
+    const clip = clips.find((c) => c.id === activeClipId);
+    if (!activeClipId || !clip || !clip.videoUrl) {
+      try { sharedPlayer.pause(); } catch { /* ignore */ }
+      setIsSharedPlaying(false);
+      return;
+    }
+    setIsSharedReady(false);
+    try {
+      sharedPlayer.replace({ uri: clip.videoUrl });
+      // v8.7+ P0: only auto-play once the user has opted into playback for
+      // the session. Source still LOADS so the active card paints the
+      // first frame quickly when the user does tap play — but nothing
+      // starts playing without an explicit gesture on first view.
+      if (autoplayEnabled) {
+        sharedPlayer.play();
+        setIsSharedPlaying(true);
+      } else {
+        sharedPlayer.pause();
+        setIsSharedPlaying(false);
+      }
+    } catch {
+      /* native release / dispose race — next viewability tick will retry */
+    }
+    // We intentionally do not depend on `clips` array reference here
+    // because every Realtime patch produces a new reference and would
+    // re-fire this effect, churning sources. activeClipId is stable until
+    // the user actually scrolls.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeClipId, sharedPlayer, autoplayEnabled]);
+
+  // Subscribe to shared-player status for the active card's "loading…"
+  // overlay. The listener is registered against the SHARED player so we
+  // only have one subscription for the whole feed — there is no per-card
+  // listener churn anymore.
+  useEffect(() => {
+    if (!sharedPlayer) return;
+    const sub = sharedPlayer.addListener('statusChange', ({ status }) => {
+      setIsSharedReady(status === 'readyToPlay');
+    });
+    return () => {
+      try { sub.remove(); } catch { /* ignore */ }
+    };
+  }, [sharedPlayer]);
+
+  const toggleSharedPlay = useCallback(() => {
+    if (!sharedPlayer) return;
+    if (isSharedPlaying) {
+      try { sharedPlayer.pause(); } catch { /* ignore */ }
+      setIsSharedPlaying(false);
+    } else {
+      try {
+        sharedPlayer.play();
+        setIsSharedPlaying(true);
+        // First explicit play tap opts the session into autoplay so the
+        // next clip the user scrolls into starts automatically (matches
+        // expected TikTok/IG-style behaviour AFTER the user has signaled
+        // intent to watch).
+        if (!autoplayEnabled) setAutoplayEnabled(true);
+      } catch { /* ignore */ }
+    }
+  }, [isSharedPlaying, sharedPlayer, autoplayEnabled]);
+
+  // On Clips tab unfocus, pause the shared player so audio doesn't bleed
+  // into other tabs. The codec slot is retained so re-focus is instant.
   useFocusEffect(
     useCallback(() => {
-      setFocusEpoch((e) => e + 1);
-    }, [])
+      return () => {
+        try { sharedPlayer?.pause(); } catch { /* ignore */ }
+        setIsSharedPlaying(false);
+      };
+    }, [sharedPlayer])
   );
 
   const fetchClips = useCallback(
@@ -637,7 +728,11 @@ export default function ClipsScreen() {
   }, []);
 
   const handleComment = useCallback(() => {
-    // Comments will be enabled in a future release
+    // v8.7+ P0: the chat-bubble icon next to Heart was wired to a no-op
+    // handler — taps did nothing and the user (correctly) thought it was
+    // broken. Until comments ship, surface an explicit "coming soon"
+    // alert so the affordance is honest about its state.
+    Alert.alert('Coming soon', 'Comments on clips are launching in a future update — stay tuned!');
   }, []);
 
   const handleBlock = useCallback((clip: ClipDisplay) => {
@@ -663,34 +758,58 @@ export default function ClipsScreen() {
     );
   }, []);
 
+  // v8.5 P0 (round 2): pick the SINGLE most-visible clip — the one
+  // closest to the centre of the viewport. Threshold bumped to 80% so
+  // mid-scroll snapshots don't flip the active clip every frame (which
+  // would tear down and re-spin players, the v8.3 crash path). Only when
+  // a clip is truly the dominant card on screen does it become active.
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const ids = new Set(viewableItems.map((item) => item.item?.id).filter(Boolean));
-      setVisibleClipIds(ids);
+      if (viewableItems.length === 0) {
+        setActiveClipId(null);
+        return;
+      }
+      // viewableItems is sorted by index; the first item is the topmost
+      // visible card, which on a vertical feed is the one the user is
+      // actively watching. Use its id.
+      const topId = viewableItems[0]?.item?.id;
+      if (topId) setActiveClipId(topId);
     }
   ).current;
 
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 80,
+    minimumViewTime: 150,
+  }).current;
 
   const renderClipItem = useCallback(
-    ({ item }: { item: ClipDisplay }) => (
-      <ClipCard
-        clip={item}
-        isLiked={likedClipIds.has(item.id)}
-        onLike={handleLike}
-        onShare={handleShare}
-        onComment={handleComment}
-        onFollow={handleFollow}
-        onExport={handleExport}
-        onDelete={handleDelete}
-        onBlock={handleBlock}
-        isVisible={visibleClipIds.has(item.id)}
-        isFollowingPoster={followedUserIds.has(item.userId)}
-        isOwner={!!currentUserId && item.userId === currentUserId}
-        focusEpoch={focusEpoch}
-      />
-    ),
-    [likedClipIds, handleLike, handleShare, handleComment, visibleClipIds, handleDelete, handleBlock, currentUserId, handleExport, handleFollow, followedUserIds, focusEpoch]
+    ({ item }: { item: ClipDisplay }) => {
+      const isActive = item.id === activeClipId;
+      return (
+        <ClipCard
+          clip={item}
+          isLiked={likedClipIds.has(item.id)}
+          onLike={handleLike}
+          onShare={handleShare}
+          onComment={handleComment}
+          onFollow={handleFollow}
+          onExport={handleExport}
+          onDelete={handleDelete}
+          onBlock={handleBlock}
+          isActive={isActive}
+          isFollowingPoster={followedUserIds.has(item.userId)}
+          isOwner={!!currentUserId && item.userId === currentUserId}
+          // The shared player is only handed to the active card so
+          // inactive ones cannot mistakenly mount <VideoView> against it
+          // and double-attach the codec.
+          sharedPlayer={isActive ? sharedPlayer : null}
+          isPlaying={isActive ? isSharedPlaying : false}
+          isReady={isActive ? isSharedReady : false}
+          onTogglePlay={toggleSharedPlay}
+        />
+      );
+    },
+    [likedClipIds, handleLike, handleShare, handleComment, activeClipId, handleDelete, handleBlock, currentUserId, handleExport, handleFollow, followedUserIds, sharedPlayer, isSharedPlaying, isSharedReady, toggleSharedPlay]
   );
 
   const renderFooter = useCallback(() => {
@@ -940,6 +1059,17 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     backgroundColor: 'rgba(108,92,231,0.8)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pauseButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },

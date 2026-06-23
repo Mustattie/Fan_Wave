@@ -12,6 +12,7 @@ import { ArrowLeft, MapPin, Calendar } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
+import { reportError } from '@/lib/errorReporting';
 
 interface RSVP {
   id: string;
@@ -36,68 +37,123 @@ export default function RSVPHistoryScreen() {
   }, []);
 
   const loadRsvps = async () => {
+    const sportColorMap: Record<string, string> = {
+      NFL: Colors.dark.nfl,
+      NBA: Colors.dark.nba,
+      Soccer: Colors.dark.soccer,
+      MLB: Colors.dark.mlb,
+      NHL: Colors.dark.nhl,
+    };
+    const sportEmojiMap: Record<string, string> = {
+      NFL: '🏈', NBA: '🏀', Soccer: '⚽', MLB: '⚾', NHL: '🏒',
+    };
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // watch_party_rsvps.user_id stores auth.users.id (the RPC at
-        // migration 059 writes auth.uid() and create-watch-party.tsx
-        // auto-RSVP writes the same). The earlier "fix" to look up
-        // public.users.id was a regression — reverted to user.id here
-        // so the new mig-059 RSVPs actually surface. v8.2 P0 was the
-        // RPC 404-ing (different bug, fixed by mig 059), not a column
-        // mismatch.
-        const { data, error } = await supabase
-          .from('watch_party_rsvps')
-          .select(`
-            id,
-            status,
-            watch_party_id,
-            watch_parties (
-              id,
-              title,
-              venue_name,
-              city,
-              starts_at,
-              sport,
-              sport_emoji
-            )
-          `)
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (data && !error && data.length > 0) {
-          const mapped: RSVP[] = data.map((r: any) => {
-            const wp = r.watch_parties;
-            const sportColorMap: Record<string, string> = {
-              NFL: Colors.dark.nfl,
-              NBA: Colors.dark.nba,
-              Soccer: Colors.dark.soccer,
-              MLB: Colors.dark.mlb,
-              NHL: Colors.dark.nhl,
-            };
-            return {
-              id: r.id,
-              watch_party_id: r.watch_party_id,
-              status: r.status,
-              title: wp?.title || 'Watch Party',
-              venue: wp?.venue_name || '',
-              city: wp?.city || '',
-              starts_at: wp?.starts_at || '',
-              sport: wp?.sport || 'NFL',
-              sport_emoji: wp?.sport_emoji || '🏈',
-              sport_color: sportColorMap[wp?.sport] || Colors.dark.accent,
-            };
-          });
-          setRsvps(mapped);
-          setLoading(false);
-          return;
-        }
+      if (!user) {
+        setRsvps([]);
+        setLoading(false);
+        return;
       }
-    } catch {
-      // Error loading RSVPs
+
+      // v8.7+ P0: previously this was a single nested .select(...) that
+      // resolved watch_party_rsvps → watch_parties → sports in one
+      // PostgREST call. If PostgREST's schema cache was stale (which
+      // happened repeatedly across the v8.5–v8.7 builds even with
+      // migration 063's triple reload), the join silently failed and the
+      // page went blank despite RSVPs existing in the DB. Split into
+      // two flat queries instead: get the RSVP rows by user_id, then
+      // hydrate the watch_parties rows by id list. No join, no schema-
+      // resolution surprises.
+      //
+      // We ALSO fold in parties the user CREATED via creator_id so the
+      // page never shows blank when the create-watch-party auto-RSVP path
+      // failed (RLS race / WC-pass gate / transient auth refresh).
+      const [rsvpResult, createdResult] = await Promise.all([
+        supabase
+          .from('watch_party_rsvps')
+          .select('id, status, created_at, watch_party_id')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('watch_parties')
+          .select('id, starts_at')
+          .eq('creator_id', user.id)
+          .order('starts_at', { ascending: false })
+          .limit(50),
+      ]);
+
+      if (rsvpResult.error) {
+        console.warn(
+          '[rsvp-history] rsvps query error',
+          rsvpResult.error.code,
+          rsvpResult.error.message,
+        );
+        reportError(rsvpResult.error, { source: 'rsvp-history:loadRsvps:rsvps' });
+      }
+
+      // Build a status map: created-but-not-RSVPed parties default to
+      // 'going' (treat the host as attending). DB RSVPs always win.
+      const statusByPartyId: Record<string, 'going' | 'interested' | 'declined'> = {};
+      (createdResult.data || []).forEach((p: any) => {
+        if (p?.id) statusByPartyId[p.id] = 'going';
+      });
+      const rsvpIdByPartyId: Record<string, string> = {};
+      (rsvpResult.data || []).forEach((r: any) => {
+        if (!r?.watch_party_id) return;
+        statusByPartyId[r.watch_party_id] = r.status;
+        rsvpIdByPartyId[r.watch_party_id] = r.id;
+      });
+
+      const partyIds = Object.keys(statusByPartyId);
+      if (partyIds.length === 0) {
+        setRsvps([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data: parties, error: partiesError } = await supabase
+        .from('watch_parties')
+        .select(
+          'id, title, venue_name, venue_city, starts_at, sport_id, sports:sports!sport_id ( id, name )'
+        )
+        .in('id', partyIds);
+
+      if (partiesError) {
+        console.warn(
+          '[rsvp-history] watch_parties hydrate error',
+          partiesError.code,
+          partiesError.message,
+        );
+        reportError(partiesError, { source: 'rsvp-history:loadRsvps:parties' });
+      }
+
+      const mapped: RSVP[] = (parties || []).map((wp: any) => {
+        const sportName: string = wp?.sports?.name || '';
+        const status = statusByPartyId[wp.id] || 'going';
+        return {
+          id: rsvpIdByPartyId[wp.id] || `created-${wp.id}`,
+          watch_party_id: wp.id,
+          status,
+          title: wp?.title || 'Watch Party',
+          venue: wp?.venue_name || '',
+          city: wp?.venue_city || '',
+          starts_at: wp?.starts_at || '',
+          sport: sportName || 'Soccer',
+          sport_emoji: sportEmojiMap[sportName] || '⚽',
+          sport_color: sportColorMap[sportName] || Colors.dark.accent,
+        };
+      });
+      // Stable ordering: upcoming first by starts_at asc, past after by
+      // starts_at desc — the SectionList renderer below splits these.
+      mapped.sort((a, b) => (a.starts_at || '').localeCompare(b.starts_at || ''));
+      setRsvps(mapped);
+    } catch (e) {
+      reportError(e, { source: 'rsvp-history:loadRsvps:exception' });
+      setRsvps([]);
+    } finally {
+      setLoading(false);
     }
-    setRsvps([]);
-    setLoading(false);
   };
 
   const now = new Date();
