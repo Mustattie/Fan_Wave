@@ -3,6 +3,48 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { supabase } from './supabase';
+import { reportError } from './errorReporting';
+
+// ---------------------------------------------------------------------------
+// IAP diagnostic state — exposes runtime visibility into the RevenueCat
+// pipeline so pre-deploy testers (and prod debugging) can see exactly where
+// the chain breaks. Production-shipped builds previously surfaced the
+// generic "no singleton instance" / "purchase could not start" errors with
+// no breadcrumbs because configureRevenueCat() swallowed errors in a
+// __DEV__-only console.warn. This state lives at module scope so the
+// debug screen can read it cheaply.
+// ---------------------------------------------------------------------------
+export type RcStatus = {
+  apiKeyPresent: boolean;
+  apiKeyPlatform: 'ios' | 'android';
+  sdkRequireSucceeded: boolean | null;
+  configureCalled: boolean;
+  configureSucceeded: boolean | null;
+  loginCalled: boolean;
+  loginSucceeded: boolean | null;
+  lastError: string | null;
+  lastUpdated: number;
+};
+
+let rcStatus: RcStatus = {
+  apiKeyPresent: false,
+  apiKeyPlatform: Platform.OS === 'ios' ? 'ios' : 'android',
+  sdkRequireSucceeded: null,
+  configureCalled: false,
+  configureSucceeded: null,
+  loginCalled: false,
+  loginSucceeded: null,
+  lastError: null,
+  lastUpdated: 0,
+};
+
+function patchRcStatus(patch: Partial<RcStatus>): void {
+  rcStatus = { ...rcStatus, ...patch, lastUpdated: Date.now() };
+}
+
+export function getRevenueCatStatus(): RcStatus {
+  return rcStatus;
+}
 
 // ---------------------------------------------------------------------------
 // Expo Go detection — used to grant fake Premium entitlement so paywalls
@@ -212,21 +254,108 @@ export async function configureRevenueCat(authUserId?: string | null): Promise<v
   const iosKey = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY;
   const androidKey = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY;
   const apiKey = Platform.OS === 'ios' ? iosKey : androidKey;
+  patchRcStatus({
+    apiKeyPresent: !!apiKey,
+    apiKeyPlatform: Platform.OS === 'ios' ? 'ios' : 'android',
+  });
   if (!apiKey) {
-    if (__DEV__) console.warn('[entitlements] No RevenueCat API key configured for ' + Platform.OS);
+    // v8.7+ P0: no more __DEV__-only silence. The 2026-06 production
+    // releases shipped without ever surfacing this — keys missing from
+    // a build env would have been invisible. Sentry now sees it.
+    const err = new Error(
+      `RevenueCat API key missing for ${Platform.OS} — check EAS env / .env.production`,
+    );
+    patchRcStatus({ lastError: err.message });
+    reportError(err, { source: 'entitlements:configureRevenueCat:missingKey' });
     return;
   }
+
+  let Purchases: any;
   try {
-    // Dynamic require so the native module doesn't break Expo Go / dev
-    // environments that don't have it linked.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    Purchases = require('react-native-purchases').default;
+    patchRcStatus({ sdkRequireSucceeded: !!Purchases });
+    if (!Purchases) {
+      const err = new Error('react-native-purchases module loaded but default export is missing');
+      patchRcStatus({ lastError: err.message });
+      reportError(err, { source: 'entitlements:configureRevenueCat:noDefault' });
+      return;
+    }
+  } catch (e: any) {
+    patchRcStatus({
+      sdkRequireSucceeded: false,
+      lastError: e?.message ?? 'require react-native-purchases threw',
+    });
+    reportError(e, { source: 'entitlements:configureRevenueCat:require' });
+    return;
+  }
+
+  patchRcStatus({ configureCalled: true });
+  try {
+    await Purchases.configure({ apiKey });
+    patchRcStatus({ configureSucceeded: true });
+  } catch (e: any) {
+    patchRcStatus({
+      configureSucceeded: false,
+      lastError: e?.message ?? 'Purchases.configure threw',
+    });
+    reportError(e, { source: 'entitlements:configureRevenueCat:configure', apiKeyPrefix: apiKey.slice(0, 6) });
+    return;
+  }
+
+  if (authUserId) {
+    patchRcStatus({ loginCalled: true });
+    try {
+      await Purchases.logIn(authUserId);
+      patchRcStatus({ loginSucceeded: true });
+    } catch (e: any) {
+      patchRcStatus({
+        loginSucceeded: false,
+        lastError: e?.message ?? 'Purchases.logIn threw',
+      });
+      reportError(e, { source: 'entitlements:configureRevenueCat:logIn' });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Offerings probe — used by the IAP debug screen to verify RC dashboard +
+// Play Console wiring without actually purchasing. Returns the count of
+// packages on the current offering, or an error message if RC reports
+// no current offering (= dashboard misconfigured) or no packages (= Play
+// Console products not synced).
+// ---------------------------------------------------------------------------
+export async function probeOfferings(): Promise<{
+  ok: boolean;
+  currentOfferingId: string | null;
+  packageCount: number;
+  packageIds: string[];
+  productIds: string[];
+  error: string | null;
+}> {
+  try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const Purchases = require('react-native-purchases').default;
-    await Purchases.configure({ apiKey });
-    if (authUserId) {
-      await Purchases.logIn(authUserId);
-    }
-  } catch (e) {
-    if (__DEV__) console.warn('[entitlements] Purchases.configure failed:', e);
+    const offerings = await Purchases.getOfferings();
+    const current = offerings?.current;
+    const packages: any[] = current?.availablePackages ?? [];
+    return {
+      ok: true,
+      currentOfferingId: current?.identifier ?? null,
+      packageCount: packages.length,
+      packageIds: packages.map((p: any) => p?.identifier).filter(Boolean),
+      productIds: packages.map((p: any) => p?.product?.identifier).filter(Boolean),
+      error: null,
+    };
+  } catch (e: any) {
+    return {
+      ok: false,
+      currentOfferingId: null,
+      packageCount: 0,
+      packageIds: [],
+      productIds: [],
+      error: e?.message ?? 'getOfferings threw',
+    };
   }
 }
 

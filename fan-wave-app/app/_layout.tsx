@@ -419,6 +419,7 @@ export default function RootLayout() {
           <Stack.Screen name="legal" options={{ headerShown: false }} />
           <Stack.Screen name="blocked-users" options={{ headerShown: false }} />
           <Stack.Screen name="subscription" options={{ headerShown: false }} />
+          <Stack.Screen name="iap-debug" options={{ headerShown: false }} />
         </Stack>
       </ThemeProvider>
     </AppQueryClientProvider>

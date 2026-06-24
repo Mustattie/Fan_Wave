@@ -30,6 +30,7 @@ import {
   Slash,
   Trash2,
   Crown,
+  Stethoscope,
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
@@ -174,6 +175,8 @@ export default function ProfileScreen() {
       router.push('/creator-stats' as any);
     } else if (label === 'Subscription') {
       router.push('/subscription' as any);
+    } else if (label === 'IAP Diagnostics') {
+      router.push('/iap-debug' as any);
     } else if (label === 'Invite Friends') {
       handleInvite();
     } else if (label === 'Privacy Policy') {
@@ -219,6 +222,7 @@ export default function ProfileScreen() {
   const menuItems = [
     { icon: Edit3, label: 'Edit Profile', color: Colors.dark.text, badge: null as string | null },
     { icon: Crown, label: 'Subscription', color: Colors.dark.accent, badge: subBadge },
+    { icon: Stethoscope, label: 'IAP Diagnostics', color: Colors.dark.warning, badge: null },
     { icon: Trophy, label: 'My Sports', color: Colors.dark.text, badge: null },
     { icon: Star, label: 'My Teams', color: Colors.dark.text, badge: null },
     { icon: Ticket, label: 'RSVP History', color: Colors.dark.text, badge: null },
