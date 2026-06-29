@@ -166,30 +166,46 @@ class ESPNAdapter implements SportsDataProvider {
     const mapping = SPORT_LEAGUE_MAP[sport];
     if (!mapping) return [];
 
-    // Start window 1 day in the past so ESPN still includes yesterday's
-    // finished games (ESPN drops completed games from "today's scoreboard"
-    // relatively quickly; widening the window catches STATUS_FINAL events
-    // we'd otherwise miss). Combined with espn_id upsert, this means any
-    // game still in our DB at status='in' or 'scheduled' from yesterday
-    // gets its final score written when this fires.
+    // Walk the window day-by-day. ESPN's scoreboard endpoint accepts a
+    // multi-day `dates=YYYYMMDD-YYYYMMDD` range but caps the number of
+    // events it returns per call (observed ~25 for soccer/fifa.world on
+    // 2026-06-25 — only 3 of June 25's 4 group-stage matches landed in
+    // the DB, and June 24 was empty entirely). Single-day requests are
+    // not capped, so iterating per day guarantees we collect every
+    // fixture. Dedupe by espnId at the end so a game that ESPN echoes
+    // across two calendar days (rare time-zone edge cases) only lands
+    // once in the upsert pass downstream.
+    //
+    // Back-window is `-1` day for the usual finished-yesterday catch-up.
+    // Caller controls forward window via `days`; clamp upstream.
     const now = new Date();
     const start = new Date(now);
     start.setUTCDate(start.getUTCDate() - 1);
     const end = new Date(now);
     end.setUTCDate(end.getUTCDate() + days);
 
-    const dateRange = `${start.toISOString().slice(0, 10).replace(/-/g, "")}-${end.toISOString().slice(0, 10).replace(/-/g, "")}`;
-
-    const url = `${this.baseUrl}/${mapping.sport}/${mapping.league}/scoreboard?dates=${dateRange}`;
-
-    const res = await fetch(url);
-    if (!res.ok) {
-      console.warn(`ESPN fetch failed for ${sport}: ${res.status}`);
-      return [];
+    const byEspnId = new Map<string, ParsedGame>();
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      const yyyymmdd = cursor.toISOString().slice(0, 10).replace(/-/g, "");
+      const url = `${this.baseUrl}/${mapping.sport}/${mapping.league}/scoreboard?dates=${yyyymmdd}`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.warn(`ESPN fetch failed for ${sport} @ ${yyyymmdd}: ${res.status}`);
+        } else {
+          const data = await res.json();
+          for (const game of this.parseEvents(data.events ?? [], sport)) {
+            byEspnId.set(game.espnId, game);
+          }
+        }
+      } catch (e) {
+        console.warn(`ESPN fetch threw for ${sport} @ ${yyyymmdd}:`, e);
+      }
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
 
-    const data = await res.json();
-    return this.parseEvents(data.events ?? [], sport);
+    return Array.from(byEspnId.values());
   }
 
   async getLiveScores(sport: string): Promise<ParsedGame[]> {

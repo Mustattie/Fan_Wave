@@ -18,6 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { reportError } from '@/lib/errorReporting';
+import { isExpoGo } from '@/lib/entitlements';
 
 const WC_CREATED_GROUPS_KEY = 'wc_created_groups';
 
@@ -174,6 +175,28 @@ export default function CreateWCGroupScreen() {
         .single();
 
       if (error) {
+        // In Expo Go the chat_rooms RLS gate ALWAYS rejects on
+        // group_type='worldcup' inserts. Surface a friendly test-mode
+        // success so the user can walk the full create flow without
+        // hitting the cryptic 42501 dialog from 2026-06-23. The local
+        // groups list still picks up the group via AsyncStorage so the
+        // UX preview is complete.
+        const isRls =
+          (error as any)?.code === '42501' ||
+          /row-level security/i.test(error.message ?? '');
+        if (isRls && isExpoGo()) {
+          await saveGroupLocally(groupData);
+          setIsCreating(false);
+          Alert.alert(
+            'Test mode (Expo Go)',
+            'Form looks good! In a production build with a Soccer Cup pass this would have created the group on the server. We saved a local preview so you can still see it on the Fan Groups list.',
+            [
+              { text: 'View Group', onPress: () => router.replace(`/fan-group/${groupData.id}` as any) },
+              { text: 'Done', onPress: () => router.back() },
+            ],
+          );
+          return;
+        }
         Alert.alert('Error', `Could not create group: ${error.message}`);
         setIsCreating(false);
         return;

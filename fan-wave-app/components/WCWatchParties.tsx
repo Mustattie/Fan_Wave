@@ -15,7 +15,7 @@ import { shareWatchParty } from '@/lib/sharing';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
-import { useHasWCAccess } from '@/lib/entitlements';
+import { useHasWCAccess, isExpoGo } from '@/lib/entitlements';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -154,6 +154,14 @@ export default function WCWatchParties() {
   // ── RSVP handler ───────────────────────────────────────
 
   const handleRsvp = async (partyId: string) => {
+    // Expo Go: optimistic local toggle only. The RPC requires has_wc_access()
+    // server-side which is false for any account that hasn't actually paid;
+    // letting the call run would 42501 and surface the broken paywall.
+    if (isExpoGo()) {
+      setRsvpMap((prev) => ({ ...prev, [partyId]: !prev[partyId] }));
+      return;
+    }
+
     // Client-side WC-pass check — mirrors the migration 053 RLS gate so
     // free users get the WCPassPaywall instead of a silent error toast.
     if (!hasWCAccess) {

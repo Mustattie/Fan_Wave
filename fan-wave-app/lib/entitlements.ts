@@ -54,8 +54,14 @@ export function getRevenueCatStatus(): RcStatus {
 //
 // SDK 50+ prefers ExecutionEnvironment.storeClient; appOwnership is the
 // pre-50 path that still works on current Expo Go. Belt-and-suspenders.
+//
+// Exported so screens that hit Supabase directly (chat_rooms insert,
+// watch_parties insert) can short-circuit BEFORE the request, since the
+// server-side RLS gates can't be bypassed from the client even when the UI
+// hooks grant fake Premium. Without an explicit check at the call site, the
+// user sees a confusing RLS error after submitting the create form.
 // ---------------------------------------------------------------------------
-function isExpoGo(): boolean {
+export function isExpoGo(): boolean {
   if (!__DEV__) return false;
   try {
     if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) {
@@ -180,10 +186,14 @@ export function useSubscriptionState() {
       // also needs them to exercise every create flow so they can validate
       // the app. We grant access at both layers.
       //
-      // v8.7+ P0: also grant fake Premium in Expo Go so the paywall sheets
-      // don't crash on the RevenueCat stub. Strictly __DEV__-only via
-      // isExpoGo(); production EAS builds never hit this path.
-      if (isReviewerEmail(user.email) || isExpoGo()) {
+      // NOTE on Expo Go: the Expo Go bypass lives in the leaf hooks
+      // (useHasPremium / useHasWCAccess), NOT inside this queryFn.
+      // Reason: React Query caches the queryFn result under
+      // ['entitlements'] across hot reloads; a cached "false" result from
+      // before the bypass shipped will keep paywalls visible for 30s
+      // (staleTime). Putting the check at the leaf makes the override
+      // take effect on the very next render after the file reloads.
+      if (isReviewerEmail(user.email)) {
         return { ...derived, hasPremiumAccess: true, hasWCAccess: true };
       }
       return derived;
@@ -195,11 +205,15 @@ export function useSubscriptionState() {
 
 export function useHasPremium(): boolean {
   const { data } = useSubscriptionState();
+  // Expo Go bypass at the leaf — see comment inside useSubscriptionState
+  // for why this lives here and not inside the queryFn.
+  if (isExpoGo()) return true;
   return data?.hasPremiumAccess ?? false;
 }
 
 export function useHasWCAccess(): boolean {
   const { data } = useSubscriptionState();
+  if (isExpoGo()) return true;
   return data?.hasWCAccess ?? false;
 }
 

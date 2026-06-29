@@ -31,6 +31,7 @@ import {
 import { trackEvent } from '@/lib/analytics';
 import { blockUser } from '@/lib/blocks';
 import { ClipShareSheet } from '@/components/ClipShareSheet';
+import { ClipCommentsSheet } from '@/components/ClipCommentsSheet';
 
 const PAGE_SIZE = 20;
 
@@ -64,7 +65,7 @@ function ClipCard({
   isLiked: boolean;
   onLike: (clipId: string) => void;
   onShare: (clip: ClipDisplay) => void;
-  onComment: () => void;
+  onComment: (clip: ClipDisplay) => void;
   onFollow: (userId: string) => void;
   onExport: (clip: ClipDisplay) => void;
   onDelete: (clip: ClipDisplay) => void;
@@ -281,7 +282,7 @@ function ClipCard({
               {displayLikes}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionItem} onPress={onComment}>
+          <TouchableOpacity style={styles.actionItem} onPress={() => onComment(clip)}>
             <MessageCircle size={16} color={Colors.dark.textSecondary} />
             <Text style={styles.actionText}>{displayComments}</Text>
           </TouchableOpacity>
@@ -358,6 +359,8 @@ export default function ClipsScreen() {
   // The sheet wraps the legacy expo-sharing system-share path as its
   // "More apps..." row, so existing behavior remains as a fallback.
   const [shareTarget, setShareTarget] = useState<ClipDisplay | null>(null);
+  // The clip currently open in the comments sheet. Null = sheet closed.
+  const [commentingClip, setCommentingClip] = useState<ClipDisplay | null>(null);
 
   // v8.6 P0: when activeClipId changes, swap the shared player's source.
   // This is the single point of codec-source mutation; per-card effects
@@ -727,12 +730,12 @@ export default function ClipsScreen() {
     );
   }, []);
 
-  const handleComment = useCallback(() => {
-    // v8.7+ P0: the chat-bubble icon next to Heart was wired to a no-op
-    // handler — taps did nothing and the user (correctly) thought it was
-    // broken. Until comments ship, surface an explicit "coming soon"
-    // alert so the affordance is honest about its state.
-    Alert.alert('Coming soon', 'Comments on clips are launching in a future update — stay tuned!');
+  const handleComment = useCallback((clip: ClipDisplay) => {
+    // Comments sheet opens against the chat-bubble action. Reads/writes
+    // hit the clip_comments table (mig 004) — RLS allows any
+    // authenticated select + own-row insert/delete. The sheet manages
+    // realtime subscription + optimistic posts itself.
+    setCommentingClip(clip);
   }, []);
 
   const handleBlock = useCallback((clip: ClipDisplay) => {
@@ -974,6 +977,24 @@ export default function ClipsScreen() {
           }}
         />
       )}
+
+      <ClipCommentsSheet
+        visible={!!commentingClip}
+        onClose={() => setCommentingClip(null)}
+        clipId={commentingClip?.id ?? null}
+        onCountChange={(next) => {
+          if (!commentingClip) return;
+          // Mirror the new count back into the feed cache so the
+          // chat-bubble badge updates without a full refetch.
+          setClips((prev) =>
+            prev.map((c) =>
+              c.id === commentingClip.id
+                ? { ...c, comment_count: next, comments: next }
+                : c,
+            ),
+          );
+        }}
+      />
     </SafeAreaView>
   );
 }

@@ -32,6 +32,8 @@ import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mapGameToDisplay, type GameDisplay } from '@/lib/mappers';
 import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
+import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
+import { isExpoGo } from '@/lib/entitlements';
 import { reportError } from '@/lib/errorReporting';
 import { invalidateCache } from '@/lib/cache';
 import { queryClient } from '@/hooks/useQueryClient';
@@ -167,6 +169,10 @@ export default function CreateWatchPartyScreen() {
   const isSoccerCupContext = eventParam === 'soccer-cup-2026';
   const [step, setStep] = useState(1);
   const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
+  // Soccer Cup parties need the WC Pass paywall, not Premium. Without a
+  // separate state slot the RLS-error handler showed users the wrong sheet
+  // (Premium-only) and they couldn't reach the $19.99 pass purchase.
+  const [showWCPaywall, setShowWCPaywall] = useState(false);
 
   // Step 1 state
   const [venueQuery, setVenueQuery] = useState('');
@@ -827,7 +833,32 @@ export default function CreateWatchPartyScreen() {
         msg.includes('row-level security') ||
         msg.includes('violates row-level security policy');
       if (isRlsBlock) {
-        setShowPremiumPaywall(true);
+        // In Expo Go the RLS gate ALWAYS rejects (the test account has no
+        // real Premium / WC pass). Surface a friendly "test-mode" success
+        // instead of a paywall — the paywall sheet itself can't complete a
+        // purchase in Expo Go, so showing it just produces the "Purchase
+        // could not start" loop the user reported on 2026-06-23. The
+        // server-side gate is still authoritative; production builds with
+        // a real entitlement reach this path only on actual policy
+        // violations.
+        if (isExpoGo()) {
+          Alert.alert(
+            'Test mode (Expo Go)',
+            'Form looks good! In a production build with a real subscription this would have created the watch party. Nothing was saved to the server.',
+            [{ text: 'OK', onPress: () => router.back() }],
+          );
+          return;
+        }
+        // Soccer Cup parties hit the WC-pass gate, not the Premium gate.
+        // Showing PremiumPaywall here was the v8.7+ Soccer Cup screenshot
+        // bug: user tapped Create on the WC tab, got "Fan Sphere Premium"
+        // instead of the $19.99 WC Pass sheet, and had no path to the
+        // intended product.
+        if (isSoccerCupContext) {
+          setShowWCPaywall(true);
+        } else {
+          setShowPremiumPaywall(true);
+        }
       } else {
         Alert.alert('Error', 'Could not create watch party. Please try again.');
       }
@@ -1388,6 +1419,10 @@ export default function CreateWatchPartyScreen() {
       <PremiumPaywall
         visible={showPremiumPaywall}
         onClose={() => setShowPremiumPaywall(false)}
+      />
+      <WCPassPaywall
+        visible={showWCPaywall}
+        onClose={() => setShowWCPaywall(false)}
       />
 
       {/* Contact picker modal */}

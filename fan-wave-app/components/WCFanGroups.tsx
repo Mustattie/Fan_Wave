@@ -17,7 +17,7 @@ import { reportError } from '@/lib/errorReporting';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
-import { useHasWCAccess } from '@/lib/entitlements';
+import { useHasWCAccess, isExpoGo } from '@/lib/entitlements';
 
 const WC_CREATED_GROUPS_KEY = 'wc_created_groups';
 
@@ -229,6 +229,15 @@ export default function WCFanGroups() {
 
   const handleJoin = async (groupId: string) => {
     if (joinedMap[groupId]) return;
+
+    // Expo Go: optimistic local "Joined" state only. The chat_room_members
+    // insert requires has_wc_access() in mig 053, which always rejects
+    // unpaid test accounts. Skipping the DB call avoids the cryptic 42501
+    // dialog and keeps the local badge in sync.
+    if (isExpoGo()) {
+      setJoinedMap((prev) => ({ ...prev, [groupId]: true }));
+      return;
+    }
 
     // Client-side WC-pass check — mirrors the migration 053 RLS gate.
     if (!hasWCAccess) {
