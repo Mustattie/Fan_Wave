@@ -71,9 +71,10 @@ function isFlagActive(flag: FeatureFlag, ignoreDateWindow = false): boolean {
   return true;
 }
 
-const DEFAULT_FLAG_VALUES: Record<string, boolean> = {
-  world_cup_mode: true,
-};
+// v9.0 pivot: `world_cup_mode` removed — the Soccer Cup tab has been swapped
+// out of the layout, so the flag no longer gates anything. Add future flag
+// defaults here as needed.
+const DEFAULT_FLAG_VALUES: Record<string, boolean> = {};
 
 export async function isFeatureActive(key: string, options?: { ignoreDateWindow?: boolean }): Promise<boolean> {
   try {

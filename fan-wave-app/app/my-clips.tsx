@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,13 +9,14 @@ import {
   Alert,
   ActivityIndicator,
   Dimensions,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { ArrowLeft, Play, X, Eye, Heart, MessageCircle, Share2, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 
 // v8.5 P0: previously every clip card rendered as a featureless black
 // tile because the screen relied on a `color` column the media_clips
@@ -55,34 +56,57 @@ export default function MyClipsScreen() {
   const router = useRouter();
   const [clips, setClips] = useState<Clip[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedClip, setSelectedClip] = useState<Clip | null>(null);
 
-  useEffect(() => {
-    loadClips();
-  }, []);
-
-  const loadClips = async () => {
+  const loadClips = useCallback(async () => {
+    setLoadError(null);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data, error } = await supabase
-          .from('media_clips')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (data && !error && data.length > 0) {
-          setClips(data);
-          setLoading(false);
-          return;
-        }
+      if (!user) {
+        setLoadError('Not signed in. Sign in to see your clips.');
+        setClips([]);
+        return;
       }
-    } catch {
-      // Error loading clips
+
+      const { data, error } = await supabase
+        .from('media_clips')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        // Silent catch was hiding the cause. Most likely an RLS misalignment
+        // (user.id != row.user_id), but surface whatever Supabase reports so
+        // we can act on it instead of always landing on the empty state.
+        setLoadError(error.message || 'Could not load clips. Pull to retry.');
+        setClips([]);
+        return;
+      }
+
+      setClips((data as Clip[]) ?? []);
+    } catch (e) {
+      setLoadError((e as Error)?.message || 'Network error. Pull to retry.');
+      setClips([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    setClips([]);
-    setLoading(false);
-  };
+  }, []);
+
+  // Re-query whenever the screen regains focus so a clip posted via the
+  // upload queue lands here without a manual pull-to-refresh.
+  useFocusEffect(
+    useCallback(() => {
+      loadClips();
+    }, [loadClips]),
+  );
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadClips();
+  }, [loadClips]);
 
   const handleDelete = (clip: Clip) => {
     Alert.alert(
@@ -183,9 +207,29 @@ export default function MyClipsScreen() {
           <ActivityIndicator size="large" color={Colors.dark.accent} />
         </View>
       ) : clips.length === 0 ? (
-        <View style={styles.centered}>
-          <Text style={styles.emptyText}>Your highlights reel is empty — capture the moment!</Text>
-        </View>
+        <FlatList
+          data={[]}
+          renderItem={null as any}
+          keyExtractor={() => 'empty'}
+          contentContainerStyle={styles.emptyContent}
+          ListEmptyComponent={
+            <View style={styles.centered}>
+              <Text style={styles.emptyText}>
+                {loadError
+                  ? `Couldn't load clips: ${loadError}`
+                  : 'Your highlights reel is empty — capture the moment!'}
+              </Text>
+              <Text style={styles.emptyHint}>Pull down to refresh.</Text>
+            </View>
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={Colors.dark.text}
+            />
+          }
+        />
       ) : (
         <FlatList
           data={clips}
@@ -195,6 +239,13 @@ export default function MyClipsScreen() {
           columnWrapperStyle={styles.row}
           contentContainerStyle={styles.grid}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={Colors.dark.text}
+            />
+          }
         />
       )}
 
@@ -296,6 +347,18 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: Colors.dark.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: 24,
+  },
+  emptyHint: {
+    fontSize: 13,
+    color: Colors.dark.textSecondary,
+    marginTop: 12,
+    opacity: 0.7,
+  },
+  emptyContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   grid: {
     padding: 16,

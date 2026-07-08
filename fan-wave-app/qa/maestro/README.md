@@ -1,6 +1,6 @@
 # Fan Sphere Maestro QA Scenarios
 
-End-to-end UI test scenarios for [Maestro](https://maestro.mobile.dev/). These run against the Android emulator and exercise the same code paths a real beta tester would hit — sign-up, onboarding, fan groups, Soccer Cup tab, watch parties, clips, and the paywall flow.
+End-to-end UI test scenarios for [Maestro](https://maestro.mobile.dev/). These run against the Android emulator and exercise the same code paths a real beta tester would hit — sign-up, onboarding, fan groups, Game Day scoreboard, watch parties, clips, and the paywall flow.
 
 ## Why these exist
 
@@ -51,10 +51,10 @@ maestro test fan-wave-app/qa/maestro/01_signup_onboarding.yaml --format=junit --
 
 | File | Day | Coverage |
 |---|---|---|
-| `01_signup_onboarding.yaml` | D1 | Sign up + onboarding (sports/teams/city) + tour 6 tabs |
+| `01_signup_onboarding.yaml` | D1 | Sign up + onboarding (sports/teams/city) + tour 5 tabs |
 | `02_fan_group_create.yaml` | D2 AM | Create a new fan group |
 | `03_fan_group_join_participate.yaml` | D2 PM | Join existing groups, chat, post clip from inside group |
-| `04_world_cup_tab.yaml` | D3 | Soccer Cup tab — schedule, matches, bracket, WC group, WC parties |
+| `04_game_day.yaml` | D3 | Game Day tab — header, Sport pill row, live/upcoming/final sections |
 | `05_watch_party_rsvp.yaml` | D4 AM | Browse + RSVP to existing watch parties |
 | `06_watch_party_create.yaml` | D4 PM | Create your own watch party for a WC match |
 | `07_clips.yaml` | D5 | Clip upload, like, share, export |

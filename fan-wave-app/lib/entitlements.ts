@@ -211,6 +211,11 @@ export function useHasPremium(): boolean {
   return data?.hasPremiumAccess ?? false;
 }
 
+/**
+ * @deprecated v9.0 pivot: WC Pass is no longer sold, legacy holders grandfathered to Premium
+ * via migration 065. This hook remains for read-only legacy compatibility. New code should
+ * prefer useHasPremium() which now covers all paid entitlements.
+ */
 export function useHasWCAccess(): boolean {
   const { data } = useSubscriptionState();
   if (isExpoGo()) return true;
@@ -485,40 +490,15 @@ export async function purchasePremium(plan: 'monthly' | 'annual'): Promise<Purch
   }
 }
 
+/**
+ * @deprecated v9.0 pivot: the WC Pass SKU is no longer sold. Any caller reaching this
+ * function is a bug — the intended replacement is purchasePremium(). We keep a throwing
+ * stub (rather than deleting the export) so lingering imports fail loudly at call time
+ * instead of at bundle time, giving us a Sentry breadcrumb to hunt down stragglers before
+ * v9.1 removes the symbol entirely.
+ */
 export async function purchaseWCPass(): Promise<PurchaseResult> {
-  if (isExpoGo()) {
-    return {
-      kind: 'error',
-      error: new Error(
-        'Purchases are not available in Expo Go. Test in an EAS preview or production build.',
-      ),
-    };
-  }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const Purchases = require('react-native-purchases').default;
-
-    // WC Pass is a non-consumable, NOT a subscription, so it doesn't
-    // need the productId:basePlanId Android-subscription handling that
-    // Premium uses. Try the package path first (works if the RC dashboard
-    // has it in the current offering), and fall back to a direct product
-    // purchase by bare product ID, which works on both iOS and Android
-    // for non-consumables. This recovers from RC offering misconfigurations
-    // — observed 2026-06-15 when findPackageForPlan kept returning null
-    // even with an Active wc_pass_2026 IAP in Play Console.
-    const pkg = await findPackageForPlan('wc_pass');
-    const result = pkg
-      ? await Purchases.purchasePackage(pkg)
-      : await Purchases.purchaseProduct('wc_pass_2026');
-
-    if (result?.customerInfo?.entitlements?.active?.wc_pass) {
-      return { kind: 'success' };
-    }
-    return { kind: 'pending' };
-  } catch (e: any) {
-    if (e?.userCancelled || /cancel/i.test(e?.message ?? '')) {
-      return { kind: 'cancelled' };
-    }
-    return { kind: 'error', error: e };
-  }
+  throw new Error(
+    'WC Pass is no longer available for purchase. Use purchasePremium() instead.',
+  );
 }

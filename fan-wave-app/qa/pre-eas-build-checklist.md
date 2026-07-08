@@ -29,7 +29,91 @@ credits + a tester-burn event. The math is obvious.
 
 ---
 
-## PHASE 0 — Triage (5 min)
+## PHASE 0 — v9.0 Pivot Sanity (5 min)
+
+The v9.0 pivot removed the Soccer Cup tab, folded Fan Groups into
+Discover, and added the Game Day tab. Every future v9.x build must
+still pass these — a regression here means the pivot itself broke.
+Run these BEFORE the older triage / static gates so pivot fallout is
+caught first.
+
+### 0.1 — Tab bar shape
+
+- [ ] Bottom tab bar shows **exactly 5 tabs, in this order**:
+      Home, Discover, Game Day, Clips, Profile.
+- [ ] No "Soccer Cup" tab is visible.
+- [ ] No standalone "Groups" tab is visible (Groups now lives inside
+      Discover).
+
+### 0.2 — Game Day tab renders empty-state clean
+
+- [ ] Game Day tab opens without a crash or ErrorBoundary fallback.
+- [ ] Sport pill row is visible at the top.
+- [ ] "Live now" section header is visible even when there are no live
+      games (empty-state copy, not a blank screen).
+- [ ] "Upcoming today" section header is visible even when the list is
+      empty.
+
+### 0.3 — Discover: Fan Groups section
+
+- [ ] Discover shows a "Fan Groups" section header.
+- [ ] Under that header, both **Joined** and **Suggested** sub-tabs are
+      present and tappable.
+- [ ] A "+ Create" button is visible in the Fan Groups section.
+- [ ] Tapping "+ Create" opens the create-group modal, or navigates to
+      `/create-group` (per Agent F's implementation choice). Either
+      behaviour is acceptable; a crash or dead tap is NOT.
+
+### 0.4 — Removed routes fail safely
+
+Deep-link into each of these from a fresh cold start (adb shell am
+start -a android.intent.action.VIEW -d "fansphere://..." for each):
+
+- [ ] `/(tabs)/world-cup` — does NOT crash. Lands on `+not-found`,
+      Discover, or another sensible fallback.
+- [ ] `/(tabs)/groups` — does NOT crash. Same fallback rules.
+- [ ] `/create-wc-group` — does NOT crash. Same fallback rules.
+
+### 0.5 — Backward-compat DB reads
+
+```sql
+-- The wc_pass_active_until column must still be readable even though
+-- WC Pass is no longer sold. Old rows in prod still reference it.
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name   = 'users'
+  AND column_name  = 'wc_pass_active_until';
+```
+- [ ] Column exists. Any code path that reads it still compiles / runs
+      without throwing (grep the diff for `wc_pass_active_until`).
+
+### 0.6 — Pivot migrations applied
+
+```sql
+-- Migration 065 — pivot schema changes. Idempotent, safe to replay.
+SELECT name, executed_at
+FROM supabase_migrations.schema_migrations
+WHERE name LIKE '065%'
+ORDER BY executed_at DESC LIMIT 5;
+
+-- Migration 066 — disables the WC-fast ESPN cron job.
+SELECT jobname, schedule, active
+FROM cron.job
+WHERE jobname = 'espn_sync_worldcup_fast';
+```
+- [ ] Migration 065 rows returned against prod OR local dev DB (the DB
+      the EAS build will point at).
+- [ ] Migration 066 rows returned AND `espn_sync_worldcup_fast` shows
+      `active = false`. If the row is missing entirely, 066 has not
+      run — do not build.
+
+**PASS criterion:** every box in 0.1–0.6 checked. If any single box is
+red, the pivot itself is broken and no downstream phase matters.
+
+---
+
+## PHASE 1 — Triage (5 min)
 
 The cheapest gate is asking yourself the right questions before you do
 anything else.
@@ -45,7 +129,7 @@ anything else.
       If you can't name the prior report, the fix is speculative and
       probably wrong.
 - [ ] **For every previously-broken flow**, decide whether your changes
-      touched its code path. If yes, add it to the Phase 3 device-walk.
+      touched its code path. If yes, add it to the Phase 4 device-walk.
 - [ ] **Commit messages match the diff.** No "v8.5: WIP" — if the
       commit shipped to main, the message describes what shipped.
 
@@ -54,7 +138,7 @@ ticket or product spec. No mystery files.
 
 ---
 
-## PHASE 1 — Static gates (5 min, all must be green)
+## PHASE 2 — Static gates (5 min, all must be green)
 
 Cheap, automatic, no excuse to skip. Every red here would have stopped
 at least one past failed build.
@@ -72,7 +156,7 @@ git diff --name-only main | Select-String '\.(ts|tsx)$' | ForEach-Object {
 }
 
 # 1.3 Every new .insert / .update / .delete must have an error check.
-#     The v8.4 auto-RSVP bug + v8.4 create-wc-group bug were both
+#     The v8.4 auto-RSVP bug + v8.4 create-group bug were both
 #     unchecked inserts that silently failed.
 git diff main -- '*.ts' '*.tsx' | Select-String -Pattern '\+.*\.(insert|update|delete)\('
 
@@ -92,7 +176,7 @@ paths.
 
 ---
 
-## PHASE 2 — Backend sanity (10 min, prod DB probes)
+## PHASE 3 — Backend sanity (10 min, prod DB probes)
 
 The v8.3 ESPN cron auth failure, the v8.4 missing event_id, the
 recurring RSVP RLS surprise — none of these were observable in code.
@@ -100,7 +184,7 @@ They show up the moment you query the DB.
 
 Run via MCP `execute_sql` against prod (`fwlfiejvxmslkpoojggs`).
 
-### 2.1 — Every RPC called in modified code still exists
+### 3.1 — Every RPC called in modified code still exists
 
 ```sql
 -- Replace the list with the actual RPC names from your diff.
@@ -120,7 +204,7 @@ WHERE n.nspname = 'public'
 ```
 **PASS:** every RPC the client calls is in the result.
 
-### 2.2 — RLS hasn't been inadvertently widened or broken
+### 3.2 — RLS hasn't been inadvertently widened or broken
 
 For each table the diff touches, dump the policies:
 ```sql
@@ -133,7 +217,7 @@ WHERE polrelid = 'public.watch_parties'::regclass;     -- and watch_party_rsvps,
 **PASS:** policies match the migration that was supposed to set them.
 Any "RLS disabled" or wildly permissive policy is a red flag.
 
-### 2.3 — Schema columns referenced in code exist
+### 3.3 — Schema columns referenced in code exist
 
 The v6 cycle shipped a query against `watch_parties.event` (a column
 that doesn't exist). Cheap to catch:
@@ -147,7 +231,7 @@ WHERE table_schema='public' AND table_name='watch_parties'
 **PASS:** every column you `.select()` or `.eq()`/`.ilike()` on
 appears in the result.
 
-### 2.4 — Recent prod data is healthy
+### 3.4 — Recent prod data is healthy
 
 ```sql
 -- watch_parties created in last 24h: how many have NULL event_id +
@@ -166,12 +250,13 @@ SELECT
   (SELECT COUNT(*) FROM watch_parties WHERE created_at > now() - INTERVAL '24 hours') AS parties,
   (SELECT COUNT(*) FROM watch_party_rsvps WHERE created_at > now() - INTERVAL '24 hours') AS rsvps;
 
--- WC fan groups owners that are NOT in chat_room_members — the v8.4
--- "must join before posting" bug.
-SELECT cr.id, cr.name, cr.owner_id
+-- Fan group owners that are NOT in chat_room_members — the v8.4
+-- "must join before posting" bug. Post-pivot the group_type filter is
+-- gone; any newly-created chat_room whose owner is missing from
+-- members is the same bug pattern.
+SELECT cr.id, cr.name, cr.owner_id, cr.group_type
 FROM chat_rooms cr
-WHERE cr.group_type = 'worldcup'
-  AND cr.created_at > now() - INTERVAL '24 hours'
+WHERE cr.created_at > now() - INTERVAL '24 hours'
   AND NOT EXISTS (
     SELECT 1 FROM chat_room_members m
     WHERE m.chat_room_id = cr.id AND m.user_id = cr.owner_id
@@ -180,7 +265,7 @@ WHERE cr.group_type = 'worldcup'
 **PASS:** ratios make sense, no orphaned owner rows. Any anomaly is
 real production data telling you a bug is shipping right now.
 
-### 2.5 — Sentry "Top Issues" last 7 days
+### 3.5 — Sentry "Top Issues" last 7 days
 
 Open Sentry dashboard. Top issues by event count. Any P0 that wasn't
 addressed in this cycle?
@@ -190,7 +275,7 @@ diff.
 
 ---
 
-## PHASE 3 — Expo Go device walk (15 min, MANUAL, the one I keep skipping)
+## PHASE 4 — Expo Go device walk (15 min, MANUAL, the one I keep skipping)
 
 This is the gate that ALL prior failed builds skipped. There is no
 substitute. The code can be perfect and the DB can be perfect and the
@@ -208,7 +293,7 @@ if testing purchases). Walk EVERY scenario below. For each, capture
 **(a)** what the UI did and **(b)** a DB row that proves the mutation
 landed. If both are clean, check the box.
 
-### 3.1 — Sign-in seeds AsyncStorage user_city
+### 4.1 — Sign-in seeds AsyncStorage user_city
 
 - Sign in → wait for tabs → close + reopen app → Discover header should
   show the right city, not "Pick a city".
@@ -221,7 +306,7 @@ landed. If both are clean, check the box.
   ```
 - [ ] PASS
 
-### 3.2 — Create watch party with "Tonight 7PM" preset
+### 4.2 — Create watch party with "Tonight 7PM" preset
 
 - Tap Home FAB → Create Watch Party → search a venue ("Brass Tap") →
   pick first result → check distance is <50mi → Next → no game → fill
@@ -239,19 +324,22 @@ landed. If both are clean, check the box.
   ```
 - [ ] PASS: party visible in list + rsvps >= 1.
 
-### 3.3 — Soccer Cup tab shows the same party (if soccer)
+### 4.3 — Game Day tab surfaces the party (if it has an event_id)
 
-- Soccer Cup tab → Watch Parties sub-tab → All Cities → the party shows
-  up (if you stamped event_id during create OR sport_id matches soccer).
+- Game Day tab → find the sport pill that matches the party's sport →
+  the party's event (if attached) shows up in "Upcoming today" or
+  "Live now" as appropriate.
+- If the party had no event attached, Game Day should not crash; the
+  party simply won't appear here (it's still on Home + Discover).
 - [ ] PASS
 
-### 3.4 — Venue search distance sanity (the v8.4 778mi bug)
+### 4.4 — Venue search distance sanity (the v8.4 778mi bug)
 
 - Create Watch Party → search "Chillis" → top 3 results all show
   distance < 50mi.
 - [ ] PASS — no Hamilton ON / Moss Point MS / Palm Coast FL in results.
 
-### 3.5 — RSVP from another user's party
+### 4.5 — RSVP from another user's party
 
 - Find a party NOT created by reviewer → tap RSVP → button switches to
   "Going" instantly → no Alert.
@@ -264,49 +352,52 @@ landed. If both are clean, check the box.
   ```
 - [ ] PASS: row exists.
 
-### 3.6 — Create a fan group via the WC template flow
+### 4.6 — Create a fan group via Discover → Fan Groups → + Create
 
-- Soccer Cup tab → Fan Groups sub-tab → tap a template card → fill
-  name → Create → land on detail screen → tap "Post a Moment" → pick
-  type → Post.
+- Discover tab → Fan Groups section → tap "+ Create" → land on the
+  create-group screen (or modal) → fill name → Create → land on detail
+  screen → tap "Post a Moment" → pick type → Post.
 - [ ] PASS: NO "you may need to join this group" alert. Moment shows
-  in feed.
+  in feed. Route was `/create-group` (NOT `/create-wc-group`).
 
   ```sql
-  -- Verify owner-as-member row exists immediately after create
-  SELECT cr.name, m.role, m.user_id
+  -- Verify owner-as-member row exists immediately after create.
+  -- Post-pivot there is no group_type filter — any newly-created
+  -- chat_room should have its owner in members.
+  SELECT cr.name, cr.group_type, m.role, m.user_id
   FROM chat_rooms cr
   JOIN chat_room_members m ON m.chat_room_id = cr.id
   WHERE cr.created_at > now() - INTERVAL '5 minutes'
-    AND cr.group_type = 'worldcup'
+    AND cr.owner_id = m.user_id
   ORDER BY cr.created_at DESC LIMIT 5;
   ```
 
-### 3.7 — Join state persists across tab switches
+### 4.7 — Join state persists across tab switches
 
-- Join any group from WCFanGroups list → switch to Home tab → switch
-  back → button still shows "Joined", not "Join".
+- Join any group from Discover → Fan Groups → Suggested → switch to
+  Home tab → switch back → button still shows "Joined", not "Join".
 - [ ] PASS
 
-### 3.8 — Profile flows
+### 4.8 — Profile flows
 
 - Profile → avatar shows (not blank) → tap My Clips → tiles show
   thumbnails or coloured gradients (not pitch-black tiles).
 - [ ] PASS
 
-### 3.9 — Clips tab end-to-end
+### 4.9 — Clips tab end-to-end
 
 - Clips tab → top clip autoplays → scroll → next clip plays → switch to
   Home → return → previously-playing clip resumes (not frozen).
 - [ ] PASS
 
-### 3.10 — Trending groups not empty
+### 4.10 — Fan Groups discovery not empty
 
-- Discover tab → "Trending Groups in {city}" section is populated
-  (even if just with seeded data).
+- Discover tab → Fan Groups section → Suggested sub-tab is populated
+  (even if just with seeded data). Joined sub-tab shows the groups the
+  reviewer belongs to (or a sensible empty-state).
 - [ ] PASS
 
-### 3.11 — Sentry check (after walk)
+### 4.11 — Sentry check (after walk)
 
 After the device walk, open Sentry → Issues → Last hour. Any new
 issues? Investigate before building.
@@ -315,7 +406,7 @@ issues? Investigate before building.
 
 ---
 
-## PHASE 4 — Maestro smoke (5 min, automated)
+## PHASE 5 — Maestro smoke (5 min, automated)
 
 ```powershell
 # Per memory: Maestro CLI + paths are pinned. Don't reinvent.
@@ -323,20 +414,28 @@ issues? Investigate before building.
 ```
 
 The 00b test walks every bottom tab post sign-in and asserts the root
-ErrorBoundary never renders. Would have caught the v8.3 Soccer Cup
-`.replace of null` crash.
+ErrorBoundary never renders. Post-v9.0 it walks the 5-tab layout
+(Home, Discover, Game Day, Clips, Profile) — the WC tab it used to
+cover was removed with the pivot.
 
 After each UAT cycle, add a new Maestro test for the NEW regressions:
-- v8.5 should add: `00c_watch_party_create_and_list.yaml`
+- v8.5 added: `00c_watch_party_create_and_list.yaml`
   (create-party preset → list-shows-party)
-- v8.5 should add: `00d_wc_group_create_and_post.yaml`
-  (create-wc-group → post-moment success)
+- v9.0 added: `04_game_day.yaml`
+  (Game Day tab renders with sport pill row + section headers even when
+  the day has no live/upcoming games; landed with the v9.0 pivot batch)
+- v9.0 also updated: `00b_tab_crash_regression.yaml`
+  (5-tab tour: Home / Discover / Game Day / Clips / Profile — was 6)
+- v9.0 also updated: `01_signup_onboarding.yaml`
+  (post-onboarding tab tour retargeted to the 5-tab set)
+- v9.0 removed: `04_world_cup_tab.yaml`, `00d_wc_group_create_post_moment.yaml`
+  (Soccer Cup tab + create-wc-group screen were deleted; tests obsolete)
 
 **PASS criterion:** existing scenarios + every new test green.
 
 ---
 
-## PHASE 5 — Build config sanity (3 min)
+## PHASE 6 — Build config sanity (3 min)
 
 These have all bitten us at least once.
 
@@ -352,6 +451,10 @@ These have all bitten us at least once.
       (`fwlfiejvxmslkpoojggs.supabase.co`), not a dev branch.
 - [ ] **Sentry DSN env var present** in build profile so the
       ErrorBoundary that v8.4 added can actually report.
+- [ ] **RevenueCat products** — only `premium_monthly` and
+      `premium_annual` are referenced by client code. The retired
+      `wc_pass_2026` product must NOT appear in any imports, config,
+      or offerings check. `grep -R "wc_pass_2026"` returns zero hits.
 - [ ] **`git status`** shows no `M` for `package-lock.json` /
       `bun.lockb` / `yarn.lock` you didn't intend to commit.
 - [ ] **Last commit is on `main`** and is the commit you intend to
@@ -360,18 +463,19 @@ These have all bitten us at least once.
 
 ---
 
-## PHASE 6 — GO / NO-GO
+## PHASE 7 — GO / NO-GO
 
 Binary decision. If any single box above is unchecked or red, the answer
 is NO-GO.
 
 ```
-Phase 0  Triage              [ ] PASS  [ ] FAIL
-Phase 1  Static gates        [ ] PASS  [ ] FAIL
-Phase 2  Backend sanity      [ ] PASS  [ ] FAIL
-Phase 3  Device walk         [ ] PASS  [ ] FAIL
-Phase 4  Maestro smoke       [ ] PASS  [ ] FAIL
-Phase 5  Build config        [ ] PASS  [ ] FAIL
+Phase 0  v9.0 Pivot Sanity   [ ] PASS  [ ] FAIL
+Phase 1  Triage              [ ] PASS  [ ] FAIL
+Phase 2  Static gates        [ ] PASS  [ ] FAIL
+Phase 3  Backend sanity      [ ] PASS  [ ] FAIL
+Phase 4  Device walk         [ ] PASS  [ ] FAIL
+Phase 5  Maestro smoke       [ ] PASS  [ ] FAIL
+Phase 6  Build config        [ ] PASS  [ ] FAIL
 
 Decision: [ ] GO   [ ] NO-GO   Date / time: _______________
 ```
@@ -380,7 +484,7 @@ Only when this is **all GO** do you spend EAS credits.
 
 ---
 
-## PHASE 7 — Post-build artifact verification (5 min)
+## PHASE 8 — Post-build artifact verification (5 min)
 
 After the EAS build finishes, BEFORE you hand it to UAT:
 
@@ -390,10 +494,11 @@ After the EAS build finishes, BEFORE you hand it to UAT:
       OneDrive — bundletool sets mtime to 1981 and OneDrive treats it as
       already-synced (v8.4 mistake).
 - [ ] APK installed on a real Android device (yours, NOT just the
-      reviewer's). Open it. Walk the Phase 3 script ONE more time on
-      the actual artifact, not on Expo Go. **The build can disagree
-      with Expo Go** — JS engine version, Hermes vs JSC, native
-      modules. Catch it before the tester does.
+      reviewer's). Open it. Walk the Phase 0 pivot-sanity + Phase 4
+      device-walk scripts ONE more time on the actual artifact, not
+      on Expo Go. **The build can disagree with Expo Go** — JS engine
+      version, Hermes vs JSC, native modules. Catch it before the
+      tester does.
 - [ ] iOS .ipa landed in TestFlight (if applicable) and shows up in
       the tester's TestFlight client. Don't rely on "TestFlight email"
       — it lags by 15 minutes.

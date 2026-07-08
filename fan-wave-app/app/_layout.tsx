@@ -413,7 +413,7 @@ export default function RootLayout() {
           <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
           <Stack.Screen name="creator-stats" options={{ headerShown: false }} />
           <Stack.Screen
-            name="create-wc-group"
+            name="create-group"
             options={{ presentation: 'modal', headerShown: false }}
           />
           <Stack.Screen name="legal" options={{ headerShown: false }} />

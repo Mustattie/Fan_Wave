@@ -13,7 +13,7 @@ import {
   FlatList,
   Modal,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Globe, Lock, UserPlus, X, Users, Search, MapPin, CheckCircle2 } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
@@ -32,7 +32,6 @@ import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mapGameToDisplay, type GameDisplay } from '@/lib/mappers';
 import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
-import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
 import { isExpoGo } from '@/lib/entitlements';
 import { reportError } from '@/lib/errorReporting';
 import { invalidateCache } from '@/lib/cache';
@@ -103,7 +102,7 @@ function computeTimePresets(): { label: string; value: string }[] {
   // regardless of current time. A user creating at 7:48 PM picked
   // "Tonight 7PM" and got a starts_at in the PAST — every list query
   // (.gt('starts_at', now())) then excluded the party so it vanished from
-  // Watch Parties + Soccer Cup tabs.
+  // the Watch Parties tab.
   // Fix: drop any preset whose computed time is already past + always
   // include forward-looking fallbacks so the row never empties out.
   const now = new Date();
@@ -153,26 +152,11 @@ function computeTimePresets(): { label: string; value: string }[] {
 // Component
 // ---------------------------------------------------------------------------
 
-// Soccer Cup 2026 event + Soccer sport IDs (seeded in migration 006). When the
-// Soccer Cup tab pushes to /create-watch-party?event=soccer-cup-2026, we
-// stamp the resulting watch_parties row with these so the filtered list on
-// that tab can actually find it.
-// Soccer Cup 2026 event UUID — must match the seeded row in events.
-// Centralised in constants/WorldCupIds so all surfaces stay aligned.
-import { WC_EVENT_ID as SOCCER_CUP_EVENT_ID } from '@/constants/WorldCupIds';
-const SOCCER_SPORT_ID = 'a0000000-0000-0000-0000-000000000004';
-
 export default function CreateWatchPartyScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { event: eventParam } = useLocalSearchParams<{ event?: string }>();
-  const isSoccerCupContext = eventParam === 'soccer-cup-2026';
   const [step, setStep] = useState(1);
   const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
-  // Soccer Cup parties need the WC Pass paywall, not Premium. Without a
-  // separate state slot the RLS-error handler showed users the wrong sheet
-  // (Premium-only) and they couldn't reach the $19.99 pass purchase.
-  const [showWCPaywall, setShowWCPaywall] = useState(false);
 
   // Step 1 state
   const [venueQuery, setVenueQuery] = useState('');
@@ -683,15 +667,6 @@ export default function CreateWatchPartyScreen() {
       visibility: visibility === 'private' ? 'private' : 'public',
     };
 
-    // When created from the Soccer Cup tab, stamp the event_id + sport_id so
-    // the WCWatchParties tab's `.eq('event_id', SOCCER_CUP_EVENT_ID)` query
-    // actually surfaces this party. Without this the row gets inserted with
-    // event_id=null and disappears from the WC tab list (live Android v5 P0).
-    if (isSoccerCupContext) {
-      partyData.event_id = SOCCER_CUP_EVENT_ID;
-      partyData.sport_id = SOCCER_SPORT_ID;
-    }
-
     try {
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.user?.id;
@@ -705,29 +680,6 @@ export default function CreateWatchPartyScreen() {
           .ilike('name', selectedGame.sport)
           .maybeSingle();
         if (sportRow) partyData.sport_id = sportRow.id;
-
-        // v8.7+ P0: if the user came in from the Home FAB (no event= param)
-        // and linked a Soccer Cup match, ALSO stamp event_id so the party
-        // surfaces on the Soccer Cup tab. The WC tab's filter is
-        // `event_id.eq.X OR sport_id.eq.Y`; sport_id alone matches, but
-        // any non-WC soccer party (e.g. a Premier League watch party
-        // tagged with sport_id=Soccer) would otherwise appear there too.
-        // Stamping event_id makes the row authoritative.
-        if (!isSoccerCupContext && selectedGame?.id) {
-          try {
-            const { data: gameRow } = await supabase
-              .from('games')
-              .select('event_id')
-              .eq('id', selectedGame.id)
-              .maybeSingle();
-            if (gameRow?.event_id === SOCCER_CUP_EVENT_ID) {
-              partyData.event_id = SOCCER_CUP_EVENT_ID;
-            }
-          } catch {
-            // Non-fatal: party still gets sport_id and surfaces via the
-            // OR clause. Logging-only would just bloat the console.
-          }
-        }
       }
 
       const { data: partyRow, error: insertError } = await supabase
@@ -740,8 +692,8 @@ export default function CreateWatchPartyScreen() {
       if (!partyRow) throw new Error('Failed to create party');
 
       // Auto-RSVP as 'going'. v8.5 P0: previously this insert had no error
-      // check, so an RLS rejection (e.g. WC-pass gate, transient auth
-      // refresh race) silently produced a party with no RSVP row — the
+      // check, so an RLS rejection (e.g. transient auth refresh race)
+      // silently produced a party with no RSVP row — the
       // creator looked like a non-attendee and "RSVP still not saving"
       // got reported across 4 UAT cycles. We now check the error, retry
       // once after a 250ms delay (covers fast double-create races), and
@@ -823,9 +775,9 @@ export default function CreateWatchPartyScreen() {
     } catch (e: any) {
       setCreating(false);
       // 42501 = row-level security violation. Migration 053 still gates
-      // watch_parties_insert behind Premium (or WC pass for WC parties).
-      // Surface the upgrade modal rather than the generic error toast so
-      // the user has a one-tap path to unblock themselves.
+      // watch_parties_insert behind Premium. Surface the upgrade modal
+      // rather than the generic error toast so the user has a one-tap
+      // path to unblock themselves.
       const code: string | undefined = e?.code;
       const msg: string = (e?.message ?? '').toLowerCase();
       const isRlsBlock =
@@ -834,13 +786,12 @@ export default function CreateWatchPartyScreen() {
         msg.includes('violates row-level security policy');
       if (isRlsBlock) {
         // In Expo Go the RLS gate ALWAYS rejects (the test account has no
-        // real Premium / WC pass). Surface a friendly "test-mode" success
-        // instead of a paywall — the paywall sheet itself can't complete a
-        // purchase in Expo Go, so showing it just produces the "Purchase
-        // could not start" loop the user reported on 2026-06-23. The
-        // server-side gate is still authoritative; production builds with
-        // a real entitlement reach this path only on actual policy
-        // violations.
+        // real Premium). Surface a friendly "test-mode" success instead of
+        // a paywall — the paywall sheet itself can't complete a purchase
+        // in Expo Go, so showing it just produces the "Purchase could not
+        // start" loop the user reported on 2026-06-23. The server-side
+        // gate is still authoritative; production builds with a real
+        // entitlement reach this path only on actual policy violations.
         if (isExpoGo()) {
           Alert.alert(
             'Test mode (Expo Go)',
@@ -849,16 +800,7 @@ export default function CreateWatchPartyScreen() {
           );
           return;
         }
-        // Soccer Cup parties hit the WC-pass gate, not the Premium gate.
-        // Showing PremiumPaywall here was the v8.7+ Soccer Cup screenshot
-        // bug: user tapped Create on the WC tab, got "Fan Sphere Premium"
-        // instead of the $19.99 WC Pass sheet, and had no path to the
-        // intended product.
-        if (isSoccerCupContext) {
-          setShowWCPaywall(true);
-        } else {
-          setShowPremiumPaywall(true);
-        }
+        setShowPremiumPaywall(true);
       } else {
         Alert.alert('Error', 'Could not create watch party. Please try again.');
       }
@@ -1348,7 +1290,8 @@ export default function CreateWatchPartyScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
+      keyboardVerticalOffset={0}
     >
       {/* Header */}
       <View style={styles.header}>
@@ -1419,10 +1362,6 @@ export default function CreateWatchPartyScreen() {
       <PremiumPaywall
         visible={showPremiumPaywall}
         onClose={() => setShowPremiumPaywall(false)}
-      />
-      <WCPassPaywall
-        visible={showWCPaywall}
-        onClose={() => setShowWCPaywall(false)}
       />
 
       {/* Contact picker modal */}

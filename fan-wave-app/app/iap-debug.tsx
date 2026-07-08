@@ -153,7 +153,13 @@ export default function IapDebugScreen() {
             }
           />
           <Row
-            label="Purchases.configure() succeeded"
+            label={
+              status.configureSucceeded === true
+                ? 'Purchases.configure() succeeded'
+                : status.configureSucceeded === false
+                  ? 'Purchases.configure() failed'
+                  : 'Purchases.configure()'
+            }
             state={stateFor(status.configureSucceeded)}
             detail={
               status.configureSucceeded === true
@@ -166,7 +172,13 @@ export default function IapDebugScreen() {
             }
           />
           <Row
-            label="Purchases.logIn(userId) succeeded"
+            label={
+              status.loginSucceeded === true
+                ? 'Purchases.logIn(userId) succeeded'
+                : status.loginSucceeded === false
+                  ? 'Purchases.logIn(userId) failed'
+                  : 'Purchases.logIn(userId)'
+            }
             state={stateFor(status.loginSucceeded)}
             detail={
               status.loginSucceeded === true

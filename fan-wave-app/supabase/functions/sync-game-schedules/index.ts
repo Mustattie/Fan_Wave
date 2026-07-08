@@ -91,15 +91,24 @@ class ESPNAdapter implements SportsDataProvider {
 
         if (!homeTeamData || !awayTeamData) continue;
 
+        // ESPN reports status via BOTH `type.name` (like STATUS_IN_PROGRESS,
+        // STATUS_HALFTIME, STATUS_END_PERIOD, STATUS_OVERTIME, STATUS_FINAL)
+        // AND `type.state`, a normalized bucket: 'pre' | 'in' | 'post'.
+        // Earlier code string-matched on `name` and only recognized
+        // IN_PROGRESS + HALFTIME + FINAL + FULL_TIME — every other in-play
+        // state (OT, end-of-period, penalty shootout, etc.) fell through
+        // to "scheduled". The Brazil vs Japan v8.9 UAT card showed "2-1"
+        // with no LIVE badge because ESPN was reporting STATUS_END_PERIOD
+        // between full time and OT: our sync wrote the score correctly but
+        // left status='scheduled', so the WCSchedule card rendered as
+        // upcoming. Trusting `state` catches every intermediate case.
         const statusType = comp.status?.type?.name ?? "scheduled";
+        const statusState = comp.status?.type?.state ?? "pre";
         const isHalftime = statusType === "STATUS_HALFTIME";
         let normalizedStatus = "scheduled";
-        if (statusType === "STATUS_IN_PROGRESS" || isHalftime) {
+        if (statusState === "in" || isHalftime) {
           normalizedStatus = "in";
-        } else if (
-          statusType === "STATUS_FINAL" ||
-          statusType === "STATUS_FULL_TIME"
-        ) {
+        } else if (statusState === "post") {
           normalizedStatus = "post";
         }
 

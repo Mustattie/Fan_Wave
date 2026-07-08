@@ -248,11 +248,12 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Your Groups */}
+        {/* Your Groups — v9.0 pivot: Groups tab folded into Discover, so
+            "See All" now routes there. */}
         <SectionHeader
           title="Your Groups"
           actionText="See All →"
-          onAction={() => router.push('/(tabs)/groups')}
+          onAction={() => router.push('/(tabs)/discover')}
         />
         {groups.length > 0 ? (
           groups.map((group) => (

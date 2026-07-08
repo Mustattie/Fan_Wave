@@ -351,11 +351,17 @@ export function WCSchedule() {
     const isLive = match.status === 'live' || match.status === 'in';
     const isFinal = match.status === 'final' || match.status === 'post';
     // Soccer live extras stored on the metadata column by the ESPN function.
+    // Prefer ESPN's human-readable `detail` (e.g. "End of 2nd Extra Time",
+    // "Halftime", "Penalty Shootout") when present — the period-number
+    // fallback renders OT as "5'" which the v8.9 UAT flagged as unreadable.
+    const detail = typeof match.metadata?.detail === 'string' ? match.metadata.detail : null;
     const period = typeof match.metadata?.period === 'number' ? match.metadata.period : null;
     const clock = typeof match.metadata?.display_clock === 'string' ? match.metadata.display_clock : null;
-    const periodLabel = period != null
-      ? (clock ? `${period === 1 ? '1st' : period === 2 ? '2nd' : `${period}'`} · ${clock}` : period === 1 ? '1st half' : period === 2 ? '2nd half' : `${period}'`)
-      : null;
+    const periodLabel = detail
+      ? (clock && !detail.includes(clock) ? `${detail} · ${clock}` : detail)
+      : period != null
+        ? (clock ? `${period === 1 ? '1st' : period === 2 ? '2nd' : `${period}'`} · ${clock}` : period === 1 ? '1st half' : period === 2 ? '2nd half' : `${period}'`)
+        : null;
 
     return (
       <View style={[styles.matchCard, isLive && styles.matchCardLive]}>

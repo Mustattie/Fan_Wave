@@ -1,17 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Home, Compass, Play, Users, User, Trophy } from 'lucide-react-native';
+import { Home, Compass, Trophy, Play, User } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { isFeatureActive } from '@/lib/featureFlags';
 
 export default function TabLayout() {
-  const [worldCupEnabled, setWorldCupEnabled] = useState(true);
   const insets = useSafeAreaInsets();
-
-  useEffect(() => {
-    isFeatureActive('world_cup_mode', { ignoreDateWindow: true }).then(setWorldCupEnabled).catch(() => setWorldCupEnabled(true));
-  }, []);
 
   return (
     <Tabs
@@ -53,31 +47,17 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="game-day"
+        options={{
+          title: 'Game Day',
+          tabBarIcon: ({ color, size }) => <Trophy size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="clips"
         options={{
           title: 'Clips',
           tabBarIcon: ({ color, size }) => <Play size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="world-cup"
-        options={{
-          title: 'Soccer Cup',
-          href: worldCupEnabled ? '/world-cup' : null,
-          tabBarIcon: ({ size, focused }) => (
-            <Trophy
-              size={size}
-              color={focused ? Colors.dark.accentGreen : Colors.dark.textMuted}
-            />
-          ),
-          tabBarActiveTintColor: Colors.dark.accentGreen,
-        }}
-      />
-      <Tabs.Screen
-        name="groups"
-        options={{
-          title: 'Groups',
-          tabBarIcon: ({ color, size }) => <Users size={size} color={color} />,
         }}
       />
       <Tabs.Screen

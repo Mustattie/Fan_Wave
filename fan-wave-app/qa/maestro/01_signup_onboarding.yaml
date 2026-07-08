@@ -172,14 +172,11 @@ tags:
 - takeScreenshot: screenshots/10_clips
 - waitForAnimationToEnd
 
+# v9.0 pivot: Soccer Cup + Groups tabs removed; Game Day added between
+# Discover and Clips. New 5-tab tour matches the new layout.
 - tapOn:
-    text: "Soccer Cup"
-- takeScreenshot: screenshots/11_world_cup
-- waitForAnimationToEnd
-
-- tapOn:
-    text: "Groups"
-- takeScreenshot: screenshots/12_groups
+    text: "Game Day"
+- takeScreenshot: screenshots/11_game_day
 - waitForAnimationToEnd
 
 - tapOn:

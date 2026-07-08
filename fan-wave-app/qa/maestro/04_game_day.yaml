@@ -1,0 +1,45 @@
+appId: org.fansphere.app
+name: "D3 — Game Day tab smoke"
+tags:
+  - day3
+  - game_day
+  - v9_0
+---
+# Sign in → Game Day tab → assert header + Sport pill row render →
+# scroll down and confirm at least one of the three sections
+# ("Live now" / "Upcoming today" / "Final today") is present.
+#
+# v9.0 replaces the removed Soccer Cup tab with a multi-sport
+# Game Day scoreboard. This is the tab-level smoke guard.
+
+- launchApp:
+    clearState: false
+    stopApp: true
+
+- runFlow: flows/_sign_in.yaml
+
+- tapOn:
+    text: "Game Day"
+
+# ─── Header renders ────────────────────────────────────────────────
+- extendedWaitUntil:
+    visible:
+      text: "Game Day"
+    timeout: 15000
+
+# ─── Sport pill row visible ("All" is always present) ──────────────
+- assertVisible:
+    text: "All"
+
+- takeScreenshot: screenshots/game-day-loaded
+
+# ─── Scroll + assert at least one section is present ───────────────
+# Which section renders depends on live ESPN data at run time. The
+# Game Day screen ships with three fixed section headings; the
+# regex OR match keeps the scenario green regardless of whether
+# there's a live game right now.
+- swipe:
+    direction: UP
+
+- assertVisible:
+    text: ".*Live now.*|.*Upcoming today.*|.*Final today.*"
