@@ -37,11 +37,20 @@
 --     one only touches cron.job). Safe to run in either order, but the
 --     numeric sequence 065 → 066 is what supabase db push will apply.
 
+-- IMPORTANT (2026-07-09): direct UPDATE on cron.job is rejected in the
+-- Supabase Studio SQL editor because the interactive role lacks table-
+-- level UPDATE on the cron schema (permission denied for table job).
+-- The pg_cron sanctioned API cron.alter_job() carries the right grants
+-- and works from both Studio and CLI (`supabase db push`), so we call
+-- through it here instead of mutating the row directly.
+
 DO $$
 DECLARE
+  v_jobid         BIGINT;
   v_before_active BOOLEAN;
 BEGIN
-  SELECT active INTO v_before_active
+  SELECT jobid, active
+    INTO v_jobid, v_before_active
     FROM cron.job
    WHERE jobname = 'espn_sync_worldcup_fast';
 
@@ -57,12 +66,10 @@ BEGIN
     RETURN;
   END IF;
 
-  UPDATE cron.job
-     SET active = FALSE
-   WHERE jobname = 'espn_sync_worldcup_fast';
+  PERFORM cron.alter_job(job_id := v_jobid, active := false);
 
   RAISE NOTICE
-    '[066_disable_wc_cron] disabled espn_sync_worldcup_fast (row preserved for future re-enable)';
+    '[066_disable_wc_cron] disabled espn_sync_worldcup_fast via cron.alter_job (row preserved for future re-enable)';
 END
 $$;
 
