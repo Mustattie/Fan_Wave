@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   FlatList,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -157,6 +158,32 @@ export default function GameDetailScreen() {
     setRefreshing(false);
   }, [loadAll]);
 
+  // v9.1: Per-game live chat. Migration 067 adds chat_rooms.game_id +
+  // group_type='game_chat' + the get_or_create_game_chat RPC which
+  // atomically returns an existing room or creates one, auto-joining
+  // the caller as a member. Reuses the existing fan-group chat UI —
+  // no new screen needed.
+  const [openingChat, setOpeningChat] = useState(false);
+  const handleLiveChat = useCallback(async () => {
+    if (!id || openingChat) return;
+    setOpeningChat(true);
+    try {
+      const { data, error } = await supabase.rpc('get_or_create_game_chat', {
+        p_game_id: id,
+      });
+      if (error) throw error;
+      if (!data) throw new Error('No room id returned');
+      router.push(`/fan-group/${data}` as any);
+    } catch (e: any) {
+      Alert.alert(
+        'Live chat unavailable',
+        e?.message ?? 'Could not open the chat room. Please try again.',
+      );
+    } finally {
+      setOpeningChat(false);
+    }
+  }, [id, openingChat, router]);
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -276,13 +303,17 @@ export default function GameDetailScreen() {
 
         <View style={styles.ctaRow}>
           <TouchableOpacity
-            style={[styles.cta, styles.ctaDisabled]}
-            disabled
+            style={styles.cta}
+            onPress={handleLiveChat}
+            disabled={openingChat}
             activeOpacity={0.7}
           >
-            <MessageCircle size={18} color={Colors.dark.textSecondary} />
-            <Text style={styles.ctaText}>Live chat</Text>
-            <Text style={styles.ctaBadge}>v9.1</Text>
+            {openingChat ? (
+              <ActivityIndicator size="small" color={Colors.dark.accent} />
+            ) : (
+              <MessageCircle size={18} color={Colors.dark.accent} />
+            )}
+            <Text style={[styles.ctaText, styles.ctaTextActive]}>Live chat</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.cta, styles.ctaDisabled]}
@@ -606,6 +637,9 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
     fontSize: 13,
     fontWeight: '600',
+  },
+  ctaTextActive: {
+    color: Colors.dark.accent,
   },
   ctaBadge: {
     fontSize: 10,
