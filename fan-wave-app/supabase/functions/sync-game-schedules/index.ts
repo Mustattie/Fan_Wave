@@ -38,12 +38,6 @@ const SPORT_LEAGUE_MAP: Record<
 
 const ALL_SPORTS = Object.keys(SPORT_LEAGUE_MAP);
 
-// v9.0 pivot: World Cup is no longer part of the launch story. The cron
-// path (no ?sport= param) must NOT auto-sync WC games because they leak
-// into Game Day / Home carousels. Explicit ?sport=worldcup still works
-// for anyone who needs to backfill the legacy league on purpose.
-const DEFAULT_SYNC_SPORTS = ALL_SPORTS.filter((s) => s !== "worldcup");
-
 // ---------------------------------------------------------------------------
 // Interfaces
 // ---------------------------------------------------------------------------
@@ -295,7 +289,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const sports = sportParam ? [sportParam] : DEFAULT_SYNC_SPORTS;
+    const sports = sportParam ? [sportParam] : ALL_SPORTS;
 
     const provider: SportsDataProvider = new ESPNAdapter();
     const syncResults: Record<
@@ -394,6 +388,15 @@ Deno.serve(async (req: Request) => {
           is_halftime: game.isHalftime,
         };
 
+        // v9.0.1: WC games are soccer games. Fold the ESPN "worldcup"
+        // sport key into the app's canonical 'soccer' bucket so Game Day
+        // / Home render them under ⚽ Soccer with a "Soccer Cup" league
+        // label carrying the tournament identity. Other sport keys stay
+        // untouched — they already match constants/Sports.ts ids
+        // (nfl/nba/mlb/mls/nhl). Existing sport_id='worldcup' rows are
+        // backfilled to 'soccer' via a one-shot UPDATE.
+        const sportIdForRow = sport === "worldcup" ? "soccer" : sport;
+
         const gameRow: Record<string, unknown> = {
           espn_id: game.espnId,
           home_team_id: homeTeamId,
@@ -403,7 +406,7 @@ Deno.serve(async (req: Request) => {
           venue_name: game.venue,
           scheduled_at: game.scheduledAt,
           status: game.status,
-          sport_id: sport,
+          sport_id: sportIdForRow,
           metadata: mergedMetadata,
           ...(eventId ? { event_id: eventId } : {}),
         };
