@@ -395,6 +395,10 @@ export default function RootLayout() {
             options={{ headerShown: false, presentation: 'card' }}
           />
           <Stack.Screen
+            name="game/[id]"
+            options={{ headerShown: false, presentation: 'card' }}
+          />
+          <Stack.Screen
             name="create-watch-party"
             options={{ presentation: 'modal', headerShown: false }}
           />

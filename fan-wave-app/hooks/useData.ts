@@ -56,6 +56,12 @@ export function useGames(limit = 30) {
           () => supabase
             .from('games')
             .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
+            // v9.0 pivot: World Cup is hidden from the app. The ESPN sync
+            // default-sports filter (functions/sync-game-schedules) blocks
+            // new WC rows; this filter suppresses legacy WC rows already
+            // in the DB so Game Day / Home never render "Spain vs Belgium"
+            // and similar leftover fixtures.
+            .neq('sport_id', 'worldcup')
             .or(
               `status.eq.in,` +
               `and(status.eq.scheduled,scheduled_at.gte.${upcomingCutoff}),` +

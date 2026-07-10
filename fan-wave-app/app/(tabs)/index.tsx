@@ -211,7 +211,12 @@ export default function HomeScreen() {
             scrollEnabled={true}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.gameRow}
-            renderItem={({ item }) => <GameCard game={item} />}
+            renderItem={({ item }) => (
+              <GameCard
+                game={item}
+                onPress={() => router.push(`/game/${item.id}` as any)}
+              />
+            )}
           />
         ) : (
           <View style={styles.emptyState}>

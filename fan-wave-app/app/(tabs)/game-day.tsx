@@ -7,10 +7,10 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/Colors';
 import { GameCard } from '@/components/GameCard';
@@ -22,14 +22,14 @@ import { queryClient } from '@/hooks/useQueryClient';
 import { supabase } from '@/lib/supabase';
 import { SPORTS, SPORT_BY_ID } from '@/constants/Sports';
 
-// Game Day Lite (v9.0):
+// Game Day (v9.0.1):
 // A single scrollable screen showing today's games across every sport the
 // user follows, grouped by status: Live now → Upcoming today → Final today.
 //
-// Design intent: no per-game navigation yet — tap shows an Alert redirecting
-// to Watch Parties/Clips. Game detail screen ships in v9.1 alongside
-// MVP voting + per-game chat.
+// v9.0.1 wires tap → /game/[id] (see app/game/[id].tsx). v9.1 lands live
+// per-game chat + MVP voting on top of the same detail route.
 export default function GameDayScreen() {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [activeSport, setActiveSport] = useState<string>('all');
 
@@ -183,12 +183,12 @@ export default function GameDayScreen() {
     setRefreshing(false);
   }, []);
 
-  const handleGamePress = useCallback(() => {
-    Alert.alert(
-      'Game details',
-      'Game details coming in v9.1. For now, tap a Watch Party or Clip.',
-    );
-  }, []);
+  const handleGamePress = useCallback(
+    (gameId: string) => {
+      router.push(`/game/${gameId}` as any);
+    },
+    [router],
+  );
 
   if (isLoading && games.length === 0) {
     return (
@@ -217,7 +217,7 @@ export default function GameDayScreen() {
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.gameRow}
             renderItem={({ item }) => (
-              <GameCard game={item} onPress={handleGamePress} />
+              <GameCard game={item} onPress={() => handleGamePress(item.id)} />
             )}
           />
         ) : (

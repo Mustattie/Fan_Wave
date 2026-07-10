@@ -38,6 +38,12 @@ const SPORT_LEAGUE_MAP: Record<
 
 const ALL_SPORTS = Object.keys(SPORT_LEAGUE_MAP);
 
+// v9.0 pivot: World Cup is no longer part of the launch story. The cron
+// path (no ?sport= param) must NOT auto-sync WC games because they leak
+// into Game Day / Home carousels. Explicit ?sport=worldcup still works
+// for anyone who needs to backfill the legacy league on purpose.
+const DEFAULT_SYNC_SPORTS = ALL_SPORTS.filter((s) => s !== "worldcup");
+
 // ---------------------------------------------------------------------------
 // Interfaces
 // ---------------------------------------------------------------------------
@@ -289,7 +295,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const sports = sportParam ? [sportParam] : ALL_SPORTS;
+    const sports = sportParam ? [sportParam] : DEFAULT_SYNC_SPORTS;
 
     const provider: SportsDataProvider = new ESPNAdapter();
     const syncResults: Record<
