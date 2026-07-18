@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } fr
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { reportError } from '@/lib/errorReporting';
 import type { ChatRoomDisplay } from '@/lib/mappers';
 
 interface GroupCardProps {
@@ -65,19 +66,16 @@ export function GroupCard({
         const code: string | undefined = (error as any)?.code;
         const msg: string = (error.message ?? '').toLowerCase();
         const isDup = code === '23505' || msg.includes('duplicate');
-        const isRls =
-          code === '42501' ||
-          msg.includes('row-level security') ||
-          msg.includes('violates row-level security policy');
         if (isDup) {
+          // Already a member — treat as success (idempotent join).
           setJoinedLocally(true);
           onJoinSuccess?.(group.id);
-        } else if (isRls) {
-          Alert.alert(
-            'Premium required',
-            'Upgrade to Premium to join more groups.',
-          );
         } else {
+          // Report the raw error so future 42501s can be diagnosed
+          // (v9.1 UAT hit "Could not join" on WC-typed suggested groups
+          // still gated by mig 053 chat_room_members_insert). The user-
+          // facing alert stays neutral; the paywall belongs at onboarding.
+          reportError(error, { source: 'GroupCard:join', groupId: group.id, code, msg });
           Alert.alert('Could not join', 'Please try again.');
         }
         return;

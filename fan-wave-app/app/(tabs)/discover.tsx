@@ -29,7 +29,6 @@ import { SportPillRow } from '@/components/SportPill';
 import { WatchPartyCard } from '@/components/WatchPartyCard';
 import { GroupCard } from '@/components/GroupCard';
 import { SectionHeader } from '@/components/SectionHeader';
-import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
 import { supabase } from '@/lib/supabase';
 import { subscribeToWatchParties } from '@/lib/realtime';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -119,7 +118,6 @@ export default function DiscoverScreen() {
   const [selectedSport, setSelectedSport] = useState('nfl');
   const [selectedVisibility, setSelectedVisibility] = useState('public');
   const [isCreating, setIsCreating] = useState(false);
-  const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
   // City used inside the Create Group form. Prefilled from the outer
   // `city` state (home_city / AsyncStorage) but the user can override
   // per-group without polluting the top-level Discover city filter.
@@ -236,10 +234,16 @@ export default function DiscoverScreen() {
       // missing/buggy RPC can't silently zero the list.
       let suggested: ChatRoomDisplay[] = [];
       try {
+        // Exclude worldcup-typed groups from Suggested. Per v9.x pivot WC
+        // is hidden from the UI (mig 053 chat_room_members_insert still
+        // requires has_wc_access for group_type='worldcup', so surfacing
+        // them here just teased users into a 42501 that read "Could not
+        // join. Please try again." after v9.1's GroupCard cleanup.
         let query = supabase
           .from('chat_rooms')
           .select('*')
           .eq('visibility', 'public')
+          .neq('group_type', 'worldcup')
           .order('member_count', { ascending: false })
           .limit(30);
 
@@ -574,19 +578,10 @@ export default function DiscoverScreen() {
       setInvitedFriends([]);
       setShowCreateModal(false);
     } catch (e: any) {
-      // 42501 = RLS violation → free-tier quota exceeded, show paywall.
-      const code: string | undefined = e?.code;
-      const msg: string = (e?.message ?? '').toLowerCase();
-      const isRlsBlock =
-        code === '42501' ||
-        msg.includes('row-level security') ||
-        msg.includes('violates row-level security policy');
-      if (isRlsBlock) {
-        setShowCreateModal(false);
-        setShowPremiumPaywall(true);
-      } else {
-        Alert.alert('Error', 'Could not create group. Please try again.');
-      }
+      // v9.1 UAT pivot: creating a fan group is a free-tier action.
+      // Migration 070 drops the has_premium_access gate on
+      // chat_rooms_insert so this catch only fires on genuine errors.
+      Alert.alert('Error', 'Could not create group. Please try again.');
     } finally {
       setIsCreating(false);
     }
@@ -1117,11 +1112,6 @@ export default function DiscoverScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <PremiumPaywall
-        visible={showPremiumPaywall}
-        onClose={() => setShowPremiumPaywall(false)}
-      />
-
       {/* Contact Picker Modal (private-group invites) */}
       <Modal
         visible={contactPickerOpen}
@@ -1336,7 +1326,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   groupsCarouselCard: {
-    width: 280,
+    // v9.1 UAT: 280 was too wide on 6" screens — the second tile was
+    // clipped to a sliver, making the row look like a size mismatch
+    // between "the tile" and "the leftover space". 240 lets a second
+    // tile peek clearly on any modern phone width.
+    width: 240,
   },
   seeAllRow: {
     alignItems: 'flex-end',

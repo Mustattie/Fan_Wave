@@ -274,6 +274,17 @@ export interface ChatMessageDisplay {
   time: string;
   created_at: string;
   isMe: boolean;
+  // v9.1 WhatsApp-style merged feed. Populated when a chat message
+  // carries a video/image attachment (mig 072 media columns) OR when the
+  // feed item is a legacy match_moments row folded in on read. The
+  // renderer conditionally shows a poster + tap-to-play bubble when
+  // mediaUrl is present. `kind` distinguishes text-only messages from
+  // media messages from moments so styling can differ if we want.
+  mediaUrl?: string | null;
+  mediaType?: 'video' | 'image' | null;
+  thumbnailUrl?: string | null;
+  kind?: 'text' | 'media' | 'moment';
+  momentType?: string | null;
 }
 
 const AVATAR_COLORS = ['#3498db', '#2ecc71', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22'];
@@ -287,6 +298,7 @@ export function mapMessageToDisplay(row: any, currentUserId?: string): ChatMessa
     ? row.user_id.charCodeAt(0) % AVATAR_COLORS.length
     : 0;
 
+  const mediaUrl = row.media_url ?? null;
   return {
     id: row.id,
     user: isMe ? 'You' : userName,
@@ -298,6 +310,40 @@ export function mapMessageToDisplay(row: any, currentUserId?: string): ChatMessa
       : '',
     created_at: row.created_at || new Date().toISOString(),
     isMe,
+    mediaUrl,
+    mediaType: (row.media_type as 'video' | 'image' | null | undefined) ?? null,
+    thumbnailUrl: row.thumbnail_url ?? null,
+    kind: mediaUrl ? 'media' : 'text',
+  };
+}
+
+// Legacy Highlights (match_moments) folded into the WhatsApp-style feed.
+// Same wire shape as a message so the renderer can treat both identically.
+export function mapMomentToMessageDisplay(row: any, currentUserId?: string): ChatMessageDisplay {
+  const isMe = currentUserId ? row.user_id === currentUserId : false;
+  const userName = row.user?.display_name || row.user_name || 'Member';
+  const initial = userName.charAt(0).toUpperCase();
+  const colorIndex = row.user_id
+    ? row.user_id.charCodeAt(0) % AVATAR_COLORS.length
+    : 0;
+  const url: string | null = row.media_url ?? null;
+  const isVideo = typeof url === 'string' && /\.(mp4|mov|m4v|webm)$/i.test(url);
+  return {
+    id: `mo-${row.id}`,
+    user: isMe ? 'You' : userName,
+    avatar: initial,
+    avatarBg: isMe ? Colors.dark.accent : (row.avatar_bg || AVATAR_COLORS[colorIndex]),
+    text: row.comment || '',
+    time: row.created_at
+      ? new Date(row.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : '',
+    created_at: row.created_at || new Date().toISOString(),
+    isMe,
+    mediaUrl: url,
+    mediaType: url ? (isVideo ? 'video' : 'image') : null,
+    thumbnailUrl: null,
+    kind: 'moment',
+    momentType: row.moment_type ?? null,
   };
 }
 

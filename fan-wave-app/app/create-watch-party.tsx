@@ -31,8 +31,6 @@ import {
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mapGameToDisplay, type GameDisplay } from '@/lib/mappers';
-import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
-import { isExpoGo } from '@/lib/entitlements';
 import { reportError } from '@/lib/errorReporting';
 import { invalidateCache } from '@/lib/cache';
 import { queryClient } from '@/hooks/useQueryClient';
@@ -156,7 +154,6 @@ export default function CreateWatchPartyScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState(1);
-  const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
 
   // Step 1 state
   const [venueQuery, setVenueQuery] = useState('');
@@ -774,36 +771,12 @@ export default function CreateWatchPartyScreen() {
       ]);
     } catch (e: any) {
       setCreating(false);
-      // 42501 = row-level security violation. Migration 053 still gates
-      // watch_parties_insert behind Premium. Surface the upgrade modal
-      // rather than the generic error toast so the user has a one-tap
-      // path to unblock themselves.
-      const code: string | undefined = e?.code;
-      const msg: string = (e?.message ?? '').toLowerCase();
-      const isRlsBlock =
-        code === '42501' ||
-        msg.includes('row-level security') ||
-        msg.includes('violates row-level security policy');
-      if (isRlsBlock) {
-        // In Expo Go the RLS gate ALWAYS rejects (the test account has no
-        // real Premium). Surface a friendly "test-mode" success instead of
-        // a paywall — the paywall sheet itself can't complete a purchase
-        // in Expo Go, so showing it just produces the "Purchase could not
-        // start" loop the user reported on 2026-06-23. The server-side
-        // gate is still authoritative; production builds with a real
-        // entitlement reach this path only on actual policy violations.
-        if (isExpoGo()) {
-          Alert.alert(
-            'Test mode (Expo Go)',
-            'Form looks good! In a production build with a real subscription this would have created the watch party. Nothing was saved to the server.',
-            [{ text: 'OK', onPress: () => router.back() }],
-          );
-          return;
-        }
-        setShowPremiumPaywall(true);
-      } else {
-        Alert.alert('Error', 'Could not create watch party. Please try again.');
-      }
+      // v9.1 UAT pivot: creating a watch party is a free-tier action.
+      // Migration 070 drops the has_premium_access gate on
+      // watch_parties_insert so this catch only fires on genuine errors
+      // (network, validation, RLS mismatch other than premium). Show a
+      // neutral toast instead of a paywall sheet.
+      Alert.alert('Error', 'Could not create watch party. Please try again.');
     }
   };
 
@@ -1358,11 +1331,6 @@ export default function CreateWatchPartyScreen() {
           </View>
         )}
       </View>
-
-      <PremiumPaywall
-        visible={showPremiumPaywall}
-        onClose={() => setShowPremiumPaywall(false)}
-      />
 
       {/* Contact picker modal */}
       <Modal

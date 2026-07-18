@@ -18,6 +18,7 @@ type TimePeriod = '7d' | '30d' | 'all';
 
 interface StatCard {
   label: string;
+  hint: string;
   value: number;
   icon: React.ReactNode;
   color: string;
@@ -98,10 +99,10 @@ export default function CreatorStatsScreen() {
   };
 
   const statCards: StatCard[] = [
-    { label: 'Views', value: stats.views, icon: <Eye size={20} color="#3498db" />, color: '#3498db' },
-    { label: 'Likes', value: stats.likes, icon: <Heart size={20} color="#e74c3c" />, color: '#e74c3c' },
-    { label: 'Shares', value: stats.shares, icon: <Share2 size={20} color="#2ecc71" />, color: '#2ecc71' },
-    { label: 'Followers', value: stats.followers, icon: <Users size={20} color="#f39c12" />, color: '#f39c12' },
+    { label: 'Views',     hint: 'on your clips',   value: stats.views,     icon: <Eye size={20} color="#3498db" />,    color: '#3498db' },
+    { label: 'Likes',     hint: 'on your clips',   value: stats.likes,     icon: <Heart size={20} color="#e74c3c" />,  color: '#e74c3c' },
+    { label: 'Shares',    hint: 'of your clips',   value: stats.shares,    icon: <Share2 size={20} color="#2ecc71" />, color: '#2ecc71' },
+    { label: 'Followers', hint: 'following you',   value: stats.followers, icon: <Users size={20} color="#f39c12" />,  color: '#f39c12' },
   ];
 
   const formatNum = (n: number) => {
@@ -148,12 +149,21 @@ export default function CreatorStatsScreen() {
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           {/* Stat cards */}
+          {/* v9.1 UAT: users mistook zeros for "system not capturing my
+              likes/follows." These are CREATOR stats — engagement on the
+              user's own posted clips + accounts following them, not the
+              user's own engagement history. Hint line disambiguates. */}
+          <Text style={styles.statsCaption}>
+            Engagement on your posts. Liking or following other creators doesn't
+            show up here — it's their stats, not yours.
+          </Text>
           <View style={styles.statsGrid}>
             {statCards.map((s) => (
               <View key={s.label} style={styles.statCard}>
                 {s.icon}
                 <Text style={[styles.statValue, { color: s.color }]}>{formatNum(s.value)}</Text>
                 <Text style={styles.statLabel}>{s.label}</Text>
+                <Text style={styles.statHint}>{s.hint}</Text>
               </View>
             ))}
           </View>
@@ -213,6 +223,11 @@ const styles = StyleSheet.create({
   },
   statValue: { fontSize: 28, fontWeight: '900' },
   statLabel: { fontSize: 12, color: Colors.dark.textSecondary, fontWeight: '600' },
+  statHint: { fontSize: 10, color: Colors.dark.textMuted, textAlign: 'center' },
+  statsCaption: {
+    fontSize: 12, color: Colors.dark.textSecondary, marginBottom: 12,
+    lineHeight: 16, paddingHorizontal: 2,
+  },
   sectionTitle: {
     fontSize: 16, fontWeight: '700', color: Colors.dark.text, marginBottom: 12,
   },

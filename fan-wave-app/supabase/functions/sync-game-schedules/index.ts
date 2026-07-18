@@ -30,6 +30,11 @@ const SPORT_LEAGUE_MAP: Record<
   mlb: { sport: "baseball", league: "mlb", leagueName: "MLB" },
   mls: { sport: "soccer", league: "usa.1", leagueName: "MLS" },
   nhl: { sport: "hockey", league: "nhl", leagueName: "NHL" },
+  // v9.1: College Football. FBS has ~134 programs -- too many to hand-seed
+  // and volatile as programs move conferences, so team rows are auto-created
+  // on first sight via the ON CONFLICT (league_id, name) upsert path below.
+  // Depends on migration 069 having created the "College Football" league.
+  cfb: { sport: "football", league: "college-football", leagueName: "College Football" },
   // 2026 World Cup → Soccer Cup (rebranded migration 048). ESPN exposes
   // it under `soccer/fifa.world`. The leagueName aligns with what
   // migration 006/048 seeded so the events join still resolves.
@@ -41,10 +46,19 @@ const ALL_SPORTS = Object.keys(SPORT_LEAGUE_MAP);
 // ---------------------------------------------------------------------------
 // Interfaces
 // ---------------------------------------------------------------------------
+interface ParsedTeam {
+  name: string;
+  code: string | null;
+  city: string | null;
+  logoUrl: string | null;
+  primaryColor: string | null;
+  alternateColor: string | null;
+}
+
 interface ParsedGame {
   espnId: string;
-  homeTeam: string;
-  awayTeam: string;
+  homeTeam: ParsedTeam;
+  awayTeam: ParsedTeam;
   homeScore: number | null;
   awayScore: number | null;
   venue: string | null;
@@ -140,10 +154,34 @@ class ESPNAdapter implements SportsDataProvider {
             });
         };
 
+        // ESPN team payload: { id, displayName, abbreviation, location,
+        // logo (string) | logos[{href}], color (hex, no #), alternateColor }.
+        // Some sports (CFB) return `logos` array; others (NFL) return a
+        // single `logo` string. Prefer the darker-background variant when
+        // logos[] carries multiple entries -- our app renders on a dark
+        // surface via TeamBadge.
+        const teamOf = (t: any): ParsedTeam => {
+          const team = t?.team ?? {};
+          const logoStr = typeof team.logo === "string" ? team.logo : null;
+          const logoFromArr = Array.isArray(team.logos)
+            ? (team.logos.find((l: any) => Array.isArray(l?.rel) && l.rel.includes("dark"))?.href
+                ?? team.logos[0]?.href
+                ?? null)
+            : null;
+          return {
+            name: team.displayName ?? "Unknown",
+            code: team.abbreviation ?? null,
+            city: team.location ?? null,
+            logoUrl: logoStr ?? logoFromArr,
+            primaryColor: team.color ? `#${String(team.color).replace(/^#/, "")}` : null,
+            alternateColor: team.alternateColor ? `#${String(team.alternateColor).replace(/^#/, "")}` : null,
+          };
+        };
+
         results.push({
           espnId: event.id,
-          homeTeam: homeTeamData.team?.displayName ?? "Unknown",
-          awayTeam: awayTeamData.team?.displayName ?? "Unknown",
+          homeTeam: teamOf(homeTeamData),
+          awayTeam: teamOf(awayTeamData),
           homeScore:
             normalizedStatus !== "scheduled"
               ? Number(homeTeamData.score ?? 0)
@@ -329,20 +367,76 @@ Deno.serve(async (req: Request) => {
         eventId = activeEvent?.id ?? null;
       }
 
-      const teamNames = new Set<string>();
+      // Gather unique teams from the game payload. We dedupe on name so a
+      // team appearing in multiple games only gets one upsert attempt.
+      const teamsByName = new Map<string, ParsedTeam>();
       for (const g of games) {
-        teamNames.add(g.homeTeam);
-        teamNames.add(g.awayTeam);
+        if (!teamsByName.has(g.homeTeam.name)) teamsByName.set(g.homeTeam.name, g.homeTeam);
+        if (!teamsByName.has(g.awayTeam.name)) teamsByName.set(g.awayTeam.name, g.awayTeam);
+      }
+      const teamNames = [...teamsByName.keys()];
+
+      // Prefer a league-scoped lookup so same-named teams across leagues
+      // (rare but possible for CFB program names -- "Miami" the FL program
+      // vs "Miami" as a city label) can't cross-pollinate. Fall back to
+      // global name lookup for backward compat with legacy sports whose
+      // league_id may not resolve (WC seed rows etc.).
+      const teamMap = new Map<string, string>();
+      if (leagueRow?.id) {
+        const { data: scopedRows } = await supabase
+          .from("teams")
+          .select("id, name")
+          .eq("league_id", leagueRow.id)
+          .in("name", teamNames);
+        for (const row of scopedRows ?? []) {
+          teamMap.set(row.name, row.id);
+        }
+      }
+      if (teamMap.size < teamNames.length) {
+        const remaining = teamNames.filter((n) => !teamMap.has(n));
+        const { data: globalRows } = await supabase
+          .from("teams")
+          .select("id, name")
+          .in("name", remaining);
+        for (const row of globalRows ?? []) {
+          teamMap.set(row.name, row.id);
+        }
       }
 
-      const { data: teamRows } = await supabase
-        .from("teams")
-        .select("id, name")
-        .in("name", [...teamNames]);
-
-      const teamMap = new Map<string, string>();
-      for (const row of teamRows ?? []) {
-        teamMap.set(row.name, row.id);
+      // Auto-upsert any team still unmatched, but only when we resolved a
+      // league_id -- without it we don't know where to place the row. This
+      // is the CFB (and future new-sport) on-ramp: the first sync sees the
+      // team, creates it with ESPN's badge + colors, subsequent syncs hit
+      // the cache.
+      if (leagueRow?.id) {
+        const missing: ParsedTeam[] = [];
+        for (const [name, parsed] of teamsByName) {
+          if (!teamMap.has(name)) missing.push(parsed);
+        }
+        if (missing.length > 0) {
+          const rows = missing.map((t) => ({
+            league_id: leagueRow.id,
+            name: t.name,
+            code: t.code,
+            city: t.city,
+            logo_url: t.logoUrl,
+            colors: {
+              primary: t.primaryColor,
+              secondary: t.alternateColor,
+            },
+          }));
+          const { data: upserted, error: upsertErr } = await supabase
+            .from("teams")
+            .upsert(rows, { onConflict: "league_id,name" })
+            .select("id, name");
+          if (upsertErr) {
+            result.errors.push(`team upsert: ${upsertErr.message}`);
+          } else {
+            for (const row of upserted ?? []) {
+              teamMap.set(row.name, row.id);
+            }
+          }
+        }
       }
 
       // Batch-fetch existing metadata for all the games we're about to
@@ -367,12 +461,12 @@ Deno.serve(async (req: Request) => {
       }
 
       for (const game of games) {
-        const homeTeamId = teamMap.get(game.homeTeam) ?? null;
-        const awayTeamId = teamMap.get(game.awayTeam) ?? null;
+        const homeTeamId = teamMap.get(game.homeTeam.name) ?? null;
+        const awayTeamId = teamMap.get(game.awayTeam.name) ?? null;
 
         if (!homeTeamId || !awayTeamId) {
           result.unmatched_teams.push(
-            `${game.homeTeam} vs ${game.awayTeam} (${game.espnId})`,
+            `${game.homeTeam.name} vs ${game.awayTeam.name} (${game.espnId})`,
           );
           continue;
         }

@@ -27,7 +27,14 @@ export default function ForgotPasswordScreen() {
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+    // Explicit redirectTo so the reset link works even if Supabase Site
+    // URL is changed later. The deep-link handler in lib/supabase.ts
+    // parses the recovery tokens from the fragment and calls setSession,
+    // which fires PASSWORD_RECOVERY → app/_layout.tsx routes to
+    // /(auth)/reset-password.
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: 'fansphere://auth-callback',
+    });
     setLoading(false);
 
     if (error) {
@@ -60,6 +67,10 @@ export default function ForgotPasswordScreen() {
             <Text style={styles.sentMessage}>
               We sent a password reset link to{'\n'}
               <Text style={styles.sentEmail}>{email}</Text>
+            </Text>
+            <Text style={styles.sentHint}>
+              Open the email on this phone so the link can open Fan Sphere directly.
+              Desktop browsers can't complete the reset flow.
             </Text>
             <TouchableOpacity
               style={styles.backToSignIn}
@@ -188,6 +199,14 @@ const styles = StyleSheet.create({
     color: Colors.dark.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  sentHint: {
+    fontSize: 12,
+    color: Colors.dark.textMuted,
+    textAlign: 'center',
+    marginTop: 14,
+    lineHeight: 17,
+    paddingHorizontal: 8,
   },
   sentEmail: {
     color: Colors.dark.accent,

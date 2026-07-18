@@ -18,7 +18,6 @@ import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { SPORTS } from '@/constants/Sports';
 import { getMomentTypesForSport, type MomentType } from '@/constants/MomentTypes';
-import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 import { validateClip, UploadValidationError } from '@/lib/storage';
 import {
@@ -58,7 +57,6 @@ export default function CreateClipScreen() {
   const [sportId, setSportId] = useState<string>('nfl');
   const [selectedMoment, setSelectedMoment] = useState<MomentType | null>(null);
   const momentTypes = getMomentTypesForSport(sportId);
-  const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
 
   const player = useVideoPlayer(activeVideoUri || null, (p) => {
     p.loop = true;
@@ -66,13 +64,26 @@ export default function CreateClipScreen() {
     p.play();
   });
 
+  // If the user landed on Create Clip without first choosing a source
+  // (any entry point that doesn't pre-pick a videoUri), prompt Record
+  // / Choose from library immediately instead of showing the form + a
+  // dead-end "No video" alert (v9.1 UAT: "User is suppose to have
+  // option to take or upload existing video not this question").
   useEffect(() => {
-    if (!videoUri && !activeVideoUri) {
-      Alert.alert('No video', 'Please pick a video first.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
-    }
-  }, [videoUri, activeVideoUri, router]);
+    if (videoUri || activeVideoUri) return;
+    Alert.alert(
+      'New Clip',
+      'Add a highlight to the feed.',
+      [
+        { text: 'Record new', onPress: reRecord },
+        { text: 'Choose from library', onPress: rePickFromLibrary },
+        { text: 'Cancel', style: 'cancel', onPress: () => router.back() },
+      ],
+      { cancelable: true, onDismiss: () => router.back() },
+    );
+    // Only prompt on first mount when we truly start with no source.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Re-record / re-pick helpers. Used by the "Clip too large" recovery
   // flow so the user is never stuck with a too-big file bound to the
@@ -175,8 +186,8 @@ export default function CreateClipScreen() {
         (Constants as any).appOwnership === 'expo');
     if (inExpoGo) {
       Alert.alert(
-        'Posting clips needs the production app',
-        'Clip uploads use native modules that aren\'t bundled in Expo Go. Test this flow in an EAS preview / production build.',
+        'Video posting — coming soon',
+        'Clip uploads aren\'t available in this preview yet. It\'ll work in the next App Store / Play update.',
       );
       return;
     }
@@ -261,23 +272,13 @@ export default function CreateClipScreen() {
       // optimistic placeholder; the upload runs in the background.
       router.back();
     } catch (e: any) {
-      // 42501 = RLS row-level security policy violation. With migration 053
-      // still gating media_clips_insert behind has_premium_access, free users
-      // hit this. Show the upgrade paywall instead of a vague error toast.
-      const code: string | undefined = e?.code;
-      const msg: string = (e?.message ?? '').toLowerCase();
-      const isRlsBlock =
-        code === '42501' ||
-        msg.includes('row-level security') ||
-        msg.includes('violates row-level security policy');
-      if (isRlsBlock) {
-        setShowPremiumPaywall(true);
-      } else {
-        Alert.alert(
-          'Could not post clip',
-          e?.message || 'Please check your connection and try again.'
-        );
-      }
+      // v9.1 UAT pivot: posting a clip is a free-tier action. Migration
+      // 070 drops the has_premium_access gate on media_clips_insert, so
+      // this catch only fires on genuine errors.
+      Alert.alert(
+        'Could not post clip',
+        e?.message || 'Please check your connection and try again.'
+      );
     } finally {
       setPosting(false);
     }
@@ -389,10 +390,6 @@ export default function CreateClipScreen() {
           <Text style={styles.counter}>
             {description.length}/{MAX_DESCRIPTION}
           </Text>
-      <PremiumPaywall
-        visible={showPremiumPaywall}
-        onClose={() => setShowPremiumPaywall(false)}
-      />
     </KeyboardAwareScreen>
   );
 }

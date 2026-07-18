@@ -15,7 +15,6 @@ import { ArrowLeft, ExternalLink, RefreshCw, CheckCircle, AlertCircle } from 'lu
 import { Colors } from '@/constants/Colors';
 import { useSubscriptionState, restorePurchases } from '@/lib/entitlements';
 import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
-import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
 
 // Apple/Google policy: cancellation must happen via the App Store /
 // Play Store account settings, NOT inside the app. We deep-link.
@@ -33,14 +32,11 @@ export default function SubscriptionScreen() {
   const router = useRouter();
   const { data: state } = useSubscriptionState();
   const [showPremiumPaywall, setShowPremiumPaywall] = useState(false);
-  const [showWCPaywall, setShowWCPaywall] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
   const status = state?.status ?? 'none';
   const premiumUntil = state?.premiumActiveUntil ?? null;
-  const wcUntil = state?.wcPassActiveUntil ?? null;
   const hasPremium = state?.hasPremiumAccess ?? false;
-  const hasWC = state?.hasWCAccess ?? false;
 
   const handleRestore = async () => {
     setRestoring(true);
@@ -104,38 +100,10 @@ export default function SubscriptionScreen() {
           )}
         </View>
 
-        {/* WC Pass status block */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            {hasWC ? (
-              <CheckCircle size={20} color={Colors.dark.accentGreen} />
-            ) : (
-              <AlertCircle size={20} color={Colors.dark.textMuted} />
-            )}
-            <Text style={styles.cardTitle}>Soccer Cup 2026 Pass</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Status</Text>
-            <Text style={styles.rowValue}>
-              {hasWC ? 'Active' : status === 'trial' ? 'Included with trial' : 'Not purchased'}
-            </Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Valid through</Text>
-            <Text style={styles.rowValue}>
-              {wcUntil ? formatDate(wcUntil) : status === 'trial' ? `Trial ends ${formatDate(premiumUntil)}` : '—'}
-            </Text>
-          </View>
-
-          {!hasWC && status !== 'trial' && (
-            <TouchableOpacity
-              style={[styles.primaryBtn, { backgroundColor: Colors.dark.accentGreen }]}
-              onPress={() => setShowWCPaywall(true)}
-            >
-              <Text style={styles.primaryBtnText}>Buy Soccer Cup Pass — $19.99</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {/* v9.1: Soccer Cup 2026 Pass tile removed per WC sunset. Existing
+            WC Pass buyers were grandfathered to +90d Premium via mig 065;
+            the entitlement remains in the DB but is no longer purchasable
+            or surfaced in-app. */}
 
         {/* Manage / Restore actions */}
         <View style={styles.actionList}>
@@ -166,7 +134,6 @@ export default function SubscriptionScreen() {
       </ScrollView>
 
       <PremiumPaywall visible={showPremiumPaywall} onClose={() => setShowPremiumPaywall(false)} />
-      <WCPassPaywall visible={showWCPaywall} onClose={() => setShowWCPaywall(false)} />
     </SafeAreaView>
   );
 }

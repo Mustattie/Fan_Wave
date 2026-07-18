@@ -43,7 +43,14 @@ const FILTER_PILLS = [
   { id: 'nba', label: '🏀 NBA' },
 ];
 
-function ClipCard({
+// React.memo — prior to this, tapping Follow on any card called
+// setFollowedUserIds -> handleFollow recreated -> renderClipItem recreated ->
+// FlatList's `renderItem` prop changed -> every visible ClipCard re-rendered,
+// including the active <VideoView>. That was the "flickering unstably" the
+// UAT reported. The default shallow comparison is fine because ClipsScreen
+// now passes stable useCallback refs and only the affected card's
+// isFollowingPoster / isLiked / isActive flip when state changes.
+const ClipCard = React.memo(function ClipCard({
   clip,
   isLiked,
   onLike,
@@ -308,7 +315,7 @@ function ClipCard({
       </View>
     </View>
   );
-}
+});
 
 export default function ClipsScreen() {
   const router = useRouter();
@@ -629,63 +636,81 @@ export default function ClipsScreen() {
   }, [loadingMore, hasMore, page, activeFilter, fetchClips]);
 
   // Like toggle with optimistic UI
-  const handleLike = useCallback(
-    async (clipId: string) => {
-      const wasLiked = likedClipIds.has(clipId);
-      const delta = wasLiked ? -1 : 1;
+  // Same stability rationale as handleFollow below: reading likedClipIds
+  // through the functional setter (not the closure) keeps the callback
+  // dep-free so renderClipItem stays stable and React.memo on ClipCard is
+  // actually effective. Without this, tapping Like on card N still caused
+  // every visible card to re-render because handleLike changed identity.
+  const handleLike = useCallback(async (clipId: string) => {
+    let wasLiked = false;
+    setLikedClipIds((prev) => {
+      const next = new Set(prev);
+      if (prev.has(clipId)) {
+        wasLiked = true;
+        next.delete(clipId);
+      } else {
+        next.add(clipId);
+      }
+      return next;
+    });
+    const delta = wasLiked ? -1 : 1;
 
+    setClips((prev) =>
+      prev.map((c) =>
+        c.id === clipId
+          ? { ...c, likes: c.likes + delta, like_count: (c.like_count ?? c.likes) + delta }
+          : c
+      )
+    );
+
+    if (!wasLiked) {
+      trackEvent('clip_liked', 'clips', { clip_id: clipId });
+    }
+
+    try {
+      await supabase.rpc('toggle_clip_like', { p_clip_id: clipId });
+    } catch {
       setLikedClipIds((prev) => {
         const next = new Set(prev);
-        if (wasLiked) next.delete(clipId);
-        else next.add(clipId);
+        if (wasLiked) next.add(clipId);
+        else next.delete(clipId);
         return next;
       });
-
       setClips((prev) =>
         prev.map((c) =>
           c.id === clipId
-            ? { ...c, likes: c.likes + delta, like_count: (c.like_count ?? c.likes) + delta }
+            ? { ...c, likes: c.likes - delta, like_count: (c.like_count ?? c.likes) - delta }
             : c
         )
       );
-
-      if (!wasLiked) {
-        trackEvent('clip_liked', 'clips', { clip_id: clipId });
-      }
-
-      try {
-        await supabase.rpc('toggle_clip_like', { p_clip_id: clipId });
-      } catch {
-        // Rollback
-        setLikedClipIds((prev) => {
-          const next = new Set(prev);
-          if (wasLiked) next.add(clipId);
-          else next.delete(clipId);
-          return next;
-        });
-        setClips((prev) =>
-          prev.map((c) =>
-            c.id === clipId
-              ? { ...c, likes: c.likes - delta, like_count: (c.like_count ?? c.likes) - delta }
-              : c
-          )
-        );
-      }
-    },
-    [likedClipIds]
-  );
+    }
+  }, []);
 
   const [followedUserIds, setFollowedUserIds] = useState<Set<string>>(new Set());
 
+  // handleFollow is intentionally dep-free so its identity is stable across
+  // renders. Prior to this, the [followedUserIds] dep caused every follow
+  // tap to invalidate renderClipItem -> FlatList re-rendered every visible
+  // ClipCard including the active <VideoView>, which produced the "screen
+  // flickering unstably" UAT report. Duplicate-tap guard uses the functional
+  // setter (prev.has(userId) short-circuits) instead of reading state.
   const handleFollow = useCallback(async (userId: string) => {
-    if (!userId || followedUserIds.has(userId)) return;
-    setFollowedUserIds((prev) => new Set(prev).add(userId));
+    if (!userId) return;
+    let alreadyFollowed = false;
+    setFollowedUserIds((prev) => {
+      if (prev.has(userId)) {
+        alreadyFollowed = true;
+        return prev;
+      }
+      return new Set(prev).add(userId);
+    });
+    if (alreadyFollowed) return;
     const { followUser } = await import('@/lib/userFollows');
     const success = await followUser(userId);
     if (!success) {
       setFollowedUserIds((prev) => { const next = new Set(prev); next.delete(userId); return next; });
     }
-  }, [followedUserIds]);
+  }, []);
 
   const handleExport = useCallback(async (clip: ClipDisplay) => {
     const { exportClipToGallery } = await import('@/lib/clipExport');

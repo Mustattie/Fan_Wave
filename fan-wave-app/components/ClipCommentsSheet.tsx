@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Modal,
   View,
@@ -58,6 +58,17 @@ export function ClipCommentsSheet({ visible, onClose, clipId, onCountChange }: P
   const [posting, setPosting] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+  // Parent (clips.tsx:985) passes onCountChange as an inline lambda that
+  // recreates every render. Putting it in loadComments' deps used to cause
+  // an infinite refetch loop: load -> setState -> parent re-render -> new
+  // onCountChange -> new loadComments -> effect re-fires -> load again ->
+  // spinner never resolves, screen appears to spiral/flicker.
+  // Ref pattern captures the latest without destabilizing loadComments.
+  const onCountChangeRef = useRef(onCountChange);
+  useEffect(() => {
+    onCountChangeRef.current = onCountChange;
+  }, [onCountChange]);
+
   const loadComments = useCallback(async (id: string) => {
     setLoading(true);
     try {
@@ -101,13 +112,13 @@ export function ClipCommentsSheet({ visible, onClose, clipId, onCountChange }: P
         isOwn: !!user && r.user_id === user.id,
       }));
       setComments(decorated);
-      onCountChange?.(decorated.length);
+      onCountChangeRef.current?.(decorated.length);
     } catch (e) {
       reportError(e, { source: 'ClipCommentsSheet:load', clipId: id });
     } finally {
       setLoading(false);
     }
-  }, [onCountChange]);
+  }, []);
 
   useEffect(() => {
     if (visible && clipId) {
@@ -184,10 +195,13 @@ export function ClipCommentsSheet({ visible, onClose, clipId, onCountChange }: P
       }
 
       if (data) {
-        setComments((prev) =>
-          prev.map((c) => (c.id === optimistic.id ? { ...c, id: data.id, created_at: data.created_at } : c)),
-        );
-        onCountChange?.(comments.length + 1);
+        setComments((prev) => {
+          const next = prev.map((c) =>
+            c.id === optimistic.id ? { ...c, id: data.id, created_at: data.created_at } : c,
+          );
+          onCountChangeRef.current?.(next.length);
+          return next;
+        });
       }
     } finally {
       setPosting(false);

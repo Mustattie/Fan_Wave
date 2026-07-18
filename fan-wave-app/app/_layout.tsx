@@ -143,7 +143,6 @@ function NavigationGuard({
     const onWelcomeScreen = segments[1] === 'welcome';
     const onPaymentScreen =
       segments[1] === 'choose-plan' ||
-      segments[1] === 'wc-pass-offer' ||
       segments[1] === 'resubscribe';
 
     if (!session && !inAuthGroup) {
@@ -334,6 +333,18 @@ export default function RootLayout() {
         } else if (event === 'SIGNED_OUT') {
           clearUserContext();
           clearPushToken();
+        } else if (event === 'PASSWORD_RECOVERY') {
+          // Fired by supabase-js after the reset-password deep link
+          // completes setSession(). Route the user to the new-password
+          // form so they don't sit on whatever screen the app happened
+          // to be on when the link opened. Uses a require() to avoid a
+          // circular import at module-load time.
+          try {
+            const { router } = require('expo-router');
+            router.replace('/(auth)/reset-password');
+          } catch {
+            // Router not ready — the user can still navigate manually.
+          }
         }
       }
     );

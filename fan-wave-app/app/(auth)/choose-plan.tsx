@@ -27,9 +27,10 @@ export default function ChoosePlanScreen() {
 
   const handlePurchaseSuccess = () => {
     // Webhook + realtime will flip subscription_status to 'trial'.
-    // NavigationGuard will pick that up; we just navigate to the
-    // optional WC Pass offer.
-    router.replace('/(auth)/wc-pass-offer');
+    // v9.x pivot: World Cup pass is no longer surfaced in onboarding —
+    // it stays in Settings → Subscription. Send trial users straight
+    // into the app.
+    router.replace('/(tabs)');
   };
 
   return (
@@ -83,20 +84,17 @@ export default function ChoosePlanScreen() {
           in your {STORE_NAME} account settings.
         </Text>
 
-        {/* v8.7+ P0: until this lands, choose-plan had no escape hatch — a
-            user who couldn't complete a purchase (Expo Go, RC outage,
-            unsupported region) was permanently stuck on this screen.
-            Skip routes to wc-pass-offer, which already has its own Skip
-            to /(tabs). Per-feature PaywallGate components still gate
-            actual Premium actions (clip post, group create, etc.), so
-            the funnel isn't broken — it just moves from a hard block to
-            a contextual prompt at the moment the user actually needs it. */}
+        {/* v9.1 UAT: user asked "why do we have this option" — kept as an
+            escape hatch (Expo Go / RC outage / unsupported region) but
+            copy softened to feel less like an opt-out. Per-feature
+            PaywallGate components still nudge free users into the trial
+            at the moment they try a Premium action. */}
         <TouchableOpacity
           style={styles.skipBtn}
-          onPress={() => router.replace('/(auth)/wc-pass-offer')}
+          onPress={() => router.replace('/(tabs)')}
           activeOpacity={0.7}
         >
-          <Text style={styles.skipBtnText}>Skip — Explore the app first</Text>
+          <Text style={styles.skipBtnText}>Continue with free plan</Text>
         </TouchableOpacity>
       </ScrollView>
 

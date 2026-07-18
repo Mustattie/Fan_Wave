@@ -38,14 +38,22 @@ import { X as XIcon, Users as UsersIcon } from 'lucide-react-native';
 import {
   mapChatRoomToDisplay,
   mapMessageToDisplay,
+  mapMomentToMessageDisplay,
   type ChatRoomDisplay,
   type ChatMessageDisplay,
 } from '@/lib/mappers';
-import MomentsFeed from '@/components/MomentsFeed';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { Image as RNImage } from 'react-native';
 
-type SubTab = 'Chat' | 'Highlights';
-const SUB_TABS: SubTab[] = ['Chat', 'Highlights'];
 const PAGE_SIZE = 20;
+
+// v9.1 WhatsApp-style merged feed: Chat + Highlights are one thread now.
+// The reader queries messages + match_moments in parallel and merges by
+// created_at. Composer's ImageIcon button opens Record/Library picker;
+// selected asset uploads to Storage then inserts into messages with a
+// media_url (mig 072). Legacy match_moments continue to appear read-only.
 
 export default function FanGroupDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -53,12 +61,14 @@ export default function FanGroupDetailScreen() {
   const insets = useSafeAreaInsets();
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<ChatMessageDisplay[]>([]);
-  const [activeTab, setActiveTab] = useState<SubTab>('Chat');
   const [onlineCount, setOnlineCount] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [loadingGroup, setLoadingGroup] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(true);
+  const [attaching, setAttaching] = useState(false);
+  const [previewMediaUrl, setPreviewMediaUrl] = useState<string | null>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const scrollRef = useRef<FlatList>(null);
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -84,15 +94,21 @@ export default function FanGroupDetailScreen() {
   const openInviteSheet = useCallback(() => setInviteSheetOpen(true), []);
 
   const handleInviteViaShare = useCallback(async () => {
+    // The invite sheet is a slide-animation Modal. On Android, calling
+    // Share.share while the modal is still animating out leaves no
+    // presenter for the system share activity → nothing appears.
+    // Close, wait for the animation to finish, then invoke the share.
     setInviteSheetOpen(false);
     const { shareGroup } = await import('@/lib/sharing');
-    if (group) {
-      await shareGroup({
-        id: group.id,
-        name: group.name,
-        memberCount: group.memberCount,
-      });
-    }
+    if (!group) return;
+    const g = group;
+    setTimeout(() => {
+      shareGroup({
+        id: g.id,
+        name: g.name,
+        memberCount: g.memberCount,
+      }).catch((e) => reportError(e, { source: 'fan-group:shareInvite', groupId: g.id }));
+    }, 350);
   }, [group]);
 
   const handleInviteViaContacts = useCallback(async () => {
@@ -211,28 +227,45 @@ export default function FanGroupDetailScreen() {
     }
   }, [id, currentUserId, joining]);
 
-  // Load initial messages from Supabase
+  // Load initial merged feed: messages + match_moments in parallel,
+  // interleaved by created_at. Both tables are chat_room-scoped and
+  // already RLS-gated for members via mig 053. Cap each at PAGE_SIZE
+  // then trim after merge — cheap enough for a single-room view.
   useEffect(() => {
     if (!id) return;
     (async () => {
       setLoadingMessages(true);
       try {
-        const { data, error } = await supabase
-          .from('messages')
-          .select('*')
-          .eq('chat_room_id', id)
-          .order('created_at', { ascending: false })
-          .limit(PAGE_SIZE);
-
-        if (error) throw error;
-        if (data && data.length > 0) {
-          const mapped = data.reverse().map((row: any) => mapMessageToDisplay(row, currentUserId || undefined));
-          setMessages(mapped);
-          setHasMore(data.length === PAGE_SIZE);
-        } else {
-          setMessages([]);
-          setHasMore(false);
-        }
+        const [msgRes, momRes] = await Promise.all([
+          supabase
+            .from('messages')
+            .select('*')
+            .eq('chat_room_id', id)
+            .order('created_at', { ascending: false })
+            .limit(PAGE_SIZE),
+          supabase
+            .from('match_moments')
+            .select('id, moment_type, comment, media_url, user_id, created_at')
+            .eq('chat_room_id', id)
+            .order('created_at', { ascending: false })
+            .limit(PAGE_SIZE),
+        ]);
+        if (msgRes.error) throw msgRes.error;
+        const msgs = (msgRes.data ?? []).map((row: any) =>
+          mapMessageToDisplay(row, currentUserId || undefined),
+        );
+        const moms = (momRes.data ?? []).map((row: any) =>
+          mapMomentToMessageDisplay(row, currentUserId || undefined),
+        );
+        const merged = [...msgs, ...moms].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        );
+        setMessages(merged);
+        // hasMore heuristic: only bother paginating from the messages
+        // side; moments are rarely deep enough to matter, and the merged
+        // load-more query would double-fetch. If future scrollback shows
+        // moments, we'll widen the pagination to a UNION view.
+        setHasMore((msgRes.data?.length ?? 0) === PAGE_SIZE);
       } catch {
         setMessages([]);
         setHasMore(false);
@@ -364,6 +397,118 @@ export default function FanGroupDetailScreen() {
     }
   };
 
+  // Attach flow: Record new / Choose from library → validate → upload →
+  // insert into messages with media_url so it shows up in the merged
+  // feed like a WhatsApp media message. Reuses the storage helper the
+  // Clips + Moments composers already use so the resulting URL lands in
+  // the same bucket and is served by the same CDN path.
+  const handleAttachMedia = useCallback(() => {
+    if (attaching || !id || !currentUserId) return;
+    Alert.alert('Send media', 'Attach a video or photo to the chat.', [
+      { text: 'Record video', onPress: () => pickMedia('camera') },
+      { text: 'Choose from library', onPress: () => pickMedia('library') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [attaching, id, currentUserId]);
+
+  const pickMedia = useCallback(async (source: 'camera' | 'library') => {
+    try {
+      if (source === 'camera') {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (perm.status !== 'granted') {
+          Alert.alert('Camera permission denied', 'Enable camera access in Settings to record.');
+          return;
+        }
+      } else {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (perm.status !== 'granted') {
+          Alert.alert('Library permission denied', 'Enable photo library access in Settings.');
+          return;
+        }
+      }
+      // Camera: force video-only so the launcher opens in record-video
+      // mode (default is stills → user reported "record video option is
+      // bringing up the button to take picture").
+      const opts = {
+        mediaTypes: (source === 'camera' ? ['videos'] : ['videos', 'images']) as any,
+        quality: 0.8,
+        videoMaxDuration: 30,
+      };
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync(opts)
+        : await ImagePicker.launchImageLibraryAsync(opts);
+      if (result.canceled || !result.assets[0]?.uri) return;
+      const asset = result.assets[0];
+      const isVideo = asset.type === 'video';
+
+      setAttaching(true);
+      if (isVideo) {
+        try {
+          await validateClip(asset.uri, {});
+        } catch (e) {
+          if (e instanceof UploadValidationError) {
+            Alert.alert('Clip too large', e.message);
+            return;
+          }
+        }
+      }
+      const ext = (asset.uri.split('.').pop() || (isVideo ? 'mp4' : 'jpg')).toLowerCase();
+      const contentType = isVideo
+        ? (ext === 'mp4' ? 'video/mp4' : `video/${ext}`)
+        : (ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`);
+      const { publicUrl } = await uploadClip(asset.uri, {
+        contentType,
+        subpath: `chat/${id}/${Date.now()}.${ext}`,
+      });
+
+      // Optimistic bubble with the local uri so the sender sees it
+      // immediately; the DB write below promotes it with the CDN url.
+      const optimisticId = `local-${Date.now()}`;
+      const optimistic: ChatMessageDisplay = {
+        id: optimisticId,
+        user: 'You',
+        avatar: currentUserAvatar,
+        avatarBg: Colors.dark.accent,
+        text: '',
+        time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        created_at: new Date().toISOString(),
+        isMe: true,
+        mediaUrl: asset.uri,
+        mediaType: isVideo ? 'video' : 'image',
+        kind: 'media',
+      };
+      setMessages((prev) => [...prev, optimistic]);
+
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          chat_room_id: id,
+          user_id: currentUserId,
+          content: '',
+          type: isVideo ? 'video' : 'image',
+          media_url: publicUrl,
+          media_type: isVideo ? 'video' : 'image',
+        })
+        .select('*')
+        .single();
+      if (error) {
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+        reportError(error, { source: 'fan-group:attach', groupId: id });
+        Alert.alert('Could not send', error.message);
+        return;
+      }
+      if (data) {
+        const promoted = mapMessageToDisplay(data, currentUserId || undefined);
+        setMessages((prev) => prev.map((m) => (m.id === optimisticId ? promoted : m)));
+      }
+    } catch (e) {
+      reportError(e, { source: 'fan-group:pickMedia', groupId: id });
+      Alert.alert('Could not send', 'Please try again in a moment.');
+    } finally {
+      setAttaching(false);
+    }
+  }, [id, currentUserId, currentUserAvatar]);
+
   const displayedOnlineCount = onlineCount || group?.onlineCount || 0;
 
   const renderMessage = ({ item }: { item: ChatMessageDisplay }) => (
@@ -382,22 +527,68 @@ export default function FanGroupDetailScreen() {
         {!item.isMe && (
           <Text style={styles.messageUser}>{item.user}</Text>
         )}
-        <View
-          style={[
-            styles.bubble,
-            item.isMe ? styles.bubbleMe : styles.bubbleOther,
-          ]}
-        >
-          <Text style={[styles.bubbleText, item.isMe && styles.bubbleTextMe]}>
-            {item.text}
-          </Text>
-        </View>
+        {item.mediaUrl ? (
+          <View
+            style={[
+              styles.mediaBubble,
+              item.isMe ? styles.bubbleMe : styles.bubbleOther,
+            ]}
+          >
+            {item.mediaType === 'video' ? (
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => item.mediaUrl && setPreviewMediaUrl(item.mediaUrl)}
+                style={styles.mediaPosterVideo}
+              >
+                <RNImage
+                  source={{ uri: item.thumbnailUrl || item.mediaUrl }}
+                  style={styles.mediaPoster}
+                  resizeMode="cover"
+                />
+                <View style={styles.mediaPlayOverlay}>
+                  <Text style={styles.mediaPlayIcon}>▶</Text>
+                </View>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => item.mediaUrl && setPreviewMediaUrl(item.mediaUrl)}
+              >
+                <RNImage source={{ uri: item.mediaUrl }} style={styles.mediaPoster} resizeMode="cover" />
+              </TouchableOpacity>
+            )}
+            {item.text ? (
+              <Text style={[styles.bubbleText, styles.mediaCaption, item.isMe && styles.bubbleTextMe]}>
+                {item.text}
+              </Text>
+            ) : null}
+          </View>
+        ) : (
+          <View
+            style={[
+              styles.bubble,
+              item.isMe ? styles.bubbleMe : styles.bubbleOther,
+            ]}
+          >
+            <Text style={[styles.bubbleText, item.isMe && styles.bubbleTextMe]}>
+              {item.text}
+            </Text>
+          </View>
+        )}
         <Text style={[styles.messageTime, item.isMe && styles.messageTimeMe]}>
           {item.time}
         </Text>
       </View>
     </View>
   );
+
+  // Fullscreen video preview modal — separate <VideoView> so the inline
+  // poster in the feed doesn't hold a codec slot per bubble.
+  const previewPlayer = useVideoPlayer(previewMediaUrl, (p) => {
+    p.loop = false;
+    p.muted = false;
+    p.play();
+  });
 
   const renderLoadingHeader = () => {
     if (!loadingMore) return null;
@@ -505,25 +696,11 @@ export default function FanGroupDetailScreen() {
         )}
       </View>
 
-      {/* Sub-Tabs */}
-      <View style={styles.subTabRow}>
-        {SUB_TABS.map((tab) => {
-          const isActive = activeTab === tab;
-          return (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.subTab, isActive && styles.subTabActive]}
-              onPress={() => setActiveTab(tab)}
-            >
-              <Text style={[styles.subTabText, isActive && styles.subTabTextActive]}>
-                {tab}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {/* v9.1: Sub-Tabs Chat/Highlights removed per UAT (twice). The feed
+          below merges messages + match_moments into a single WhatsApp-
+          style thread. */}
 
-      {/* Tab Content — wrapped in KeyboardAvoidingView so the chat composer
+      {/* Feed content wrapped in KeyboardAvoidingView so the composer
           rides above the soft keyboard on devices that don't honour the
           app.json softwareKeyboardLayoutMode setting (notably Samsung One
           UI). behavior='padding' on iOS, 'height' on Android — both keep
@@ -533,7 +710,6 @@ export default function FanGroupDetailScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
-      {activeTab === 'Chat' ? (
         <View style={{ flex: 1 }}>
           {loadingMessages ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -567,20 +743,42 @@ export default function FanGroupDetailScreen() {
             />
           )}
 
-          {/* Input Bar — KeyboardAvoidingView wrapping the whole tab lifts
-              this bar above the keyboard; we just add safe-area bottom
-              padding for when the keyboard is closed. */}
+          {/* Input Bar — WhatsApp-style: photo/video attach button on the
+              left triggers Camera / Library picker → upload → messages
+              INSERT with media_url. Smile toggles a common-emoji strip
+              that inserts into the composer. Send composes text-only. */}
+          {emojiOpen && (
+            <View style={styles.emojiStrip}>
+              {['😂','🔥','⚽','🏈','🏀','⚾','💯','🙌','👏','❤️','😡','🎉','😱','🥵','💀','😎'].map((e) => (
+                <TouchableOpacity
+                  key={e}
+                  style={styles.emojiChip}
+                  onPress={() => setMessage((m) => m + e)}
+                >
+                  <Text style={styles.emojiChipText}>{e}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
           <View
             style={[
               styles.inputBar,
               { paddingBottom: 10 + insets.bottom },
             ]}
           >
-            <TouchableOpacity style={styles.inputAction}>
-              <ImageIcon size={20} color={Colors.dark.textMuted} />
+            <TouchableOpacity
+              style={styles.inputAction}
+              onPress={handleAttachMedia}
+              disabled={attaching}
+            >
+              {attaching ? (
+                <ActivityIndicator size="small" color={Colors.dark.accent} />
+              ) : (
+                <ImageIcon size={20} color={Colors.dark.textSecondary} />
+              )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.inputAction}>
-              <Smile size={20} color={Colors.dark.textMuted} />
+            <TouchableOpacity style={styles.inputAction} onPress={() => setEmojiOpen((o) => !o)}>
+              <Smile size={20} color={emojiOpen ? Colors.dark.accent : Colors.dark.textMuted} />
             </TouchableOpacity>
             <TextInput
               style={styles.textInput}
@@ -592,9 +790,6 @@ export default function FanGroupDetailScreen() {
               returnKeyType="send"
               maxLength={2000}
             />
-            {/* Sending chat in a group you're already a member of is free
-                (migration 053). PaywallGate removed — DB allows it for any
-                member. Creating groups + posting clips still gated. */}
             <TouchableOpacity
               style={[
                 styles.sendButton,
@@ -607,44 +802,28 @@ export default function FanGroupDetailScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      ) : (
-        <View style={{ flex: 1 }}>
-          {/* sportId falls back to the moment-type 'default' bucket (Big
-              Play / Highlight / Reaction / Discussion) for any group whose
-              sport we can't resolve — NEVER 'nfl', which would surface
-              Touchdown/Interception/Sack chips inside a Soccer Cup group
-              (FW-7). Auto-join is delegated so MomentsFeed can ensure the
-              poster is a chat_room_members row before INSERT — otherwise
-              the RLS WITH CHECK silently rejects the row and the moment
-              vanishes on tab switch (FW-5). */}
-          <MomentsFeed
-            chatRoomId={id || ''}
-            sportId={group.sport || 'default'}
-            isMember={isMember || isOwner}
-            onEnsureMember={async () => {
-              if (isMember || isOwner || !currentUserId || !id) return true;
-              try {
-                const { error } = await supabase
-                  .from('chat_room_members')
-                  .insert({ chat_room_id: id, user_id: currentUserId, role: 'member' });
-                // Unique-violation = already a member (race); treat as success.
-                if (error && !/duplicate|unique/i.test(error.message)) {
-                  throw error;
-                }
-                setIsMember(true);
-                setGroup((prev) =>
-                  prev ? { ...prev, memberCount: (prev.memberCount || 0) + 1 } : prev,
-                );
-                return true;
-              } catch (e) {
-                reportError(e, { source: 'fan-group:onEnsureMember', groupId: id });
-                return false;
-              }
-            }}
-          />
-        </View>
-      )}
       </KeyboardAvoidingView>
+
+      {/* Fullscreen media preview — video plays with sound, image just
+          shows fitted to screen. Tap outside to close. */}
+      <Modal visible={!!previewMediaUrl} transparent animationType="fade" onRequestClose={() => setPreviewMediaUrl(null)}>
+        <TouchableOpacity
+          style={styles.previewBackdrop}
+          activeOpacity={1}
+          onPress={() => setPreviewMediaUrl(null)}
+        >
+          {previewMediaUrl && /\.(mp4|mov|m4v|webm)$/i.test(previewMediaUrl) ? (
+            <VideoView
+              player={previewPlayer}
+              style={styles.previewMedia}
+              nativeControls
+              contentFit="contain"
+            />
+          ) : previewMediaUrl ? (
+            <RNImage source={{ uri: previewMediaUrl }} style={styles.previewMedia} resizeMode="contain" />
+          ) : null}
+        </TouchableOpacity>
+      </Modal>
 
       {/* Invite chooser sheet — two options: contacts picker (SMS deep
           link, mirrors create-private-group flow) and the existing
@@ -781,14 +960,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   joinPinnedText: { fontSize: 13, fontWeight: '800', color: '#fff' },
-  subTabRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: Colors.dark.border },
-  subTab: {
-    flex: 1, alignItems: 'center', paddingVertical: 10,
-    borderBottomWidth: 2, borderBottomColor: 'transparent',
-  },
-  subTabActive: { borderBottomColor: Colors.dark.accent },
-  subTabText: { fontSize: 13, fontWeight: '600', color: Colors.dark.textSecondary },
-  subTabTextActive: { color: '#ffffff' },
   messageList: { paddingHorizontal: 12, paddingVertical: 8 },
   messageBubbleRow: { flexDirection: 'row', marginBottom: 12, alignItems: 'flex-end', gap: 8 },
   messageBubbleRowMe: { flexDirection: 'row-reverse' },
@@ -801,6 +972,45 @@ const styles = StyleSheet.create({
   bubbleMe: { backgroundColor: Colors.dark.accent, borderBottomRightRadius: 4 },
   bubbleText: { fontSize: 14, color: Colors.dark.text, lineHeight: 20 },
   bubbleTextMe: { color: '#fff' },
+  mediaBubble: {
+    borderRadius: 18,
+    overflow: 'hidden',
+    padding: 4,
+    maxWidth: 240,
+  },
+  mediaPoster: {
+    width: 232,
+    height: 174,
+    borderRadius: 14,
+    backgroundColor: '#000',
+  },
+  mediaPosterVideo: { position: 'relative' },
+  mediaPlayOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  mediaPlayIcon: {
+    color: '#fff', fontSize: 40, opacity: 0.9,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  mediaCaption: {
+    paddingHorizontal: 10,
+    paddingTop: 6,
+    paddingBottom: 4,
+  },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewMedia: {
+    width: '100%',
+    height: '80%',
+  },
   messageTime: { fontSize: 10, color: Colors.dark.textMuted, marginTop: 3, marginLeft: 4 },
   messageTimeMe: { textAlign: 'right', marginRight: 4, marginLeft: 0 },
   loadingMore: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, gap: 8 },
@@ -811,6 +1021,23 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: Colors.dark.border, backgroundColor: Colors.dark.tabBar,
   },
   inputAction: { padding: 4 },
+  emojiStrip: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: Colors.dark.border,
+    backgroundColor: Colors.dark.tabBar,
+  },
+  emojiChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: Colors.dark.surface,
+  },
+  emojiChipText: { fontSize: 22 },
   textInput: {
     flex: 1, backgroundColor: Colors.dark.surface, borderRadius: 20,
     paddingHorizontal: 16, paddingVertical: 10, fontSize: 14,

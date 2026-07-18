@@ -27,16 +27,15 @@ import {
   type ClipDisplay,
 } from '@/lib/mappers';
 import { subscribeToGames } from '@/lib/realtime';
+import { MvpVoteSheet } from '@/components/MvpVoteSheet';
 
-// Game detail — v9.0.1.
-// Reached from Game Day tab (previously showed an Alert stub). Shows:
+// Game detail screen. Shows:
 //   * Score / status header with live period label
 //   * Watch Parties for this game (watch_parties.game_id FK)
 //   * Clips for this game (media_clips.game_id FK)
 //   * Fan Groups for either team (chat_rooms.team_id in [home, away])
-//   * CTAs for live chat + MVP voting marked "Coming v9.1"
-// Zero new schema — all joins already exist. v9.1 adds
-// chat_rooms.game_id + mvp_votes and swaps the CTAs for real UI.
+//   * Live chat CTA (mig 067 chat_rooms.game_id + get_or_create_game_chat RPC)
+//   * MVP vote CTA (mig 068 mvp_votes + cast_mvp_vote / get_mvp_tally RPCs)
 
 interface FanGroupRow {
   id: string;
@@ -51,11 +50,16 @@ export default function GameDetailScreen() {
   const router = useRouter();
 
   const [game, setGame] = useState<GameDisplay | null>(null);
+  const [teamIds, setTeamIds] = useState<{ home: string | null; away: string | null }>({
+    home: null,
+    away: null,
+  });
   const [parties, setParties] = useState<WatchPartyDisplay[]>([]);
   const [clips, setClips] = useState<ClipDisplay[]>([]);
   const [groups, setGroups] = useState<FanGroupRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [mvpOpen, setMvpOpen] = useState(false);
 
   const loadAll = useCallback(async () => {
     if (!id) return;
@@ -80,6 +84,7 @@ export default function GameDetailScreen() {
 
     const homeTeamId = gameRes.data.home_team_id;
     const awayTeamId = gameRes.data.away_team_id;
+    setTeamIds({ home: homeTeamId ?? null, away: awayTeamId ?? null });
 
     // Related data — three parallel queries. Failures on any one leave the
     // section empty rather than breaking the whole screen.
@@ -316,13 +321,12 @@ export default function GameDetailScreen() {
             <Text style={[styles.ctaText, styles.ctaTextActive]}>Live chat</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.cta, styles.ctaDisabled]}
-            disabled
+            style={styles.cta}
+            onPress={() => setMvpOpen(true)}
             activeOpacity={0.7}
           >
-            <Trophy size={18} color={Colors.dark.textSecondary} />
-            <Text style={styles.ctaText}>MVP vote</Text>
-            <Text style={styles.ctaBadge}>v9.1</Text>
+            <Trophy size={18} color={Colors.dark.accent} />
+            <Text style={[styles.ctaText, styles.ctaTextActive]}>MVP vote</Text>
           </TouchableOpacity>
         </View>
 
@@ -483,6 +487,16 @@ export default function GameDetailScreen() {
         </View>
 
       </ScrollView>
+
+      <MvpVoteSheet
+        visible={mvpOpen}
+        onClose={() => setMvpOpen(false)}
+        gameId={game.id}
+        homeTeam={game.homeTeam}
+        awayTeam={game.awayTeam}
+        homeTeamId={teamIds.home}
+        awayTeamId={teamIds.away}
+      />
     </SafeAreaView>
   );
 }

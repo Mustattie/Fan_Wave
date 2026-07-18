@@ -89,10 +89,12 @@ export default function EditProfileScreen() {
       return;
     }
 
+    // v9.1 UAT: dropped allowsEditing — Android's native cropper renders
+    // its 'CROP' label in a light-on-light theme we can't restyle, and
+    // users reported it as unreadable. The avatar UI clips to a circle
+    // anyway, so an off-square source image still displays cleanly.
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
       quality: 0.7,
     });
 

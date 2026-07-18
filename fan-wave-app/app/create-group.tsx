@@ -17,7 +17,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { reportError } from '@/lib/errorReporting';
-import { isExpoGo } from '@/lib/entitlements';
 import { SportPillRow } from '@/components/SportPill';
 import { SPORTS, SPORT_BY_ID, type SportId } from '@/constants/Sports';
 
@@ -159,28 +158,9 @@ export default function CreateGroupScreen() {
         .single();
 
       if (error) {
-        // In Expo Go the chat_rooms RLS gate (migration 053 freemium quota)
-        // rejects inserts once the user is past the free tier. Surface a
-        // friendly test-mode success so the user can walk the full create
-        // flow without hitting the cryptic 42501 dialog. Local groups list
-        // still picks up the group via AsyncStorage so the UX preview is
-        // complete.
-        const isRls =
-          (error as any)?.code === '42501' ||
-          /row-level security/i.test(error.message ?? '');
-        if (isRls && isExpoGo()) {
-          await saveGroupLocally(groupData);
-          setIsCreating(false);
-          Alert.alert(
-            'Test mode (Expo Go)',
-            'Form looks good! In a production build with a Fan Sphere Premium subscription this would have created the group on the server. We saved a local preview so you can still see it on the Fan Groups list.',
-            [
-              { text: 'View Group', onPress: () => router.replace(`/fan-group/${groupData.id}` as any) },
-              { text: 'Done', onPress: () => router.back() },
-            ],
-          );
-          return;
-        }
+        // v9.1 UAT pivot: creating a fan group is a free-tier action.
+        // Migration 070 drops the has_premium_access gate on
+        // chat_rooms_insert, so this branch only fires on genuine errors.
         Alert.alert('Error', `Could not create group: ${error.message}`);
         setIsCreating(false);
         return;
