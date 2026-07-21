@@ -101,16 +101,18 @@ export function GroupCard({
       activeOpacity={0.8}
     >
       <View style={styles.header}>
-        <View style={[styles.icon, { backgroundColor: group.iconBg }]}>
-          <Text style={styles.iconText}>{group.icon}</Text>
-        </View>
+        {/* v9.1.1 UAT 2026-07-21: on the 240px Suggested carousel tile the
+            icon (a generic trophy for every group) burned ~56px on the
+            left and still forced "New England Patriots Fans" to truncate.
+            Hide it in joinable mode so the name gets the full row width;
+            the icon still renders in Joined / DM-list contexts where the
+            row is wider and per-group icon variety matters more. */}
+        {!joinable && (
+          <View style={[styles.icon, { backgroundColor: group.iconBg }]}>
+            <Text style={styles.iconText}>{group.icon}</Text>
+          </View>
+        )}
         <View style={styles.info}>
-          {/* v9.1 UAT 2026-07-21: on the 240px Suggested carousel tile the
-              Join button used to sit inside this row and squeezed the name
-              column to ~70px, so "Denver Broncos Fans" truncated to
-              "Denver Broncos…". When joinable, the Join button is now
-              hoisted below member count so the name gets the full row
-              width minus the 44px icon. */}
           <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">
             {group.name}
           </Text>
