@@ -40,8 +40,20 @@ export function WatchPartyCard({ party }: WatchPartyCardProps) {
   };
 
   const handleRsvp = async () => {
-    const nextStatus: 'going' | 'interested' | 'declined' =
-      rsvpStatus === 'none' ? 'going' : rsvpStatus === 'going' ? 'interested' : 'declined';
+    // v9.1.3 UAT 2026-07-21: prior code was a 4-state rotator
+    // (none → going → interested → declined) that had two big problems:
+    //   1. Cancelling required THREE taps (Going → Interested → Declined),
+    //      not the single toggle the button label implies.
+    //   2. The "cancel" tap sent p_status='declined'. Mig 073's RPC only
+    //      DELETEs on 'none' or 'cancelled', so the DB kept a stranded
+    //      row with status='declined' while the client optimistically
+    //      reset the label to 'RSVP'. UAT SQL probe caught the leak.
+    // Fix: simple 2-state toggle. Interested was unreachable via a normal
+    // interaction anyway (only accidentally by double-tap on Going) and
+    // isn't shown as a filter or on any other surface. If we want it back
+    // later, put it behind a long-press or a bottom-sheet.
+    const nextStatus: 'going' | 'cancelled' =
+      rsvpStatus === 'going' ? 'cancelled' : 'going';
 
     setRsvpLoading(true);
     try {
@@ -69,9 +81,9 @@ export function WatchPartyCard({ party }: WatchPartyCardProps) {
       }
       // Only update local state on success — prior code optimistically set
       // "Going" even when the RPC threw, masking the bug from the user.
-      setRsvpStatus(nextStatus === 'declined' ? 'none' : nextStatus);
+      setRsvpStatus(nextStatus === 'cancelled' ? 'none' : 'going');
       // Invalidate the shared RSVP cache so every other WatchPartyCard on
-      // every other screen reflects the same Going/Interested/none label.
+      // every other screen reflects the same Going/RSVP label.
       queryClient.invalidateQueries({ queryKey: ['myRsvps'] });
     } catch (e: any) {
       Alert.alert('RSVP failed', e?.message ?? 'Network error — please try again.');
