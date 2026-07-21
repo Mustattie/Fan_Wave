@@ -10,6 +10,12 @@ import { StatusBar } from 'expo-status-bar';
 
 LogBox.ignoreLogs([
   "The action 'GO_BACK' was not handled by any navigator",
+  // Expo Go noise-floor filters (v9.1 UAT 2026-07-21). These fire on every
+  // clip mount / launch inside Expo Go and buried real errors during UAT.
+  // None affect EAS builds — the underlying issues are Expo Go-only quirks.
+  "VideoPlayer.replace",
+  "expo-notifications: Android Push notifications",
+  "ImagePicker.MediaTypeOptions` have been deprecated",
 ]);
 import { Session } from '@supabase/supabase-js';
 import { supabase, setupAuthDeepLinkHandler } from '@/lib/supabase';

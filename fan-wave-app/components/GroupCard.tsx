@@ -105,40 +105,48 @@ export function GroupCard({
           <Text style={styles.iconText}>{group.icon}</Text>
         </View>
         <View style={styles.info}>
-          <Text style={styles.name}>{group.name}</Text>
+          {/* v9.1 UAT 2026-07-21: on the 240px Suggested carousel tile the
+              Join button used to sit inside this row and squeezed the name
+              column to ~70px, so "Denver Broncos Fans" truncated to
+              "Denver Broncos…". When joinable, the Join button is now
+              hoisted below member count so the name gets the full row
+              width minus the 44px icon. */}
+          <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">
+            {group.name}
+          </Text>
           <Text style={styles.members}>
             {(group.memberCount ?? 0).toLocaleString()} members
             {(group.onlineCount ?? 0) > 0 && ` · ${group.onlineCount ?? 0} online`}
           </Text>
         </View>
-        {joinable ? (
-          <TouchableOpacity
-            style={[styles.joinBtn, showJoinedState && styles.joinedBtn]}
-            onPress={handleJoin}
-            disabled={joining || showJoinedState}
-            activeOpacity={0.85}
-          >
-            {joining ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={[styles.joinBtnText, showJoinedState && styles.joinedBtnText]}>
-                {showJoinedState ? '✓ Joined' : 'Join'}
-              </Text>
+        {!joinable && showUnread && (
+          <View style={styles.rightColumn}>
+            <Text style={styles.time}>{group.lastMessageTime}</Text>
+            {(group.unreadCount ?? 0) > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{group.unreadCount ?? 0}</Text>
+              </View>
             )}
-          </TouchableOpacity>
-        ) : (
-          showUnread && (
-            <View style={styles.rightColumn}>
-              <Text style={styles.time}>{group.lastMessageTime}</Text>
-              {(group.unreadCount ?? 0) > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{group.unreadCount ?? 0}</Text>
-                </View>
-              )}
-            </View>
-          )
+          </View>
         )}
       </View>
+
+      {joinable && (
+        <TouchableOpacity
+          style={[styles.joinBtn, styles.joinBtnFullWidth, showJoinedState && styles.joinedBtn]}
+          onPress={handleJoin}
+          disabled={joining || showJoinedState}
+          activeOpacity={0.85}
+        >
+          {joining ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={[styles.joinBtnText, showJoinedState && styles.joinedBtnText]}>
+              {showJoinedState ? '✓ Joined' : 'Join'}
+            </Text>
+          )}
+        </TouchableOpacity>
+      )}
 
       {group.lastMessage ? (
         <Text style={styles.preview} numberOfLines={1}>
@@ -251,6 +259,11 @@ const styles = StyleSheet.create({
     minWidth: 64,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  joinBtnFullWidth: {
+    marginTop: 6,
+    alignSelf: 'stretch',
+    paddingVertical: 10,
   },
   joinedBtn: {
     backgroundColor: Colors.dark.surface,

@@ -58,7 +58,20 @@ export default function CreateClipScreen() {
   const [selectedMoment, setSelectedMoment] = useState<MomentType | null>(null);
   const momentTypes = getMomentTypesForSport(sportId);
 
-  const player = useVideoPlayer(activeVideoUri || null, (p) => {
+  // Detect Expo Go so we can render an in-screen block banner (v9.1 UAT
+  // 2026-07-21). The old flow let the user fill the whole form and only
+  // dropped the "coming soon" Alert at Post-tap time -- confusing UX,
+  // reads as a bug. Now we surface the state up-front and disable Post.
+  const inExpoGo =
+    __DEV__ &&
+    (Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
+      (Constants as any).appOwnership === 'expo');
+
+  // Skip the video player entirely in Expo Go. useVideoPlayer + expo-video
+  // stalls on file:// URIs from ImagePicker on Android inside Expo Go
+  // (black preview reported in v9.1 UAT). No point spinning the decoder
+  // when we're blocking Post anyway; the banner tells the tester why.
+  const player = useVideoPlayer(inExpoGo ? null : (activeVideoUri || null), (p) => {
     p.loop = true;
     p.muted = true;
     p.play();
@@ -173,17 +186,11 @@ export default function CreateClipScreen() {
       // Unknown validation error — let the server reject.
     }
 
-    // v8.7+ P0: Expo Go's bundled native modules don't reliably handle the
-    // video upload path (expo-file-system createUploadTask on Android Hermes
-    // + expo-video preview state). UAT 2026-06-23 reported a hard Hermes
-    // crash on the SECOND clip post that ejected the user out of the app
-    // and reset onboarding state — uncatchable from JS because the SIGABRT
-    // originates in libmedia / native upload code. Block the post entirely
-    // in Expo Go and tell the tester to use an EAS preview build.
-    const inExpoGo =
-      __DEV__ &&
-      (Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
-        (Constants as any).appOwnership === 'expo');
+    // Belt-and-suspenders guard. The Post button is already disabled by
+    // `inExpoGo` (see render), so this only fires if a caller invokes
+    // handlePost programmatically. Historical reason for the block:
+    // Expo Go's bundled expo-video / expo-file-system crashed with SIGABRT
+    // on the second clip upload (v8.7 UAT 2026-06-23), uncatchable from JS.
     if (inExpoGo) {
       Alert.alert(
         'Video posting — coming soon',
@@ -299,19 +306,41 @@ export default function CreateClipScreen() {
       }
       footer={
         <TouchableOpacity
-          style={[styles.postBtn, (posting || !title.trim()) && styles.postBtnDisabled]}
-          disabled={posting || !title.trim()}
+          style={[
+            styles.postBtn,
+            (posting || !title.trim() || inExpoGo) && styles.postBtnDisabled,
+          ]}
+          disabled={posting || !title.trim() || inExpoGo}
           onPress={handlePost}
         >
           {posting ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.postBtnText}>Post Clip</Text>
+            <Text style={styles.postBtnText}>
+              {inExpoGo ? 'Post Clip (unavailable in preview)' : 'Post Clip'}
+            </Text>
           )}
         </TouchableOpacity>
       }
     >
-      {activeVideoUri ? (
+      {inExpoGo && (
+        <View style={styles.expoGoBanner}>
+          <Text style={styles.expoGoBannerTitle}>
+            Clip upload disabled in this preview
+          </Text>
+          <Text style={styles.expoGoBannerBody}>
+            Video capture, upload, and playback need the native modules
+            that ship in an EAS build — Expo Go can't drive them safely.
+            The rest of the flow works so you can walk the UX; posting
+            re-enables in the next TestFlight / Play build.
+          </Text>
+        </View>
+      )}
+      {inExpoGo ? (
+            <View style={[styles.videoPreview, styles.videoPlaceholder]}>
+              <Text style={styles.videoPlaceholderText}>Preview unavailable</Text>
+            </View>
+          ) : activeVideoUri ? (
             <VideoView
               player={player}
               style={styles.videoPreview}
@@ -436,6 +465,30 @@ const styles = StyleSheet.create({
   videoPlaceholder: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  videoPlaceholderText: {
+    color: C.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  expoGoBanner: {
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.accent,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+  },
+  expoGoBannerTitle: {
+    color: C.text,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  expoGoBannerBody: {
+    color: C.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
   },
   label: {
     color: C.text,

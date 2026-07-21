@@ -270,6 +270,19 @@ export function useEntitlementsRealtime() {
 // set up.
 // ---------------------------------------------------------------------------
 export async function configureRevenueCat(authUserId?: string | null): Promise<void> {
+  // Expo Go has no native IAP module. Prior to v9.1.1, Purchases.configure()
+  // threw "Invalid API key. The native store is not available when running
+  // inside Expo Go" and reportError() surfaced it as a red LogBox overlay
+  // on every launch during UAT (v9.1 UAT 2026-07-21). Short-circuit here so
+  // Expo Go stays quiet -- entitlement state falls back to isExpoGo()
+  // fake-Premium elsewhere, so no user-facing regression.
+  if (isExpoGo()) {
+    patchRcStatus({
+      sdkRequireSucceeded: false,
+      lastError: 'skipped: running in Expo Go',
+    });
+    return;
+  }
   const iosKey = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY;
   const androidKey = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY;
   const apiKey = Platform.OS === 'ios' ? iosKey : androidKey;
