@@ -25,6 +25,7 @@ import {
   buildGroupInviteBody,
 } from '@/lib/inviteContacts';
 import { Colors } from '@/constants/Colors';
+import { SPORTS } from '@/constants/Sports';
 import { SportPillRow } from '@/components/SportPill';
 import { WatchPartyCard } from '@/components/WatchPartyCard';
 import { GroupCard } from '@/components/GroupCard';
@@ -39,24 +40,22 @@ import {
   type ChatRoomDisplay,
 } from '@/lib/mappers';
 
+// v9.1.4 UAT 2026-07-21: both pill lists used to be hardcoded (5 sports on
+// the top-of-Discover filter, 4 in the Create Group modal) and had drifted
+// away from constants/Sports.ts as new sports were added -- WNBA, CFB,
+// CBB, MLS, UFC were all invisible. Derive from the single source of truth
+// so Sports.ts is the only place we add a sport going forward.
 const FILTER_PILLS = [
   { id: 'all', label: 'All' },
-  { id: 'nfl', label: '🏈 NFL' },
-  { id: 'nba', label: '🏀 NBA' },
-  { id: 'soccer', label: '⚽ Soccer' },
-  { id: 'mlb', label: '⚾ MLB' },
-  { id: 'nhl', label: '🏒 NHL' },
+  ...SPORTS.map((s) => ({ id: s.id as string, label: `${s.icon} ${s.name}` })),
 ];
 
-// Sport list used inside the Create Group modal (matches the legacy
-// (tabs)/groups.tsx pattern for parity with the create-flow the modal
-// replaces).
-const SPORT_PILLS = [
-  { id: 'nfl', label: 'NFL 🏈', emoji: '🏈' },
-  { id: 'nba', label: 'NBA 🏀', emoji: '🏀' },
-  { id: 'soccer', label: 'Soccer ⚽', emoji: '⚽' },
-  { id: 'mlb', label: 'MLB ⚾', emoji: '⚾' },
-];
+// Sport list used inside the Create Group modal.
+const SPORT_PILLS = SPORTS.map((s) => ({
+  id: s.id as string,
+  label: `${s.name} ${s.icon}`,
+  emoji: s.icon,
+}));
 
 const VISIBILITY_OPTIONS = [
   { id: 'public', label: '🌍 Public' },

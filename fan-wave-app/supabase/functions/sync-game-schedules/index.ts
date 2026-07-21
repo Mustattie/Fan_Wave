@@ -27,6 +27,10 @@ const SPORT_LEAGUE_MAP: Record<
 > = {
   nfl: { sport: "football", league: "nfl", leagueName: "NFL" },
   nba: { sport: "basketball", league: "nba", leagueName: "NBA" },
+  // v9.1.4: WNBA. Depends on migration 075 having created the WNBA sport
+  // row + WNBA league row. Team rows auto-upsert on first ESPN payload
+  // like CFB, so no static team seed is required.
+  wnba: { sport: "basketball", league: "wnba", leagueName: "WNBA" },
   mlb: { sport: "baseball", league: "mlb", leagueName: "MLB" },
   mls: { sport: "soccer", league: "usa.1", leagueName: "MLS" },
   nhl: { sport: "hockey", league: "nhl", leagueName: "NHL" },
@@ -35,6 +39,10 @@ const SPORT_LEAGUE_MAP: Record<
   // on first sight via the ON CONFLICT (league_id, name) upsert path below.
   // Depends on migration 069 having created the "College Football" league.
   cfb: { sport: "football", league: "college-football", leagueName: "College Football" },
+  // v9.1.4: College Basketball (Men's). Sport row already exists from mig 007
+  // (id a0000000-0000-0000-0000-000000000008); migration 075 adds the league
+  // row. Team upsert works the same way as CFB.
+  cbb: { sport: "basketball", league: "mens-college-basketball", leagueName: "College Basketball" },
   // 2026 World Cup → Soccer Cup (rebranded migration 048). ESPN exposes
   // it under `soccer/fifa.world`. The leagueName aligns with what
   // migration 006/048 seeded so the events join still resolves.

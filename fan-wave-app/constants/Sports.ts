@@ -1,6 +1,7 @@
 export const SPORTS = [
   { id: 'nfl', name: 'NFL', icon: '🏈', color: '#0096ff' },
   { id: 'nba', name: 'NBA', icon: '🏀', color: '#ff8c00' },
+  { id: 'wnba', name: 'WNBA', icon: '🏀', color: '#ff6b35' },
   { id: 'mlb', name: 'MLB', icon: '⚾', color: '#cc0000' },
   { id: 'soccer', name: 'Soccer', icon: '⚽', color: '#00c853' },
   { id: 'nhl', name: 'NHL', icon: '🏒', color: '#000080' },
