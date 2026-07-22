@@ -1263,7 +1263,13 @@ export default function CreateWatchPartyScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior="padding"
+      // v9.1.6 UAT 2026-07-22: behavior="padding" was iOS-only-correct and
+      // on Android it double-stacked with the OS-level adjustResize
+      // (softwareKeyboardLayoutMode="resize" in app.json), which pushed
+      // both the venue-search Next button (Step 1) and the final Create
+      // Watch Party button (Step 3) partially under the keyboard.
+      // Matches the pattern used by components/KeyboardAwareScreen.tsx.
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={0}
     >
       {/* Header */}
