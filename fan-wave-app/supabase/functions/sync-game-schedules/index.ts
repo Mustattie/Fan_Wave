@@ -544,10 +544,20 @@ Deno.serve(async (req: Request) => {
       },
     );
   } catch (err) {
+    // v9.1.9 UAT 2026-07-22: the previous handler returned a bare
+    // "Internal server error" string and dropped the actual message +
+    // stack, which made the WNBA/CFB/CBB sync crash (Test #11) impossible
+    // to diagnose from the pg_net response. Now the response body carries
+    // the underlying message so the caller can act on it, AND we log to
+    // Deno stderr so Studio → Edge Functions → Logs also captures it.
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    const errorStack = err instanceof Error ? err.stack : undefined;
+    console.error("sync-game-schedules crashed:", err);
     return new Response(
       JSON.stringify({
         success: false,
-        error: "Internal server error",
+        error: errorMessage,
+        stack: errorStack,
       }),
       {
         status: 500,
