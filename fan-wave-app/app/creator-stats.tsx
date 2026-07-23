@@ -63,31 +63,33 @@ export default function CreatorStatsScreen() {
           ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
           : '1970-01-01T00:00:00Z';
 
-      // Get clips with stats
+      // v9.2.0: added share_count to the select (mig 080 adds the column
+      // + trigger that maintains it from analytics_events). Sums in one
+      // pass instead of a second network call, and -- more importantly
+      // -- fixes the semantic: previously the analytics_events query
+      // filtered on user_id = self, but user_id there is the SHARER,
+      // not the creator whose clip was shared. Old query returned "how
+      // many times I shared other people's clips," which is the wrong
+      // stat for a creator. share_count on media_clips is per-clip so
+      // summing over the creator's own rows is the correct measure of
+      // "shares OF my clips."
       let query = supabase
         .from('media_clips')
-        .select('id, title, view_count, like_count, created_at')
+        .select('id, title, view_count, like_count, share_count, created_at')
         .eq('user_id', user.id)
         .gte('created_at', dateFilter)
         .order('like_count', { ascending: false });
 
       const { data: clips } = await query;
 
-      const totalViews = (clips ?? []).reduce((sum, c) => sum + (c.view_count || 0), 0);
-      const totalLikes = (clips ?? []).reduce((sum, c) => sum + (c.like_count || 0), 0);
-
-      // Get share count from analytics
-      const { count: shareCount } = await supabase
-        .from('analytics_events')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('event_name', 'clip_shared')
-        .gte('created_at', dateFilter);
+      const totalViews  = (clips ?? []).reduce((sum, c: any) => sum + (c.view_count  || 0), 0);
+      const totalLikes  = (clips ?? []).reduce((sum, c: any) => sum + (c.like_count  || 0), 0);
+      const totalShares = (clips ?? []).reduce((sum, c: any) => sum + (c.share_count || 0), 0);
 
       setStats({
         views: totalViews,
         likes: totalLikes,
-        shares: shareCount ?? 0,
+        shares: totalShares,
         followers: profile?.follower_count ?? 0,
       });
       setTopClips((clips ?? []).slice(0, 10));

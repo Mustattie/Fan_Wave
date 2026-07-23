@@ -35,12 +35,21 @@ import { ClipCommentsSheet } from '@/components/ClipCommentsSheet';
 
 const PAGE_SIZE = 20;
 
+// v9.2.0: dropped NFL/NBA sport pills. Sport is content metadata, not
+// a discovery mode -- it's shown as a badge on each clip card now
+// (component below reads clip.sportIcon + clip.sport). The three
+// primary tabs are ranking/scoping strategies:
+//   * For You  — like_count DESC across all clips (personalization TBD)
+//   * Following — clips from creators the user follows (get_following_clips RPC)
+//   * Trending — like_count DESC within the last 7 days (real "hot now")
+// The previous NFL/NBA branch was also silently broken: it queried
+// column "sport" which doesn't exist (real column is "sport_id" from
+// mig 030), so the catch below swallowed the error and both tabs were
+// permanently empty regardless.
 const FILTER_PILLS = [
   { id: 'foryou', label: 'For You' },
   { id: 'following', label: 'Following' },
   { id: 'trending', label: 'Trending' },
-  { id: 'nfl', label: '🏈 NFL' },
-  { id: 'nba', label: '🏀 NBA' },
 ];
 
 // React.memo — prior to this, tapping Follow on any card called
@@ -257,7 +266,20 @@ const ClipCard = React.memo(function ClipCard({
       </TouchableOpacity>
 
       <View style={styles.clipInfo}>
-        <Text style={styles.clipTitle}>{clip.title}</Text>
+        <View style={styles.clipTitleRow}>
+          <Text style={styles.clipTitle}>{clip.title}</Text>
+          {/* v9.2.0: sport badge on every card. Sport is content
+              metadata, not a discovery mode -- users identify what a
+              clip is about via this badge instead of via top-level tabs.
+              Falls back gracefully to trophy when sport_id is null. */}
+          {clip.sport ? (
+            <View style={styles.clipSportBadge}>
+              <Text style={styles.clipSportBadgeText}>
+                {clip.sportIcon} {clip.sport.toUpperCase()}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <View style={styles.clipMetaRow}>
           <Text style={styles.clipMeta}>
             {clip.poster} · {clip.group} · {clip.time}
@@ -407,6 +429,29 @@ export default function ClipsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeClipId, sharedPlayer, autoplayEnabled]);
 
+  // v9.2.0: record a view when a clip becomes active. Prior to this,
+  // media_clips.view_count was never incremented anywhere in the app
+  // -- every creator saw 0 views forever. Server-side (mig 080) the
+  // record_clip_view RPC dedupes per (clip_id, viewer, hour) and skips
+  // the creator's own clips; client-side we also track a per-session
+  // Set so a user scrolling up and down doesn't blast the RPC.
+  const recordedViewsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!activeClipId) return;
+    if (recordedViewsRef.current.has(activeClipId)) return;
+    recordedViewsRef.current.add(activeClipId);
+    // Fire and forget; failures don't affect UX.
+    supabase
+      .rpc('record_clip_view', { p_clip_id: activeClipId })
+      .then(({ error }) => {
+        if (error) {
+          // Roll back the session guard so a future retry can succeed
+          // when the transient error (network flap) clears.
+          recordedViewsRef.current.delete(activeClipId);
+        }
+      });
+  }, [activeClipId]);
+
   // Subscribe to shared-player status for the active card's "loading…"
   // overlay. The listener is registered against the SHARED player so we
   // only have one subscription for the whole feed — there is no per-card
@@ -453,6 +498,23 @@ export default function ClipsScreen() {
   const fetchClips = useCallback(
     async (pageNum: number, filter: string, replace: boolean = false) => {
       try {
+        // v9.2.0: Following is now a proper SECURITY DEFINER RPC that
+        // JOINs user_follows. Previous code just did .order('created_at')
+        // with no filter, so "Following" showed clips from strangers --
+        // v8.7 UAT flagged this and it was never actually fixed.
+        if (filter === 'following') {
+          const { data, error } = await supabase.rpc('get_following_clips', {
+            p_limit: PAGE_SIZE,
+            p_offset: pageNum * PAGE_SIZE,
+          });
+          if (error) throw error;
+          const mapped = (data ?? []).map(mapClipToDisplay);
+          if (replace) setClips(mapped);
+          else setClips((prev) => [...prev, ...mapped]);
+          setHasMore(mapped.length === PAGE_SIZE);
+          return;
+        }
+
         let query = supabase
           .from('media_clips')
           .select('*')
@@ -460,27 +522,29 @@ export default function ClipsScreen() {
           .limit(PAGE_SIZE);
 
         if (filter === 'trending') {
-          query = query.order('like_count', { ascending: false });
-        } else if (filter === 'following') {
-          query = query.order('created_at', { ascending: false });
-        } else if (['nfl', 'nba'].includes(filter)) {
-          query = query.eq('sport', filter).order('created_at', { ascending: false });
+          // v9.2.0: real "trending now" = high engagement in the last
+          // 7 days. Previously Trending and For You returned the same
+          // rows because both just did like_count DESC across all time.
+          const sevenDaysAgo = new Date(
+            Date.now() - 7 * 24 * 60 * 60 * 1000
+          ).toISOString();
+          query = query
+            .gte('created_at', sevenDaysAgo)
+            .order('like_count', { ascending: false });
         } else {
+          // For You: fallback / catch-all. Same all-time like_count DESC
+          // as before -- personalization by followed teams/sports is a
+          // v9.3 concern once we have that signal in the user profile.
           query = query.order('like_count', { ascending: false });
         }
 
         const { data, error } = await query;
-
         if (error) throw error;
 
         if (data && data.length > 0) {
           const mapped = data.map(mapClipToDisplay);
-
-          if (replace) {
-            setClips(mapped);
-          } else {
-            setClips((prev) => [...prev, ...mapped]);
-          }
+          if (replace) setClips(mapped);
+          else setClips((prev) => [...prev, ...mapped]);
           setHasMore(data.length === PAGE_SIZE);
         } else {
           if (replace) setClips([]);
@@ -493,6 +557,59 @@ export default function ClipsScreen() {
     },
     []
   );
+
+  // v9.2.0: hydrate liked/followed sets whenever the visible clip list
+  // changes. Previously both state Sets started empty every session, so
+  // a returning user saw all hearts unfilled + all Follow chips visible
+  // even for creators they already followed. Optimistic toggling would
+  // then send toggle_clip_like which would flip an already-liked row
+  // OFF -- silently un-liking things the user thought they were liking.
+  useEffect(() => {
+    if (clips.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+
+      const clipIds = clips.map((c) => c.id);
+      const posterIds = Array.from(
+        new Set(clips.map((c) => c.userId).filter(Boolean))
+      );
+
+      // Batch-fetch which of the visible clips this user has already liked.
+      const { data: likedRows } = await supabase
+        .from('clip_likes')
+        .select('clip_id')
+        .eq('user_id', user.id)
+        .in('clip_id', clipIds);
+      if (cancelled) return;
+      if (likedRows && likedRows.length > 0) {
+        setLikedClipIds((prev) => {
+          const next = new Set(prev);
+          for (const row of likedRows as any[]) next.add(row.clip_id);
+          return next;
+        });
+      }
+
+      // Batch-fetch which of the visible clip posters this user follows.
+      if (posterIds.length > 0) {
+        const { data: followedRows } = await supabase
+          .from('user_follows')
+          .select('following_id')
+          .eq('follower_id', user.id)
+          .in('following_id', posterIds);
+        if (cancelled) return;
+        if (followedRows && followedRows.length > 0) {
+          setFollowedUserIds((prev) => {
+            const next = new Set(prev);
+            for (const row of followedRows as any[]) next.add(row.following_id);
+            return next;
+          });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [clips]);
 
   // Initial load
   useEffect(() => {
@@ -667,8 +784,17 @@ export default function ClipsScreen() {
       trackEvent('clip_liked', 'clips', { clip_id: clipId });
     }
 
+    // v9.2.0: Postgrest returns errors on the RESOLVED promise as
+    // { error }, not as thrown exceptions. Prior code only caught
+    // thrown errors, so an rpc arity mismatch (which is exactly what
+    // was happening -- server had 2-arg signature, client sent 1) let
+    // the optimistic UI stick while the DB row was never written. Now
+    // we destructure and rollback on both paths.
     try {
-      await supabase.rpc('toggle_clip_like', { p_clip_id: clipId });
+      const { error } = await supabase.rpc('toggle_clip_like', {
+        p_clip_id: clipId,
+      });
+      if (error) throw error;
     } catch {
       setLikedClipIds((prev) => {
         const next = new Set(prev);
@@ -1149,8 +1275,27 @@ const styles = StyleSheet.create({
   clipInfo: {
     padding: 14,
   },
+  clipTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   clipTitle: {
     fontSize: 15,
+    fontWeight: '700',
+    color: Colors.dark.text,
+    flex: 1,
+  },
+  clipSportBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: Colors.dark.surface,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  clipSportBadgeText: {
+    fontSize: 10,
     fontWeight: '700',
     color: Colors.dark.text,
   },
