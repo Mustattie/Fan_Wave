@@ -200,11 +200,14 @@ export function ClipShareSheet({ visible, onClose, clip }: ClipShareSheetProps) 
   const handleCopyLink = useCallback(async () => {
     setBusy('copy');
     try {
-      // expo-clipboard isn't a hard dep — try a dynamic import; if missing,
-      // fall back to surfacing the link in an Alert so the user can long-
-      // press / select-copy.
+      // v9.2.2 added expo-clipboard as a hard dep so the setStringAsync
+      // call actually lands on the Android clipboard. Prior to that, the
+      // module wasn't in the tree, the try/catch swallowed the import
+      // failure, and paste in downstream apps was empty. Kept the try/
+      // catch as belt-and-suspenders in case a future runtime edge (an
+      // OS-level clipboard write denial, say) fails setStringAsync --
+      // the Alert on line below still shows the URL as a fallback.
       try {
-        // @ts-expect-error optional dep, not installed by default
         const Clipboard = await import('expo-clipboard');
         if (Clipboard?.setStringAsync) {
           await Clipboard.setStringAsync(deepLink);

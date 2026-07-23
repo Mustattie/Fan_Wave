@@ -21,7 +21,7 @@ import { Session } from '@supabase/supabase-js';
 import { supabase, setupAuthDeepLinkHandler } from '@/lib/supabase';
 import { registerForPushNotifications, clearPushToken, setupNotificationResponseListener } from '@/lib/notifications';
 import { recordDailyActivity } from '@/lib/gamification';
-import { startAnalyticsFlush } from '@/lib/analytics';
+import { startAnalyticsFlush, setAnalyticsUser } from '@/lib/analytics';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { AppQueryClientProvider } from '@/hooks/useQueryClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -321,6 +321,14 @@ export default function RootLayout() {
           setUserContext({ id: session.user.id, email: session.user.email });
           registerForPushNotifications();
           recordDailyActivity();
+          // v9.2.3: setAnalyticsUser must be paired with startAnalyticsFlush.
+          // Without it, currentUserId in lib/analytics.ts stays null, every
+          // trackEvent buffers user_id=null, and the analytics_events RLS
+          // insert policy (user_id = auth.uid()) silently rejects the whole
+          // batch. Effect: content_shared, clip_liked, screen_viewed, and
+          // every other tracked event has been dropped since the app
+          // existed. Detected in v9.2 UAT when share_count refused to move.
+          setAnalyticsUser(session.user.id);
           startAnalyticsFlush();
           // Tie the RevenueCat user to our auth.users.id so webhooks can map back.
           configureRevenueCat(session.user.id).catch(() => {});
@@ -334,11 +342,17 @@ export default function RootLayout() {
           // Existing persisted session on app boot — re-seed the city
           // cache so the venue search center reflects current profile
           // even when the user hasn't signed out/in since editing it.
+          // v9.2.3: same setAnalyticsUser call so persisted-session boots
+          // hydrate analytics user id too. SIGNED_IN doesn't fire on
+          // cold-open with a valid persisted session; only INITIAL_SESSION.
+          setAnalyticsUser(session.user.id);
+          startAnalyticsFlush();
           seedUserCityFromProfile(session.user.id);
           refreshOnboardedFromServer(session.user.id);
         } else if (event === 'SIGNED_OUT') {
           clearUserContext();
           clearPushToken();
+          setAnalyticsUser(null);
         } else if (event === 'PASSWORD_RECOVERY') {
           // Fired by supabase-js after the reset-password deep link
           // completes setSession(). Route the user to the new-password
