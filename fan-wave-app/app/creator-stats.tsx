@@ -49,48 +49,43 @@ export default function CreatorStatsScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Get follower count from users table
-      const { data: profile } = await supabase
-        .from('users')
-        .select('follower_count')
-        .eq('auth_id', user.id)
-        .single();
-
-      // Date filter
-      const dateFilter = period === '7d'
+      // v9.2.2: window applies to ENGAGEMENT TIMESTAMPS, not clip
+      // creation date. A viral evergreen clip posted 6 months ago that
+      // earned 10k likes today should show those 10k likes under
+      // "7 Days" -- creators care about growth, not just recent posts.
+      // The previous filter (media_clips.created_at >= cutoff) hid all
+      // engagement on clips older than the window.
+      const sinceISO = period === '7d'
         ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
         : period === '30d'
           ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
           : '1970-01-01T00:00:00Z';
 
-      // v9.2.0: added share_count to the select (mig 080 adds the column
-      // + trigger that maintains it from analytics_events). Sums in one
-      // pass instead of a second network call, and -- more importantly
-      // -- fixes the semantic: previously the analytics_events query
-      // filtered on user_id = self, but user_id there is the SHARER,
-      // not the creator whose clip was shared. Old query returned "how
-      // many times I shared other people's clips," which is the wrong
-      // stat for a creator. share_count on media_clips is per-clip so
-      // summing over the creator's own rows is the correct measure of
-      // "shares OF my clips."
-      let query = supabase
+      // Single RPC returns views + likes + shares + followers scoped
+      // to the current auth user's own clips (SECURITY DEFINER inside).
+      const { data: statsRow, error: statsErr } = await supabase.rpc(
+        'get_creator_stats',
+        { p_since: sinceISO },
+      );
+      if (statsErr) throw statsErr;
+      const row = Array.isArray(statsRow) ? statsRow[0] : statsRow;
+
+      // Top Clips list continues to filter by clip creation date so
+      // it stays honest as a "clips I posted in this window" leaderboard.
+      // Lifetime counters (view_count / like_count / share_count) on each
+      // row are the still-correct display for the tiles below.
+      const { data: clips } = await supabase
         .from('media_clips')
         .select('id, title, view_count, like_count, share_count, created_at')
         .eq('user_id', user.id)
-        .gte('created_at', dateFilter)
+        .gte('created_at', sinceISO)
         .order('like_count', { ascending: false });
 
-      const { data: clips } = await query;
-
-      const totalViews  = (clips ?? []).reduce((sum, c: any) => sum + (c.view_count  || 0), 0);
-      const totalLikes  = (clips ?? []).reduce((sum, c: any) => sum + (c.like_count  || 0), 0);
-      const totalShares = (clips ?? []).reduce((sum, c: any) => sum + (c.share_count || 0), 0);
-
       setStats({
-        views: totalViews,
-        likes: totalLikes,
-        shares: totalShares,
-        followers: profile?.follower_count ?? 0,
+        views: Number(row?.total_views ?? 0),
+        likes: Number(row?.total_likes ?? 0),
+        shares: Number(row?.total_shares ?? 0),
+        followers: Number(row?.followers ?? 0),
       });
       setTopClips((clips ?? []).slice(0, 10));
     } catch {
