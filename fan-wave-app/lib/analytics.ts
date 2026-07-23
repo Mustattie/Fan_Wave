@@ -54,12 +54,35 @@ async function flushEvents() {
   if (eventBuffer.length === 0) return;
 
   const batch = eventBuffer.splice(0);
+
+  // v9.2.4: previously this used `try { await ...insert(batch) } catch`.
+  // supabase-js does NOT throw on Postgrest RLS/schema errors -- it
+  // resolves with { error }. The catch never fired, the batch was
+  // drained from the buffer with zero rows persisted, and no signal
+  // ever reached callers. Explains why analytics_events was empty
+  // even after v9.2.3's setAnalyticsUser fix landed. Detected in v9.2
+  // UAT when share_count still refused to move.
+  //
+  // Now: destructure { error }, treat non-null error like a throw
+  // (re-queue the batch), and log to console so Metro shows what
+  // actually failed. reportError funnels to Sentry in EAS builds so
+  // we get an alert if this starts happening in prod.
+  let insertErr: unknown = null;
   try {
-    await supabase.from('analytics_events').insert(batch);
-  } catch {
-    // On failure, put events back at the front of the buffer for next flush
+    const { error } = await supabase
+      .from('analytics_events')
+      .insert(batch);
+    insertErr = error;
+  } catch (e) {
+    // Network throw (offline, DNS, etc.) still comes through here.
+    insertErr = e;
+  }
+
+  if (insertErr) {
+    console.warn('[analytics] flush insert failed:', insertErr);
+    // Put events back at the front of the buffer for next flush.
     eventBuffer.unshift(...batch);
-    // Cap buffer to prevent unbounded growth on persistent failures
+    // Cap buffer to prevent unbounded growth on persistent failures.
     if (eventBuffer.length > MAX_BUFFER_SIZE * 3) {
       eventBuffer = eventBuffer.slice(0, MAX_BUFFER_SIZE * 3);
     }
