@@ -42,19 +42,21 @@
     "production": {
       "autoIncrement": true,
       "ios": {
-        "image": "latest"
+        "image": "latest",
+        "buildConfiguration": "Release"
       },
       "android": {
-        "image": "latest"
+        "image": "latest",
+        "buildType": "app-bundle"
       },
       "env": {
         "APP_ENV": "production",
         "EXPO_PUBLIC_SUPABASE_URL": "https://fwlfiejvxmslkpoojggs.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3bGZpZWp2eG1zbGtwb29qZ2dzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5OTgzNDAsImV4cCI6MjA5NjU3NDM0MH0.v4QaXnDnE0pJYcpSZXQPFlkNroEeAfhSbqozuLXbr_M",
         "EXPO_PUBLIC_REVENUECAT_IOS_KEY": "appl_JmblLQHAuNHfPBzUQkjBzKmROAM",
-        "EXPO_PUBLIC_REVENUECAT_ANDROID_KEY": "goog_bZTjvIlQzCauhtncdPYeTjSkJmv",
-        "EXPO_PUBLIC_SENTRY_DSN": "__SET_PROD_SENTRY_DSN__"
-      }
+        "EXPO_PUBLIC_REVENUECAT_ANDROID_KEY": "goog_bZTjvIlQzCauhtncdPYeTjSkJmv"
+      },
+      "distribution": "store"
     }
   },
   "submit": {
