@@ -51,12 +51,15 @@ export default function CreateClipScreen() {
     durationMs,
   );
   // Mirrors the Post-a-Moment picker so clips get the same sport +
-  // moment-type tagging. Defaults to NFL — users can change before posting.
-  // Both are optional on the DB side (media_clips.sport_id / moment_type
-  // are NULLable), so existing clip posts continue to work unchanged.
-  const [sportId, setSportId] = useState<string>('nfl');
+  // moment-type tagging. v9.2.0: no default sport. Prior code defaulted
+  // to 'nfl' which silently tagged every not-actively-changed clip as
+  // NFL, causing the Clips tab NFL filter to overflow with mis-categorized
+  // content and every other sport tab to under-report. Now Post Clip is
+  // disabled until the user explicitly picks a sport. media_clips.sport_id
+  // stays NULLable so the DB accepts null while we force UI selection.
+  const [sportId, setSportId] = useState<string>('');
   const [selectedMoment, setSelectedMoment] = useState<MomentType | null>(null);
-  const momentTypes = getMomentTypesForSport(sportId);
+  const momentTypes = getMomentTypesForSport(sportId || 'nfl');
 
   // Detect Expo Go so we can render an in-screen block banner (v9.1 UAT
   // 2026-07-21). The old flow let the user fill the whole form and only
@@ -308,9 +311,11 @@ export default function CreateClipScreen() {
         <TouchableOpacity
           style={[
             styles.postBtn,
-            (posting || !title.trim() || inExpoGo) && styles.postBtnDisabled,
+            (posting || !title.trim() || !sportId || inExpoGo) && styles.postBtnDisabled,
           ]}
-          disabled={posting || !title.trim() || inExpoGo}
+          // v9.2.0: also require a sport pick. Prevents accidental
+          // mis-tagged content that used to inherit the 'nfl' default.
+          disabled={posting || !title.trim() || !sportId || inExpoGo}
           onPress={handlePost}
         >
           {posting ? (

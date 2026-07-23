@@ -378,7 +378,11 @@ export interface ClipDisplay {
 }
 
 export function mapClipToDisplay(row: any): ClipDisplay {
-  const sportName = row.sport || '';
+  // v9.2.0: media_clips column is sport_id (mig 030), not sport. Prior
+  // code read row.sport which never existed, so every clip badge was
+  // the trophy fallback ('🏆'). Fixed here so per-clip sport identity
+  // is honest across the feed AND on the profile clip tiles.
+  const sportName = row.sport_id || row.sport || '';
   return {
     id: row.id,
     title: row.title || 'Untitled Clip',
