@@ -151,12 +151,17 @@ UPDATE public.media_clips mc
 -- ============================================================
 -- 3. clip_views + record_clip_view RPC.
 -- ============================================================
+-- viewed_hour is a real column (not GENERATED). Postgres rejects
+-- GENERATED expressions using date_trunc('hour', timestamptz) with
+-- 42P17 because that function is STABLE (depends on session TZ), not
+-- IMMUTABLE. The RPC populates viewed_hour on INSERT with an explicit
+-- date_trunc call, which works fine because it runs per-statement.
 CREATE TABLE IF NOT EXISTS public.clip_views (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   clip_id     UUID NOT NULL REFERENCES public.media_clips(id) ON DELETE CASCADE,
   viewer_id   UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   viewed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  viewed_hour TIMESTAMPTZ GENERATED ALWAYS AS (date_trunc('hour', viewed_at)) STORED
+  viewed_hour TIMESTAMPTZ NOT NULL
 );
 
 DO $$
@@ -203,9 +208,11 @@ BEGIN
   IF v_creator IS NULL OR v_creator = v_uid THEN RETURN; END IF;
 
   -- Dedupe by (clip_id, viewer_id, hour). One user watching the same
-  -- clip 100 times in an hour counts as ONE view.
-  INSERT INTO public.clip_views (clip_id, viewer_id)
-       VALUES (p_clip_id, v_uid)
+  -- clip 100 times in an hour counts as ONE view. viewed_hour is a
+  -- regular column (not GENERATED -- see clip_views table comment) so
+  -- we set it explicitly here with the same date_trunc expression.
+  INSERT INTO public.clip_views (clip_id, viewer_id, viewed_hour)
+       VALUES (p_clip_id, v_uid, date_trunc('hour', now()))
   ON CONFLICT ON CONSTRAINT clip_views_dedup_key DO NOTHING
   RETURNING true INTO v_inserted;
 
