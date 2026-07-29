@@ -37,8 +37,21 @@ export default function SignUpScreen() {
       Alert.alert('Invalid email', 'Please enter a valid email address.');
       return;
     }
+    // v9.2.5 UAT 2026-07-28: prior validator only checked length, but the
+    // production Supabase project enforces character-class requirements
+    // (lowercase + uppercase + digit) server-side. Users were passing
+    // client-side then bouncing off Supabase's weak_password rejection
+    // with a message that didn't actually explain the rule. Mirror the
+    // server rule here so feedback is immediate and specific.
     if (password.length < 8) {
       Alert.alert('Weak password', 'Password must be at least 8 characters.');
+      return;
+    }
+    if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
+      Alert.alert(
+        'Weak password',
+        'Password needs a mix of lowercase letters, uppercase letters, and a number.',
+      );
       return;
     }
 

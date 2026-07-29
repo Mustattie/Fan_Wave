@@ -1038,7 +1038,15 @@ export default function CreateWatchPartyScreen() {
   );
 
   const renderStep3 = () => (
-    <ScrollView style={styles.stepContent} keyboardShouldPersistTaps="handled">
+    // v9.2.5 UAT 2026-07-28: 120px bottom padding gives the last text field
+    // room to scroll above the on-screen keyboard on shorter Android devices
+    // where the resize alone doesn't leave the focused input visible.
+    <ScrollView
+      style={styles.stepContent}
+      contentContainerStyle={{ paddingBottom: 120 }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+    >
       <Text style={styles.stepTitle}>Party details</Text>
 
       {/* Title */}
@@ -1263,13 +1271,13 @@ export default function CreateWatchPartyScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      // v9.1.6 UAT 2026-07-22: behavior="padding" was iOS-only-correct and
-      // on Android it double-stacked with the OS-level adjustResize
-      // (softwareKeyboardLayoutMode="resize" in app.json), which pushed
-      // both the venue-search Next button (Step 1) and the final Create
-      // Watch Party button (Step 3) partially under the keyboard.
-      // Matches the pattern used by components/KeyboardAwareScreen.tsx.
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      // v9.2.5 UAT 2026-07-28: on Android, softwareKeyboardLayoutMode="resize"
+      // (app.json) already shrinks the window to fit above the keyboard, so
+      // KAV must be a no-op (behavior=undefined). Prior behavior="height"
+      // double-adjusted and reintroduced the Description field + Create
+      // button being covered by the keyboard on Step 3. iOS still needs
+      // behavior="padding" — no native resize there.
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
       {/* Header */}

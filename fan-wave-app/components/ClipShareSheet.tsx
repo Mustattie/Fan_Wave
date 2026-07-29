@@ -162,34 +162,37 @@ export function ClipShareSheet({ visible, onClose, clip }: ClipShareSheetProps) 
   const handleInstagram = useCallback(async () => {
     setBusy('instagram');
     try {
-      let installed = false;
+      // v9.2.6 UAT 2026-07-28: canOpenURL('instagram://') returned false on
+      // Android 11+ even when IG was installed because the app didn't
+      // declare `com.instagram.android` in <queries> (see
+      // plugins/with-share-target-queries.js). With that fix shipping in
+      // the same build, canOpenURL should now work — BUT we also flip to a
+      // try-first pattern so we never falsely tell a user IG isn't
+      // installed if canOpenURL is misconfigured. If openURL throws or
+      // returns false, we treat that as not-installed and offer the store.
+      const openInstalled = async () => {
+        await saveClipToGallery(clip);
+        trackEvent('content_shared', 'clip', { id: clip.id, platform: 'instagram' });
+        try {
+          await Linking.openURL('instagram://story-camera');
+        } catch {
+          await Linking.openURL('instagram://');
+        }
+      };
+
       try {
-        installed = await Linking.canOpenURL('instagram://');
+        await openInstalled();
       } catch {
-        installed = false;
-      }
-      if (!installed) {
         const storeUrl =
           Platform.OS === 'ios' ? INSTAGRAM_APP_STORE_URL : INSTAGRAM_PLAY_URL;
         Alert.alert(
-          'Instagram not installed',
-          'Install Instagram to share clips to Stories.',
+          'Instagram not available',
+          'Install Instagram to share clips to Stories, or copy the link and paste in-app.',
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Open Store', onPress: () => Linking.openURL(storeUrl) },
           ],
         );
-        return;
-      }
-      // Save to gallery, then route the user to IG Stories camera. IG's
-      // stories-camera deep link is `instagram://story-camera`; once there
-      // the user swipes up to pick the saved clip.
-      await saveClipToGallery(clip);
-      trackEvent('content_shared', 'clip', { id: clip.id, platform: 'instagram' });
-      try {
-        await Linking.openURL('instagram://story-camera');
-      } catch {
-        await Linking.openURL('instagram://');
       }
     } finally {
       setBusy(null);

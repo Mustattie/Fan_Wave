@@ -13,7 +13,7 @@ import {
   ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Heart, MessageCircle, Repeat2, Share2, UserPlus, Download, Plus, Trash2, Slash, Pause, Play } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, UserPlus, Download, Plus, Trash2, Slash, Pause, Play } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -315,13 +315,16 @@ const ClipCard = React.memo(function ClipCard({
             <MessageCircle size={16} color={Colors.dark.textSecondary} />
             <Text style={styles.actionText}>{displayComments}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionItem}>
-            <Repeat2 size={16} color={Colors.dark.textSecondary} />
-            <Text style={styles.actionText}>{clip.shares}</Text>
-          </TouchableOpacity>
+          {/* v9.2.6 UAT 2026-07-28: removed the standalone Repeat2 "repost"
+              chip — it had no onPress wired up (rendered a share count but
+              did nothing on tap) and UAT feedback was "what is this feature
+              and what's it suppose to do." Share count is now surfaced on
+              the Share button so it stays visible without the mystery icon. */}
           <TouchableOpacity style={styles.actionItem} onPress={() => onShare(clip)}>
             <Share2 size={16} color={Colors.dark.textSecondary} />
-            <Text style={styles.actionText}>Share</Text>
+            <Text style={styles.actionText}>
+              {clip.shares > 0 ? clip.shares : 'Share'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionItem} onPress={() => onExport(clip)}>
             <Download size={16} color={Colors.dark.textSecondary} />
@@ -1003,7 +1006,9 @@ export default function ClipsScreen() {
               return;
             }
             const result = await ImagePicker.launchCameraAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+              // v9.2.6 UAT 2026-07-28: MediaTypeOptions.Videos silently
+              // returned empty assets on expo-image-picker@17 / Android.
+              mediaTypes: ['videos'] as any,
               videoMaxDuration: 30,
               quality: 0.8,
             });
@@ -1031,7 +1036,9 @@ export default function ClipsScreen() {
               return;
             }
             const result = await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+              // v9.2.6 UAT 2026-07-28: MediaTypeOptions.Videos silently
+              // returned empty assets on expo-image-picker@17 / Android.
+              mediaTypes: ['videos'] as any,
               quality: 0.8,
             });
             if (!result.canceled && result.assets[0]?.uri) {

@@ -44,10 +44,15 @@ import {
 } from '@/lib/mappers';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
+import { withTimeout } from '@/lib/withTimeout';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Image as RNImage } from 'react-native';
 
 const PAGE_SIZE = 20;
+// v9.2.5 UAT 2026-07-28: send / attach flows both hit Supabase pre-write.
+// Cap those at 8s so a stalled connection doesn't leave the composer in a
+// dead state (message never sends, no error surfaced, user retries → duplicate).
+const CHAT_RPC_TIMEOUT_MS = 8_000;
 
 // v9.1 WhatsApp-style merged feed: Chat + Highlights are one thread now.
 // The reader queries messages + match_moments in parallel and merges by
@@ -338,18 +343,32 @@ export default function FanGroupDetailScreen() {
   const handleSend = async () => {
     if (!message.trim() || !id) return;
 
+    // v9.2.5 UAT 2026-07-28: emoji picker used to stay pinned open after
+    // send, forcing an extra tap on the smile button to dismiss. Close
+    // it here so a successful send collapses the composer back to normal.
+    setEmojiOpen(false);
+
     // Rate limiter (FW-102): 60 messages per minute per user.
     if (currentUserId) {
-      const { data: allowed } = await supabase.rpc('check_rate_limit', {
-        p_user_id: currentUserId,
-        p_action: 'message_send',
-        p_max_count: 60,
-        p_window_seconds: 60,
-      });
-      if (allowed === false) {
-        // Silent throttle — feedback would interrupt typing. The rate
-        // matches Slack/Discord's ceiling so legitimate users never hit it.
-        return;
+      try {
+        const { data: allowed } = await withTimeout(
+          () => supabase.rpc('check_rate_limit', {
+            p_user_id: currentUserId,
+            p_action: 'message_send',
+            p_max_count: 60,
+            p_window_seconds: 60,
+          }),
+          CHAT_RPC_TIMEOUT_MS,
+        );
+        if (allowed === false) {
+          // Silent throttle — feedback would interrupt typing. The rate
+          // matches Slack/Discord's ceiling so legitimate users never hit it.
+          return;
+        }
+      } catch {
+        // Rate-limit RPC timed out. Send anyway; the DB RLS will still
+        // enforce the ceiling if we cross it. Better than dropping a
+        // legitimate message because the check hung.
       }
     }
 
@@ -369,31 +388,43 @@ export default function FanGroupDetailScreen() {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
 
     try {
-      const { error } = await supabase.from('messages').insert({
-        chat_room_id: id,
-        user_id: currentUserId,
-        content: newMsg.text,
-      });
+      const { error } = await withTimeout(
+        () => supabase.from('messages').insert({
+          chat_room_id: id,
+          user_id: currentUserId,
+          content: newMsg.text,
+        }),
+        CHAT_RPC_TIMEOUT_MS,
+      );
       if (error) {
         // If member check fails, auto-join and retry
         if (error.message.includes('policy') || error.message.includes('member')) {
-          await supabase.from('chat_room_members').insert({
-            chat_room_id: id,
-            user_id: currentUserId,
-            role: 'member',
-          });
-          await supabase.from('messages').insert({
-            chat_room_id: id,
-            user_id: currentUserId,
-            content: newMsg.text,
-          });
+          await withTimeout(
+            () => supabase.from('chat_room_members').insert({
+              chat_room_id: id,
+              user_id: currentUserId,
+              role: 'member',
+            }),
+            CHAT_RPC_TIMEOUT_MS,
+          );
+          await withTimeout(
+            () => supabase.from('messages').insert({
+              chat_room_id: id,
+              user_id: currentUserId,
+              content: newMsg.text,
+            }),
+            CHAT_RPC_TIMEOUT_MS,
+          );
         } else {
           throw error;
         }
       }
-    } catch {
+    } catch (e: any) {
       // Remove optimistic message on failure
       setMessages((prev) => prev.filter((m) => m.id !== newMsg.id));
+      if (e?.message?.startsWith('Timeout after')) {
+        Alert.alert('Send failed', 'Message timed out. Check your connection and try again.');
+      }
     }
   };
 

@@ -9,6 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { X, Trophy } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { reportError } from '@/lib/errorReporting';
@@ -42,6 +43,10 @@ export function MvpVoteSheet({
   homeTeamId,
   awayTeamId,
 }: Props) {
+  // v9.2.6 UAT 2026-07-28: fixed paddingBottom:28 wasn't enough to clear
+  // the Android gesture nav bar and the Submit button was partially cut
+  // off. Use safe-area insets so it always sits above system chrome.
+  const insets = useSafeAreaInsets();
   const [tally, setTally] = useState<Tally>({ homeVotes: 0, awayVotes: 0, myVote: null });
   const [loading, setLoading] = useState(false);
   const [castingFor, setCastingFor] = useState<string | null>(null);
@@ -176,7 +181,7 @@ export function MvpVoteSheet({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + 20 }]}>
           <View style={styles.header}>
             <View style={styles.titleRow}>
               <Trophy size={18} color={C.accent} />
@@ -248,7 +253,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.background,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
-    paddingBottom: 28,
+    // paddingBottom overridden inline with `insets.bottom + 20` (see render).
   },
   header: {
     flexDirection: 'row',
