@@ -28,24 +28,27 @@ export async function exportClipToGallery(clip: {
     // Try direct camera-roll save. On Android in Expo Go this fails because
     // Google restricted WRITE_EXTERNAL_STORAGE; fall back to the system share
     // sheet so the user can still save via Photos or share elsewhere.
+    // v9.2.6 UAT 2026-07-28: prior flow called createAssetAsync +
+    // addAssetsToAlbumAsync to bucket every clip into a "Fan Sphere"
+    // album. On Android 11+ each addAssets call triggers a
+    // MediaStore.createWriteRequest() consent dialog ("Allow Fan Sphere
+    // to modify this video?") -- users report that popup shows on top
+    // of the actual Save alert and reads like a scary permission grant.
+    // saveToLibraryAsync uses a single append-only insert with no
+    // modify request, at the cost of skipping the album step. The clip
+    // still lands in Photos where users expect it.
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') throw new Error('permission-denied');
 
-      const asset = await MediaLibrary.createAssetAsync(download.uri);
-      let album = await MediaLibrary.getAlbumAsync('Fan Sphere');
-      if (!album) {
-        await MediaLibrary.createAlbumAsync('Fan Sphere', asset, false);
-      } else {
-        await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-      }
+      await MediaLibrary.saveToLibraryAsync(download.uri);
 
       trackEvent('clip_exported', 'clips', {
         clip_id: clip.id,
         type: clip.mediaType,
         method: 'media_library',
       });
-      Alert.alert('Saved!', `${clip.title} saved to your Fan Sphere album.`);
+      Alert.alert('Saved!', `${clip.title} saved to your Photos.`);
       return true;
     } catch {
       if (!(await Sharing.isAvailableAsync())) {

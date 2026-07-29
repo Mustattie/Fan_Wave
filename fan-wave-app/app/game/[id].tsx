@@ -16,6 +16,7 @@ import { ArrowLeft, MapPin, Users, Film, MessageCircle, Trophy } from 'lucide-re
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { TeamBadge } from '@/components/TeamBadge';
+import * as ImagePicker from 'expo-image-picker';
 import {
   mapGameToDisplay,
   mapWatchPartyToDisplay,
@@ -188,6 +189,82 @@ export default function GameDetailScreen() {
       setOpeningChat(false);
     }
   }, [id, openingChat, router]);
+
+  // v9.2.6 UAT 2026-07-28: prior "+ Upload" wired straight to /create-clip
+  // with only { gameId }. create-clip expects videoUri as its route param,
+  // so the screen sat on the "New Clip" fallback prompt with a black video
+  // area, sport picker empty. Every clip attempted from Game Day silently
+  // failed at handlePost's `if (!activeVideoUri) return`. Prompt for the
+  // source here, launch the picker, and hand create-clip the URI + the
+  // game's sport so it can auto-tag instead of forcing a manual pick.
+  const handleUploadClip = useCallback(
+    (gameId: string, sport: string) => {
+      Alert.alert('New Clip', 'Add a highlight to the feed.', [
+        {
+          text: 'Record new',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert(
+                'Camera permission denied',
+                'Enable camera access in Settings to record clips.',
+              );
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ['videos'] as any,
+              videoMaxDuration: 30,
+              quality: 0.8,
+            });
+            if (!result.canceled && result.assets[0]?.uri) {
+              const asset = result.assets[0];
+              router.push({
+                pathname: '/create-clip',
+                params: {
+                  videoUri: asset.uri,
+                  durationMs: String(asset.duration ?? ''),
+                  gameId,
+                  sport,
+                },
+              });
+            }
+          },
+        },
+        {
+          text: 'Choose from library',
+          onPress: async () => {
+            const { status } =
+              await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert(
+                'Library permission denied',
+                'Enable photo library access in Settings to pick a clip.',
+              );
+              return;
+            }
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['videos'] as any,
+              quality: 0.8,
+            });
+            if (!result.canceled && result.assets[0]?.uri) {
+              const asset = result.assets[0];
+              router.push({
+                pathname: '/create-clip',
+                params: {
+                  videoUri: asset.uri,
+                  durationMs: String(asset.duration ?? ''),
+                  gameId,
+                  sport,
+                },
+              });
+            }
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    },
+    [router],
+  );
 
   if (loading) {
     return (
@@ -400,12 +477,7 @@ export default function GameDetailScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Clips</Text>
             <TouchableOpacity
-              onPress={() =>
-                router.push({
-                  pathname: '/create-clip',
-                  params: { gameId: game.id },
-                })
-              }
+              onPress={() => handleUploadClip(game.id, game.sport)}
             >
               <Text style={styles.sectionAction}>+ Upload</Text>
             </TouchableOpacity>

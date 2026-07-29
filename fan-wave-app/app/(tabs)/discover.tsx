@@ -78,13 +78,15 @@ const CITIES = [
   'Boston',
 ];
 
-const SPORT_ID_MAP: Record<string, string> = {
-  nfl: 'NFL',
-  nba: 'NBA',
-  soccer: 'Soccer',
-  mlb: 'MLB',
-  nhl: 'NHL',
-};
+// v9.2.6 UAT 2026-07-28: hardcoded map was missing wnba / cfb / cbb /
+// mls / ufc (all added in v9.1.x). When the user tapped one of those
+// pills, `SPORT_ID_MAP[sport]` was undefined → the `if (sportName)`
+// guard below fell through → NO filter was applied → the query returned
+// every public group. That's why WNBA showed Baseball groups etc. Derive
+// this from SPORTS so new sport pills automatically map.
+const SPORT_ID_MAP: Record<string, string> = Object.fromEntries(
+  SPORTS.map((s) => [s.id, s.name]),
+);
 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
@@ -246,7 +248,11 @@ export default function DiscoverScreen() {
           .order('member_count', { ascending: false })
           .limit(30);
 
-        // Sport filter — resolve sport_id from the top-level pill
+        // Sport filter — resolve sport_id from the top-level pill.
+        // v9.2.6: force a no-match filter (`sport_id = '<zero-uuid>'`)
+        // when the pill has no corresponding row in `sports`, rather than
+        // silently falling through to "return everything". Falling through
+        // was why WNBA showed baseball groups etc.
         if (sport && sport !== 'all') {
           const sportName = SPORT_ID_MAP[sport];
           if (sportName) {
@@ -257,7 +263,11 @@ export default function DiscoverScreen() {
               .maybeSingle();
             if (sportRow?.id) {
               query = query.eq('sport_id', sportRow.id);
+            } else {
+              query = query.eq('sport_id', '00000000-0000-0000-0000-000000000000');
             }
+          } else {
+            query = query.eq('sport_id', '00000000-0000-0000-0000-000000000000');
           }
         }
 
@@ -924,13 +934,19 @@ export default function DiscoverScreen() {
       >
         {/* Android Modal does NOT honor the activity's adjustResize, so we
             need an explicit KeyboardAvoidingView INSIDE the Modal for the
-            sheet to push above the soft keyboard. */}
+            sheet to push above the soft keyboard.
+            v9.2.6 UAT 2026-07-28: `justifyContent: 'flex-end'` was pinning
+            the sheet to the bottom of the ScrollView. When the keyboard
+            opened, the sheet's content (Group Name / Sport / Team / City /
+            Visibility) exceeded the visible height and the TOP fields
+            overflowed off-screen. Removed the pin + let ScrollView scroll
+            naturally when the composed sheet is taller than the viewport. */}
         <KeyboardAvoidingView
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <ScrollView
-            contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end' }}
+            contentContainerStyle={{ flexGrow: 1 }}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
           >
@@ -1426,6 +1442,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
+    // v9.2.6 UAT 2026-07-28: keep the sheet from occupying the full
+    // vertical space; the outer ScrollView handles overflow so the
+    // keyboard can push visible content into view rather than covering it.
+    marginTop: 60,
   },
   modalHandle: {
     width: 40,

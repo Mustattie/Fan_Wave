@@ -57,7 +57,8 @@ export function parseAuthError(error: unknown): AuthErrorInfo {
       return {
         kind: 'weak_password',
         title: 'Weak password',
-        message: 'Please choose a stronger password (at least 8 characters with a mix of letters and numbers).',
+        message:
+          'Please choose a stronger password — at least 8 characters with a mix of lowercase, uppercase, and a number.',
       };
     case 'over_email_send_rate_limit':
     case 'over_request_rate_limit':

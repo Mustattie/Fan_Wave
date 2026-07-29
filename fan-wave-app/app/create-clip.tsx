@@ -20,11 +20,18 @@ import { SPORTS } from '@/constants/Sports';
 import { getMomentTypesForSport, type MomentType } from '@/constants/MomentTypes';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 import { validateClip, UploadValidationError } from '@/lib/storage';
+import { withTimeout } from '@/lib/withTimeout';
 import {
   enqueueClipUpload,
   generateTempId,
   activeUploadCount,
 } from '@/lib/clipUploads';
+
+// v9.2.5 UAT 2026-07-28: cap every pre-enqueue Supabase call at 10s.
+// Without this, a stalled cell connection freezes the Post button
+// indefinitely and looks identical (to a user) to the app being broken.
+// After the timeout we bail with an actionable error instead of spinning.
+const PRE_ENQUEUE_TIMEOUT_MS = 10_000;
 
 const C = Colors.dark;
 const MAX_TITLE = 80;
@@ -32,9 +39,13 @@ const MAX_DESCRIPTION = 300;
 
 export default function CreateClipScreen() {
   const router = useRouter();
-  const { videoUri, durationMs } = useLocalSearchParams<{
+  const { videoUri, durationMs, sport: sportParam } = useLocalSearchParams<{
     videoUri: string;
     durationMs?: string;
+    // v9.2.6 UAT 2026-07-28: game/[id] "+ Upload" passes the game's
+    // sport so we can pre-select the pill and Post button becomes
+    // enabled without a redundant manual pick.
+    sport?: string;
   }>();
 
   const [title, setTitle] = useState('');
@@ -57,7 +68,10 @@ export default function CreateClipScreen() {
   // content and every other sport tab to under-report. Now Post Clip is
   // disabled until the user explicitly picks a sport. media_clips.sport_id
   // stays NULLable so the DB accepts null while we force UI selection.
-  const [sportId, setSportId] = useState<string>('');
+  // v9.2.6: honor an inbound sport route param so entry from a specific
+  // game (Game Day → +Upload) skips the manual sport pick. Still falls
+  // back to empty (forcing a choice) when no context is provided.
+  const [sportId, setSportId] = useState<string>(sportParam ?? '');
   const [selectedMoment, setSelectedMoment] = useState<MomentType | null>(null);
   const momentTypes = getMomentTypesForSport(sportId || 'nfl');
 
@@ -114,7 +128,12 @@ export default function CreateClipScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      // v9.2.6 UAT 2026-07-28: expo-image-picker@17 deprecated
+      // MediaTypeOptions.Videos in favor of a string array. On the old
+      // API launchCameraAsync/launchImageLibraryAsync silently returned
+      // an empty assets array on Android, so the recorded clip vanished
+      // and the New Clip screen sat on a black preview forever.
+      mediaTypes: ['videos'] as any,
       videoMaxDuration: 30,
       quality: 0.8,
     });
@@ -135,7 +154,12 @@ export default function CreateClipScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      // v9.2.6 UAT 2026-07-28: expo-image-picker@17 deprecated
+      // MediaTypeOptions.Videos in favor of a string array. On the old
+      // API launchCameraAsync/launchImageLibraryAsync silently returned
+      // an empty assets array on Android, so the recorded clip vanished
+      // and the New Clip screen sat on a black preview forever.
+      mediaTypes: ['videos'] as any,
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]?.uri) {
@@ -204,7 +228,10 @@ export default function CreateClipScreen() {
 
     setPosting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await withTimeout(
+        supabase.auth.getUser(),
+        PRE_ENQUEUE_TIMEOUT_MS,
+      );
       if (!user) {
         Alert.alert('Not signed in', 'Please sign in again.');
         setPosting(false);
@@ -212,35 +239,44 @@ export default function CreateClipScreen() {
       }
 
       // Rate limiter (FW-102): 5 clips per hour per user.
-      const { data: allowed } = await supabase.rpc('check_rate_limit', {
-        p_user_id: user.id,
-        p_action: 'clip_post',
-        p_max_count: 5,
-        p_window_seconds: 3600,
-      });
+      const { data: allowed } = await withTimeout(
+        () => supabase.rpc('check_rate_limit', {
+          p_user_id: user.id,
+          p_action: 'clip_post',
+          p_max_count: 5,
+          p_window_seconds: 3600,
+        }),
+        PRE_ENQUEUE_TIMEOUT_MS,
+      );
       if (allowed === false) {
         Alert.alert('Slow down', "You're posting clips quickly. Try again in a few minutes.");
         setPosting(false);
         return;
       }
 
-      let { data: profile } = await supabase
-        .from('users')
-        .select('id')
-        .eq('auth_id', user.id)
-        .maybeSingle();
-      if (!profile) {
-        const { data: created, error: createError } = await supabase
+      let { data: profile } = await withTimeout(
+        () => supabase
           .from('users')
-          .insert({
-            auth_id: user.id,
-            display_name:
-              user.user_metadata?.display_name ||
-              user.email?.split('@')[0] ||
-              'Fan',
-          })
           .select('id')
-          .single();
+          .eq('auth_id', user.id)
+          .maybeSingle(),
+        PRE_ENQUEUE_TIMEOUT_MS,
+      );
+      if (!profile) {
+        const { data: created, error: createError } = await withTimeout(
+          () => supabase
+            .from('users')
+            .insert({
+              auth_id: user.id,
+              display_name:
+                user.user_metadata?.display_name ||
+                user.email?.split('@')[0] ||
+                'Fan',
+            })
+            .select('id')
+            .single(),
+          PRE_ENQUEUE_TIMEOUT_MS,
+        );
         if (createError) throw createError;
         profile = created;
       }
@@ -284,11 +320,14 @@ export default function CreateClipScreen() {
     } catch (e: any) {
       // v9.1 UAT pivot: posting a clip is a free-tier action. Migration
       // 070 drops the has_premium_access gate on media_clips_insert, so
-      // this catch only fires on genuine errors.
-      Alert.alert(
-        'Could not post clip',
-        e?.message || 'Please check your connection and try again.'
-      );
+      // this catch only fires on genuine errors. v9.2.5 UAT 2026-07-28:
+      // withTimeout wraps every pre-enqueue call, so a stalled network
+      // now rejects here with "Timeout after 10000ms" instead of
+      // freezing the Post button forever.
+      const msg = e?.message?.startsWith('Timeout after')
+        ? 'Connection timed out. Check your internet and try again.'
+        : e?.message || 'Please check your connection and try again.';
+      Alert.alert('Could not post clip', msg);
     } finally {
       setPosting(false);
     }
@@ -462,7 +501,11 @@ const styles = StyleSheet.create({
   videoPreview: {
     width: '100%',
     aspectRatio: 9 / 16,
-    maxHeight: 420,
+    // v9.2.6 UAT 2026-07-28: 420px preview on a 640dp-tall Android device
+    // pushed Caption + Post button behind the fold, and users assumed the
+    // form was frozen. 260px keeps the recorded frame visible AND leaves
+    // Sport, Caption, Post button on-screen without scrolling.
+    maxHeight: 260,
     borderRadius: 14,
     backgroundColor: '#000',
     overflow: 'hidden',

@@ -20,7 +20,8 @@
         "NSCameraUsageDescription": "Fan Sphere needs camera access to record highlights and update your profile photo.",
         "NSPhotoLibraryUsageDescription": "Fan Sphere needs photo access to share highlights and set your profile photo.",
         "NSLocationWhenInUseUsageDescription": "Fan Sphere uses your location to find watch parties and fan groups near you.",
-        "NSContactsUsageDescription": "Fan Sphere uses your contacts so you can quickly invite friends to private watch parties."
+        "NSContactsUsageDescription": "Fan Sphere uses your contacts so you can quickly invite friends to private watch parties.",
+        "LSApplicationQueriesSchemes": ["instagram", "instagram-stories", "tiktok", "snssdk1233"]
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -61,7 +62,8 @@
       ],
       "expo-localization",
       "expo-web-browser",
-      "expo-font"
+      "expo-font",
+      "./plugins/with-share-target-queries.js"
     ],
     "experiments": {
       "typedRoutes": true

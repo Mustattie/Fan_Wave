@@ -4,6 +4,17 @@ import {
   getInfoAsync,
 } from 'expo-file-system/legacy';
 import { supabase } from './supabase';
+import { withTimeout } from './withTimeout';
+
+// v9.2.5 UAT 2026-07-28: hard ceiling on a single upload. 25 MB clip at
+// 3 Mbps cellular is ~70s; 90s leaves a small margin. If the native
+// upload task truly hangs (cell drop, Supabase edge unreachable), the
+// timeout fires, we call task.cancelAsync() to release the native
+// thread, and the clipUploads queue can move on. Without this the
+// entire app appears frozen — the queue slot is never released, the
+// button spinner never resets, and the native thread churns on
+// forever.
+const UPLOAD_TIMEOUT_MS = 90_000;
 
 // ---------------------------------------------------------------------------
 // Single storage abstraction. Currently backed by Supabase Storage; the
@@ -132,7 +143,18 @@ async function uploadToSupabase(
       onProgress((p.totalBytesSent / p.totalBytesExpectedToSend) * 100);
     },
   );
-  const result = await task.uploadAsync();
+  let result: Awaited<ReturnType<typeof task.uploadAsync>> | undefined;
+  try {
+    result = await withTimeout(task.uploadAsync(), UPLOAD_TIMEOUT_MS);
+  } catch (e: any) {
+    // Native task keeps running until we explicitly cancel it. Do this
+    // even for non-timeout errors so we don't leak the OS-level thread.
+    try { await task.cancelAsync(); } catch { /* best-effort */ }
+    if (e?.message?.startsWith('Timeout after')) {
+      throw new Error('Upload timed out. Check your connection and try again.');
+    }
+    throw e;
+  }
   if (!result) throw new Error('Upload returned no result');
   if (result.status < 200 || result.status >= 300) {
     throw new Error(`Upload failed (${result.status}): ${result.body}`);
