@@ -12,17 +12,41 @@ const corsHeaders = {
 };
 
 // ---------------------------------------------------------------------------
-// Product → entitlement family. Anything not listed here is logged but
-// otherwise ignored — keeps the webhook safe to deploy before all products
-// are wired up in the RevenueCat dashboard.
+// Product → entitlement family + tier. Anything not listed here is logged
+// but otherwise ignored — keeps the webhook safe to deploy before all
+// products are wired up in the RevenueCat dashboard.
+//
+// v9.3 tiered SKUs land here. Legacy premium_* products map to tier='mvp'
+// per the grandfathering covenant (existing $9.99 subscribers get MVP
+// features at their existing price forever). Home Team + MVP get their
+// own tier IDs. See migration 082 and the v9.3 plan file.
 // ---------------------------------------------------------------------------
 const PREMIUM_PRODUCTS = new Set([
   "premium_monthly_999",
   "premium_annual_10788",
 ]);
+const HOME_TEAM_PRODUCTS = new Set([
+  "home_team_monthly_499",
+  "home_team_annual_3499",
+]);
+const MVP_PRODUCTS = new Set([
+  "mvp_monthly_1499",
+  "mvp_annual_9999",
+]);
 const WC_PASS_PRODUCTS = new Set([
   "wc_pass_2026",
 ]);
+
+type Tier = "home_team" | "mvp" | "business";
+
+function productToTier(baseProductId: string): Tier | null {
+  if (HOME_TEAM_PRODUCTS.has(baseProductId)) return "home_team";
+  if (MVP_PRODUCTS.has(baseProductId)) return "mvp";
+  // Legacy Premium SKUs grandfather to MVP — same price, MORE features,
+  // zero churn risk. See v9.3 pricing plan.
+  if (PREMIUM_PRODUCTS.has(baseProductId)) return "mvp";
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -170,11 +194,12 @@ Deno.serve(async (req: Request) => {
 
   const productId = event.product_id ?? "";
   // Android subscriptions arrive as "subscriptionId:basePlanId"
-  // (e.g., "premium_monthly_999:monthly"); iOS sends just "subscriptionId".
+  // (e.g., "home_team_monthly_499:monthly"); iOS sends just "subscriptionId".
   // Normalize for the entitlement-family lookup, but persist the raw ID
   // so we can tell stores apart later if needed.
   const baseProductId = productId.split(":")[0];
-  const isPremium = PREMIUM_PRODUCTS.has(baseProductId);
+  const tier = productToTier(baseProductId); // 'home_team' | 'mvp' | null
+  const isSubscription = tier !== null;
   const isWcPass = WC_PASS_PRODUCTS.has(baseProductId);
 
   // Upsert the entitlement row keyed on original_transaction_id.
@@ -192,6 +217,7 @@ Deno.serve(async (req: Request) => {
           original_transaction_id: event.original_transaction_id,
           expires_at: expiresAt,
           raw_payload: event,
+          tier: tier, // null for WC pass; populated for tiered subs
           updated_at: new Date().toISOString(),
         },
         { onConflict: "original_transaction_id" },
@@ -211,16 +237,26 @@ Deno.serve(async (req: Request) => {
       ? new Date(event.expiration_at_ms).toISOString()
       : null;
 
-    if (isPremium) {
+    if (isSubscription) {
       if (mapping.userStatus !== null) {
         updates.subscription_status = mapping.userStatus;
       }
       // EXPIRATION / REFUND should clear the expiration timestamp so
-      // has_premium_access fails closed.
+      // has_premium_access fails closed, AND drop the tier back to
+      // 'free' so tiered gates fire again.
       if (event.type === "EXPIRATION" || event.type === "REFUND") {
         updates.premium_active_until = null;
-      } else if (expirationISO) {
-        updates.premium_active_until = expirationISO;
+        updates.subscription_tier = "free";
+      } else {
+        if (expirationISO) {
+          updates.premium_active_until = expirationISO;
+        }
+        // INITIAL_PURCHASE / TRIAL_STARTED / RENEWAL / UNCANCELLATION /
+        // PRODUCT_CHANGE — set the tier from the product's mapping. Note
+        // PRODUCT_CHANGE captures upgrades (Home Team → MVP) and
+        // downgrades (MVP → Home Team) automatically because RC always
+        // sends the new product_id on that event.
+        updates.subscription_tier = tier;
       }
     }
     if (isWcPass) {

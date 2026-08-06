@@ -26,6 +26,7 @@ import {
   generateTempId,
   activeUploadCount,
 } from '@/lib/clipUploads';
+import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
 
 // v9.2.5 UAT 2026-07-28: cap every pre-enqueue Supabase call at 10s.
 // Without this, a stalled cell connection freezes the Post button
@@ -51,6 +52,10 @@ export default function CreateClipScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [posting, setPosting] = useState(false);
+  // v9.3 freemium: opens the Home Team paywall when a free user tries
+  // to post beyond their 3-per-24h quota. See migration 083 and the
+  // check_clip_quota RPC.
+  const [showQuotaPaywall, setShowQuotaPaywall] = useState(false);
   // Local override of the route-param videoUri so we can clear / replace
   // the attached clip in-place (e.g. after the "Clip too large" rejection)
   // without bouncing the user back to the feed first. Falls back to the
@@ -238,7 +243,23 @@ export default function CreateClipScreen() {
         return;
       }
 
-      // Rate limiter (FW-102): 5 clips per hour per user.
+      // v9.3 freemium quota (mig 083): free tier caps at 3 clips per
+      // rolling 24h. Home Team / MVP / reviewer → unlimited (9999
+      // sentinel). Fires BEFORE the rate limiter so the upgrade sheet
+      // takes precedence over the burst "slow down" alert.
+      const { data: quota } = await withTimeout(
+        () => supabase.rpc('check_clip_quota', { uid: user.id }),
+        PRE_ENQUEUE_TIMEOUT_MS,
+      );
+      if (quota && quota.allowed === false) {
+        setShowQuotaPaywall(true);
+        setPosting(false);
+        return;
+      }
+
+      // Rate limiter (FW-102): 5 clips per hour per user. Kept in place
+      // as an anti-burst guard even for Home Team+; the quota RPC
+      // handles the tier gate above.
       const { data: allowed } = await withTimeout(
         () => supabase.rpc('check_rate_limit', {
           p_user_id: user.id,
@@ -463,6 +484,13 @@ export default function CreateClipScreen() {
           <Text style={styles.counter}>
             {description.length}/{MAX_DESCRIPTION}
           </Text>
+
+      <PremiumPaywall
+        tier="home_team"
+        visible={showQuotaPaywall}
+        onClose={() => setShowQuotaPaywall(false)}
+        onSuccess={() => setShowQuotaPaywall(false)}
+      />
     </KeyboardAwareScreen>
   );
 }

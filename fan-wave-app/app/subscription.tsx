@@ -35,8 +35,16 @@ export default function SubscriptionScreen() {
   const [restoring, setRestoring] = useState(false);
 
   const status = state?.status ?? 'none';
+  const tier = state?.tier ?? 'free';
   const premiumUntil = state?.premiumActiveUntil ?? null;
   const hasPremium = state?.hasPremiumAccess ?? false;
+  const TIER_TITLE: Record<string, string> = {
+    free: 'Fan Sphere',
+    home_team: 'Fan Sphere Home Team',
+    mvp: 'Fan Sphere MVP',
+    business: 'Fan Sphere Venue',
+  };
+  const cardTitle = TIER_TITLE[tier] ?? 'Fan Sphere';
 
   const handleRestore = async () => {
     setRestoring(true);
@@ -69,7 +77,7 @@ export default function SubscriptionScreen() {
             ) : (
               <AlertCircle size={20} color={Colors.dark.textMuted} />
             )}
-            <Text style={styles.cardTitle}>Fan Sphere Premium</Text>
+            <Text style={styles.cardTitle}>{cardTitle}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Status</Text>
@@ -133,7 +141,7 @@ export default function SubscriptionScreen() {
         </Text>
       </ScrollView>
 
-      <PremiumPaywall visible={showPremiumPaywall} onClose={() => setShowPremiumPaywall(false)} />
+      <PremiumPaywall tier="home_team" visible={showPremiumPaywall} onClose={() => setShowPremiumPaywall(false)} />
     </SafeAreaView>
   );
 }

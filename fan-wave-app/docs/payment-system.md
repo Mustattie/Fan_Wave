@@ -1,9 +1,106 @@
 # Fan Sphere — Payment & Subscription System Design
 
-> **Status**: Design captured for future implementation. Not building now.
-> **Action on approval**: Copy this file to `fan-wave-app/docs/payment-system.md` for project-local reference, then return to other work.
+> **v9.3 pivot** (2026-08-06): flat $9.99 Premium → tiered freemium. The
+> current authoritative section is right below. Sections labelled
+> **[historical]** describe the pre-v9.3 design and are kept for context
+> only.
 
 ---
+
+## v9.3 — Freemium tiered model (CURRENT)
+
+### Tier structure
+
+| Tier | Price | Trial | Positioning | Grants |
+|---|---|---|---|---|
+| **Free** | $0 | — | "Be a fan" | Join everything, watch everything, chat, follow, 3 clips per rolling 24h, 1 fan group (lifetime soft gate), 1 public watch party / month (future) |
+| **Home Team** | $4.99/mo · $34.99/yr | 7-day | "Organize the crew" | Unlimited creation (clips, fan groups, public + private watch parties), Home Team badge, priority search visibility, ad-free (reserved), early access |
+| **MVP** | $14.99/mo · $99.99/yr | none | "Build your following" | Everything in Home Team + advanced audience analytics + verified creator badge + featured Discover placement + brand collab inbox. Livestream + monetized subs are v10+. |
+| **Venue** | $99/mo · $999/yr (Stripe) | none | "Fill your bar" | Featured venue listing, sponsored watch-party promotion, business dashboard, bulk invite. **Ships in v10.** Web-signup only — bypasses Apple/Google 30% fee. |
+
+### Product IDs (App Store Connect + Play Console)
+
+| SKU | Store product ID | Tier | RC entitlement |
+|---|---|---|---|
+| Home Team monthly | `home_team_monthly_499` | home_team | `home_team` |
+| Home Team annual | `home_team_annual_3499` | home_team | `home_team` |
+| MVP monthly | `mvp_monthly_1499` | mvp | `mvp` (+ additive `home_team`) |
+| MVP annual | `mvp_annual_9999` | mvp | `mvp` (+ additive `home_team`) |
+| Legacy Premium monthly *(grandfather only)* | `premium_monthly_999` | mvp | `home_team` (RC dashboard) — DB webhook grandfathers → `subscription_tier='mvp'` |
+| Legacy Premium annual *(grandfather only)* | `premium_annual_10788` | mvp | same as above |
+| WC Pass 2026 *(retired)* | `wc_pass_2026` | — | `wc_pass` — SKU no longer listed in offering; existing holders honored per mig 065 |
+
+### Grandfathering covenant
+
+Every existing `premium_monthly_999` / `premium_annual_10788` subscriber
+is upgraded to `subscription_tier='mvp'` at their current price forever.
+Rationale: they paid Premium prices; MVP gives them MORE features for
+the same $9.99/$107.88. Zero revenue loss, zero perceived downgrade,
+zero churn risk. Applied by migration 082's backfill + by the webhook's
+`productToTier()` map (legacy IDs → 'mvp'). If a grandfathered user
+cancels and later resubscribes, the new signup routes to the current
+Home Team / MVP SKUs at current prices — the grandfather is per-
+transaction, not per-account.
+
+### Paywall placement
+
+- **Onboarding**: paywall NEVER forced. `onboarding-suggested-groups`
+  routes straight to `/(tabs)`.
+- **Profile → Subscription**: opt-in upgrade CTA; free-tier badge reads
+  "Free · Upgrade" in accent color.
+- **Contextual**: fires at moments of leverage — clip #4 in a 24h window
+  triggers `check_clip_quota` RPC failure → Home Team paywall sheet.
+  Future gates: Create Fan Group #2, tap "Private Watch Party" toggle.
+- **Reviewer accounts** (`fansphere.reviewer@gmail.com`,
+  `reviewer@fansphere.org`) always resolve to tier='mvp' via both DB
+  helper (`get_user_tier` in mig 082) and client (`useTier` in
+  `lib/entitlements.ts`).
+
+### Code map
+
+| Layer | File | Purpose |
+|---|---|---|
+| DB — tier column + helpers | `supabase/migrations/082_subscription_tiers.sql` | `subscription_tier` column, `has_tier_or_higher`, `get_user_tier`, immutability guard extension, backfill grandfathering |
+| DB — clip quota | `supabase/migrations/083_clip_quota.sql` | `check_clip_quota(uid)` RPC (rolling 24h, 3-clip cap for free) |
+| Client entitlements | `lib/entitlements.ts` | `useTier`, `useHasTierOrHigher`, `purchaseTier(tier, plan)`, legacy `purchasePremium` shim |
+| Paywall sheet | `components/paywall/PremiumPaywall.tsx` | Tier-aware bottom sheet with per-tier features + prices + trial copy |
+| Paywall gate | `components/paywall/PaywallGate.tsx` | `require='home_team' \| 'mvp' \| 'business' \| 'wc_pass'` |
+| Onboarding paywall | `app/(auth)/choose-plan.tsx` | Reachable ONLY via Profile → Upgrade; sells Home Team |
+| Onboarding redirect | `app/(auth)/onboarding-suggested-groups.tsx` line ~45 | Routes to `/(tabs)`, no longer to `/(auth)/choose-plan` |
+| Quota enforcement | `app/create-clip.tsx` | Pre-enqueue `check_clip_quota` call; failure opens Home Team paywall |
+| Profile badge | `app/(tabs)/profile.tsx` line ~214 | Tier-aware label: Free · Upgrade / Home Team / MVP / Venue |
+| Subscription screen | `app/subscription.tsx` | Tier-aware card title, status display |
+| Webhook | `supabase/functions/revenuecat-webhook/index.ts` | `productToTier` map, tier column persistence, EXPIRATION/REFUND → tier='free', PRODUCT_CHANGE captures upgrades/downgrades automatically |
+
+### Unit economics per transaction
+
+Apple Small Business Program (15% fee) + RevenueCat (1% > $2.5k MTR):
+- **Home Team monthly** ($4.99): ~$4.20 net after fees
+- **Home Team annual** ($34.99): ~$29.44 net (locks in ~$2.45/mo equivalent for the year)
+- **MVP monthly** ($14.99): ~$12.60 net
+- **MVP annual** ($99.99): ~$84.12 net
+- **Venue** (Stripe, ~2.9% + $0.30): $99/mo → ~$95.83 net (bypasses IAP fee entirely)
+
+### Verification for v9.3 launch
+
+1. Migration 082 on Supabase branch → confirm existing Premium subs backfill to `subscription_tier='mvp'`
+2. Fresh signup → lands on `/(tabs)`, NOT `/(auth)/choose-plan`
+3. Post 3 clips as free user → 4th tap fires Home Team paywall
+4. `fansphere.reviewer@gmail.com` → `useTier()` returns `'mvp'`, `check_clip_quota` returns `remaining=9999`
+5. Sandbox purchase of `home_team_monthly_499` → webhook flips `subscription_tier='mvp'`... wait no, `subscription_tier='home_team'`. `productToTier('home_team_monthly_499')` returns 'home_team'.
+6. Legacy `premium_monthly_999` restore → webhook grandfathers to `subscription_tier='mvp'`
+7. Cancel + expire → webhook sets `subscription_tier='free'` and clears `premium_active_until`
+8. PRODUCT_CHANGE from Home Team → MVP → webhook flips tier column and RC entitlement
+
+---
+
+## [historical] Pre-v9.3 design (WC + flat Premium)
+
+> Below is the original design doc from before the v9.3 tiered pivot.
+> Kept for context on why the WC Pass exists, why the Small Business
+> Program was chosen, and why RevenueCat sits between the app and the
+> stores. Superseded by the v9.3 section above for pricing, tiers, and
+> product IDs.
 
 ## Context
 

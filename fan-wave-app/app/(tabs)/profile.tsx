@@ -209,15 +209,26 @@ export default function ProfileScreen() {
     : '';
 
   // Subscription badge text — drives the upgrade CTA so fresh free users
-  // can find PremiumPaywall / WCPassPaywall without trial-and-error after
-  // v7 dropped the in-line PaywallGates.
+  // can find the paywall without trial-and-error. v9.3 tiered model:
+  // reads the tier column added by migration 082. Trial is annotated on
+  // the tier label rather than replacing it so users can see WHAT they
+  // trialled without a second click.
+  const tier = subState?.tier ?? 'free';
   const hasPremium = subState?.hasPremiumAccess ?? false;
   const hasWC = subState?.hasWCAccess ?? false;
-  const subBadge = hasPremium
-    ? (subState?.isTrial ? 'Trial' : 'Premium')
-    : hasWC
+  const TIER_LABEL: Record<string, string> = {
+    free: 'Free · Upgrade',
+    home_team: 'Home Team',
+    mvp: 'MVP',
+    business: 'Venue',
+  };
+  const baseLabel = TIER_LABEL[tier] ?? 'Free · Upgrade';
+  const subBadge =
+    tier === 'free' && hasWC
       ? 'Soccer Cup Pass'
-      : 'Free · Upgrade';
+      : tier !== 'free' && subState?.isTrial
+        ? `${baseLabel} · Trial`
+        : baseLabel;
 
   const menuItems = [
     { icon: Edit3, label: 'Edit Profile', color: Colors.dark.text, badge: null as string | null },
