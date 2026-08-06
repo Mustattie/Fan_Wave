@@ -41,8 +41,12 @@ export default function OnboardingSuggestedGroupsScreen() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const goNext = useCallback(() => {
-    // Post-onboarding paywall flow set up earlier — keep it.
-    router.replace('/(auth)/choose-plan');
+    // v9.3 freemium: onboarding never forces the paywall anymore. Free
+    // users land in the app; upgrade CTAs live on the Profile screen and
+    // fire contextually at moments of leverage (e.g. clip-quota hit,
+    // Create Fan Group #2, "Private Watch Party" toggle). See the
+    // v9.3 plan file for the full rationale.
+    router.replace('/(tabs)');
   }, [router]);
 
   // Load suggestions on mount

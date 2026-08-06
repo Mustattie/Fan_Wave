@@ -20,42 +20,94 @@ const STORE_NAME = Platform.OS === 'ios' ? 'App Store' : 'Google Play';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, X } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { purchasePremium, restorePurchases } from '@/lib/entitlements';
+import { purchaseTier, restorePurchases } from '@/lib/entitlements';
 import { reportError } from '@/lib/errorReporting';
 
 type Plan = 'monthly' | 'annual';
 type State = 'idle' | 'purchasing' | 'success';
+type Tier = 'home_team' | 'mvp';
 
-const FEATURES = [
-  'Post clips and moments',
-  'Create + RSVP to watch parties',
-  'Join and create fan groups',
-  'Follow your favorite teams',
-  'Ad-free experience',
-];
+interface TierConfig {
+  title: string;
+  subtitle: string;
+  ctaIdle: string;
+  ctaSuccess: string;
+  disclosurePrefix: string;
+  offersTrial: boolean;
+  features: string[];
+  prices: {
+    monthly: { display: string; period: string };
+    annual: { display: string; period: string; savingsBadge?: string };
+  };
+}
 
-const PRICES = {
-  monthly: { display: '$9.99/mo', period: 'month' },
-  annual: { display: '$107.88/yr', period: 'year', savingsBadge: 'Save 10%' },
+const TIER_CONFIG: Record<Tier, TierConfig> = {
+  home_team: {
+    title: 'Home Team',
+    subtitle: 'Organize the crew. 7 days free, then your plan.',
+    ctaIdle: 'Start 7-Day Free Trial',
+    ctaSuccess: '✓ Welcome to Home Team',
+    disclosurePrefix: 'Start your 7-day free trial.',
+    offersTrial: true,
+    features: [
+      'Unlimited clip posting',
+      'Unlimited fan groups',
+      'Public + private watch parties',
+      'Home Team badge on your profile',
+      'Priority search visibility',
+      'Ad-free experience',
+    ],
+    prices: {
+      monthly: { display: '$4.99/mo', period: 'month' },
+      annual: { display: '$34.99/yr', period: 'year', savingsBadge: 'Save 42%' },
+    },
+  },
+  mvp: {
+    title: 'MVP',
+    subtitle: 'Build your following. For serious creators.',
+    ctaIdle: 'Subscribe',
+    ctaSuccess: '✓ Welcome, MVP',
+    disclosurePrefix: '',
+    offersTrial: false,
+    features: [
+      'Everything in Home Team',
+      'Advanced audience analytics',
+      'Verified creator badge',
+      'Featured placement in Discover',
+      'Brand collaboration inbox',
+    ],
+    prices: {
+      monthly: { display: '$14.99/mo', period: 'month' },
+      annual: { display: '$99.99/yr', period: 'year', savingsBadge: 'Save 44%' },
+    },
+  },
 };
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onSuccess?: () => void;
-  // Default to monthly highlighted; the Choose Plan onboarding screen
-  // can override based on which card the user tapped.
+  tier?: Tier;
   initialPlan?: Plan;
 }
 
-export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'monthly' }: Props) {
+export function PremiumPaywall({
+  visible,
+  onClose,
+  onSuccess,
+  tier = 'home_team',
+  initialPlan = 'monthly',
+}: Props) {
   const insets = useSafeAreaInsets();
   const [plan, setPlan] = useState<Plan>(initialPlan);
   const [state, setState] = useState<State>('idle');
 
+  const config = TIER_CONFIG[tier];
+  const priceDisplay = config.prices[plan].display;
+
   const handlePurchase = async () => {
     setState('purchasing');
-    const result = await purchasePremium(plan);
+    const result = await purchaseTier(tier, plan);
     if (result.kind === 'success') {
       setState('success');
       // Brief success flash, then dismiss + entitlement Realtime fires.
@@ -72,7 +124,7 @@ export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'mon
     } else if (result.kind === 'cancelled') {
       setState('idle');
     } else {
-      reportError(result.error, { source: 'PremiumPaywall:purchase', plan });
+      reportError(result.error, { source: 'PremiumPaywall:purchase', tier, plan });
       setState('idle');
       Alert.alert(
         'Purchase could not start',
@@ -96,7 +148,7 @@ export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'mon
         setState('idle');
       }
     } catch (e) {
-      reportError(e, { source: 'PremiumPaywall:restore' });
+      reportError(e, { source: 'PremiumPaywall:restore', tier });
       setState('idle');
     }
   };
@@ -111,19 +163,19 @@ export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'mon
       <View style={styles.overlay}>
         <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.header}>
-            <Text style={styles.title}>Fan Sphere Premium</Text>
+            <Text style={styles.title}>Fan Sphere {config.title}</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <X size={22} color={Colors.dark.textMuted} />
             </TouchableOpacity>
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            <Text style={styles.subtitle}>7 days free, then your plan</Text>
+            <Text style={styles.subtitle}>{config.subtitle}</Text>
 
             <View style={styles.planRow}>
               {(['monthly', 'annual'] as Plan[]).map((p) => {
                 const active = plan === p;
-                const price = PRICES[p];
+                const price = config.prices[p];
                 return (
                   <TouchableOpacity
                     key={p}
@@ -145,7 +197,7 @@ export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'mon
             </View>
 
             <View style={styles.featureList}>
-              {FEATURES.map((f) => (
+              {config.features.map((f) => (
                 <View key={f} style={styles.featureRow}>
                   <Check size={16} color={Colors.dark.accent} />
                   <Text style={styles.featureText}>{f}</Text>
@@ -154,9 +206,9 @@ export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'mon
             </View>
 
             <Text style={styles.disclosureCopy}>
-              Start your 7-day free trial. We'll charge {PRICES[plan].display} after the trial ends.
-              Subscriptions auto-renew unless cancelled. Manage or cancel anytime in your{' '}
-              {STORE_NAME} account settings.
+              {config.offersTrial
+                ? `${config.disclosurePrefix} We'll charge ${priceDisplay} after the trial ends. Subscriptions auto-renew unless cancelled. Manage or cancel anytime in your ${STORE_NAME} account settings.`
+                : `You'll be charged ${priceDisplay}. Subscriptions auto-renew unless cancelled. Manage or cancel anytime in your ${STORE_NAME} account settings.`}
             </Text>
 
             <View style={styles.linkRow}>
@@ -187,9 +239,9 @@ export function PremiumPaywall({ visible, onClose, onSuccess, initialPlan = 'mon
             {state === 'purchasing' ? (
               <ActivityIndicator color="#fff" />
             ) : state === 'success' ? (
-              <Text style={styles.ctaText}>✓ Welcome to Premium</Text>
+              <Text style={styles.ctaText}>{config.ctaSuccess}</Text>
             ) : (
-              <Text style={styles.ctaText}>Start 7-Day Free Trial</Text>
+              <Text style={styles.ctaText}>{config.ctaIdle}</Text>
             )}
           </TouchableOpacity>
         </View>

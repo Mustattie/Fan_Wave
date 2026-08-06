@@ -91,8 +91,24 @@ export type SubscriptionStatus =
   | 'cancelled'
   | 'expired';
 
+// v9.3 tiered freemium model. See migration 082. Ordering matters —
+// TIER_RANK below relies on the enum values matching the DB CHECK.
+export type SubscriptionTier = 'free' | 'home_team' | 'mvp' | 'business';
+
+export const TIER_RANK: Record<SubscriptionTier, number> = {
+  free: 0,
+  home_team: 1,
+  mvp: 2,
+  business: 3,
+};
+
+export function tierAtLeast(current: SubscriptionTier, min: SubscriptionTier): boolean {
+  return TIER_RANK[current] >= TIER_RANK[min];
+}
+
 export interface EntitlementState {
   status: SubscriptionStatus;
+  tier: SubscriptionTier;
   premiumActiveUntil: Date | null;
   wcPassActiveUntil: Date | null;
   isTrial: boolean;
@@ -118,6 +134,7 @@ function isReviewerEmail(email: string | null | undefined): boolean {
 
 const DEFAULT_STATE: EntitlementState = {
   status: 'none',
+  tier: 'free',
   premiumActiveUntil: null,
   wcPassActiveUntil: null,
   isTrial: false,
@@ -127,14 +144,21 @@ const DEFAULT_STATE: EntitlementState = {
   hasWCAccess: false,
 };
 
+function coerceTier(raw: string | null | undefined): SubscriptionTier {
+  if (raw === 'home_team' || raw === 'mvp' || raw === 'business') return raw;
+  return 'free';
+}
+
 function deriveState(row: {
   subscription_status: string | null;
+  subscription_tier: string | null;
   premium_active_until: string | null;
   wc_pass_active_until: string | null;
 } | null): EntitlementState {
   if (!row) return DEFAULT_STATE;
   const now = Date.now();
   const status = (row.subscription_status ?? 'none') as SubscriptionStatus;
+  const tier = coerceTier(row.subscription_tier);
   const premiumActiveUntil = row.premium_active_until ? new Date(row.premium_active_until) : null;
   const wcPassActiveUntil = row.wc_pass_active_until ? new Date(row.wc_pass_active_until) : null;
 
@@ -142,12 +166,18 @@ function deriveState(row: {
   const isActive = status === 'active';
   const isCancelledOrExpired = status === 'cancelled' || status === 'expired';
 
-  // Mirrors public.has_premium_access() in migration 032 — fail-closed
-  // when premium_active_until is null even if status looks active.
+  // v9.3 tiered model: premium access = any paid tier OR legacy
+  // trial/active with a still-valid premium_active_until. The second
+  // arm covers users whose subscription_tier hasn't been backfilled yet
+  // (e.g. a webhook race during migration deploy). Mirrors the shim in
+  // migration 082's has_premium_access().
   const hasPremiumAccess =
-    (isTrial || isActive) &&
-    premiumActiveUntil !== null &&
-    premiumActiveUntil.getTime() > now;
+    tierAtLeast(tier, 'home_team') ||
+    (
+      (isTrial || isActive) &&
+      premiumActiveUntil !== null &&
+      premiumActiveUntil.getTime() > now
+    );
 
   // Mirrors public.has_wc_access() — trial includes WC; otherwise an
   // active pass purchase grants WC.
@@ -157,6 +187,7 @@ function deriveState(row: {
 
   return {
     status,
+    tier,
     premiumActiveUntil,
     wcPassActiveUntil,
     isTrial,
@@ -175,32 +206,47 @@ export function useSubscriptionState() {
       if (!user) return DEFAULT_STATE;
       const { data, error } = await supabase
         .from('users')
-        .select('subscription_status, premium_active_until, wc_pass_active_until')
+        .select('subscription_status, subscription_tier, premium_active_until, wc_pass_active_until')
         .eq('auth_id', user.id)
         .maybeSingle();
       if (error || !data) return DEFAULT_STATE;
       const derived = deriveState(data);
       // Client-side reviewer bypass — mirrors public.has_premium_access /
-      // has_wc_access overloads in migration 053. Apple needs the reviewer
-      // to see free-tier paywalls when they navigate to Subscription, but
-      // also needs them to exercise every create flow so they can validate
-      // the app. We grant access at both layers.
+      // has_wc_access overloads in migration 053 and public.get_user_tier
+      // in migration 082. Apple needs the reviewer to see the paywall
+      // when they navigate to Subscription, but also needs them to
+      // exercise every create + Home Team / MVP flow.
       //
       // NOTE on Expo Go: the Expo Go bypass lives in the leaf hooks
-      // (useHasPremium / useHasWCAccess), NOT inside this queryFn.
-      // Reason: React Query caches the queryFn result under
-      // ['entitlements'] across hot reloads; a cached "false" result from
-      // before the bypass shipped will keep paywalls visible for 30s
-      // (staleTime). Putting the check at the leaf makes the override
-      // take effect on the very next render after the file reloads.
+      // (useHasPremium / useTier / useHasWCAccess), NOT inside this
+      // queryFn. Reason: React Query caches the queryFn result under
+      // ['entitlements'] across hot reloads; a cached free-tier result
+      // from before the bypass shipped will keep paywalls visible for
+      // 30s (staleTime). Putting the check at the leaf makes the
+      // override take effect on the very next render after the file
+      // reloads.
       if (isReviewerEmail(user.email)) {
-        return { ...derived, hasPremiumAccess: true, hasWCAccess: true };
+        return { ...derived, tier: 'mvp', hasPremiumAccess: true, hasWCAccess: true };
       }
       return derived;
     },
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });
+}
+
+// Primary tier accessor. Prefer this over useHasPremium() for tier-
+// aware surfaces. Returns 'free' when session is unresolved so callers
+// can render optimistically without a null-check.
+export function useTier(): SubscriptionTier {
+  const { data } = useSubscriptionState();
+  if (isExpoGo()) return 'mvp';
+  return data?.tier ?? 'free';
+}
+
+export function useHasTierOrHigher(minTier: SubscriptionTier): boolean {
+  const tier = useTier();
+  return tierAtLeast(tier, minTier);
 }
 
 export function useHasPremium(): boolean {
@@ -421,16 +467,41 @@ export type PurchaseResult =
   | { kind: 'cancelled' }
   | { kind: 'error'; error: unknown };
 
-// Find the RC package matching a plan from the current offering. Tries
-// multiple identifier strategies so the lookup is resilient to dashboard
-// config drift: RC default IDs ($rc_monthly, $rc_annual, $rc_lifetime),
-// custom IDs we use (monthly, annual, wc_pass), or product-id match. The
-// product-id match is what makes Android work — Play subscription product
-// IDs have a `:basePlanId` suffix (e.g. `premium_monthly_999:monthly`)
-// that the bare-string purchaseProduct() lookup did not handle, so the
-// pre-fix code silently rejected the purchase on every Android device.
-async function findPackageForPlan(
-  plan: 'monthly' | 'annual' | 'wc_pass',
+// v9.3 tiered SKUs. Legacy premium_* products stay in the lookup for
+// restore-purchase compatibility (grandfathered users). New signups hit
+// the tiered products.
+type PaidTier = 'home_team' | 'mvp';
+type Plan = 'monthly' | 'annual';
+
+const TIER_PRODUCT_IDS: Record<PaidTier, Record<Plan, string>> = {
+  home_team: {
+    monthly: 'home_team_monthly_499',
+    annual: 'home_team_annual_3499',
+  },
+  mvp: {
+    monthly: 'mvp_monthly_1499',
+    annual: 'mvp_annual_9999',
+  },
+};
+
+const TIER_ENTITLEMENT_ID: Record<PaidTier, string[]> = {
+  // Home Team purchase grants 'home_team' entitlement in RC.
+  home_team: ['home_team'],
+  // MVP purchase grants both 'mvp' and (via RC additive entitlements)
+  // 'home_team'. Either signals success.
+  mvp: ['mvp', 'home_team'],
+};
+
+// Find the RC package matching a tier + plan from the current offering.
+// Tries multiple identifier strategies so the lookup is resilient to
+// dashboard config drift: custom RC IDs (`{tier}_monthly`), then
+// product-id match on the exact SKU (with Android base-plan-ID suffix
+// tolerance). Product-id match is what makes Android work — Play
+// subscription product IDs arrive as `home_team_monthly_499:monthly`
+// and the bare-string lookup misses that.
+async function findPackageForTierPlan(
+  tier: PaidTier,
+  plan: Plan,
 ): Promise<unknown | null> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -440,36 +511,31 @@ async function findPackageForPlan(
     const packages: any[] = current?.availablePackages ?? [];
     if (packages.length === 0) return null;
 
-    const defaultRcId =
-      plan === 'monthly' ? '$rc_monthly'
-      : plan === 'annual' ? '$rc_annual'
-      : '$rc_lifetime';
-    const customRcId = plan === 'wc_pass' ? 'wc_pass' : plan;
-    const productId =
-      plan === 'monthly' ? 'premium_monthly_999'
-      : plan === 'annual' ? 'premium_annual_10788'
-      : 'wc_pass_2026';
+    const customRcId = `${tier}_${plan}`;
+    const productId = TIER_PRODUCT_IDS[tier][plan];
 
     return (
-      packages.find((p) => p.identifier === defaultRcId) ??
       packages.find((p) => p.identifier === customRcId) ??
       packages.find((p) => {
         const pid: string = p.product?.identifier ?? '';
         return pid === productId || pid.startsWith(productId + ':');
       }) ??
+      // Home Team fallback to legacy $rc_monthly / $rc_annual so
+      // dashboards misconfigured against the old shape still function.
+      (tier === 'home_team'
+        ? packages.find((p) => p.identifier === (plan === 'monthly' ? '$rc_monthly' : '$rc_annual'))
+        : null) ??
       null
     );
   } catch (e) {
-    if (__DEV__) console.warn('[entitlements] findPackageForPlan failed:', e);
+    if (__DEV__) console.warn('[entitlements] findPackageForTierPlan failed:', e);
     return null;
   }
 }
 
-export async function purchasePremium(plan: 'monthly' | 'annual'): Promise<PurchaseResult> {
-  // Expo Go has no RC native module; calling Purchases.purchasePackage() in
-  // that environment throws "no singleton instance" and surfaces a generic
-  // "purchase could not start" Alert. Short-circuit to a clear error so dev
-  // testers see what's actually happening instead of debugging RC.
+// v9.3 primary purchase API. Tier + plan → purchase → success if RC
+// reports any of the tier's entitlement identifiers active.
+export async function purchaseTier(tier: PaidTier, plan: Plan): Promise<PurchaseResult> {
   if (isExpoGo()) {
     return {
       kind: 'error',
@@ -481,17 +547,18 @@ export async function purchasePremium(plan: 'monthly' | 'annual'): Promise<Purch
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const Purchases = require('react-native-purchases').default;
-    const pkg = await findPackageForPlan(plan);
+    const pkg = await findPackageForTierPlan(tier, plan);
     if (!pkg) {
       return {
         kind: 'error',
         error: new Error(
-          `No matching ${plan} package in current RevenueCat offering`,
+          `No matching ${tier} ${plan} package in current RevenueCat offering`,
         ),
       };
     }
     const result = await Purchases.purchasePackage(pkg);
-    if (result?.customerInfo?.entitlements?.active?.premium) {
+    const active = result?.customerInfo?.entitlements?.active ?? {};
+    if (TIER_ENTITLEMENT_ID[tier].some((id) => active[id])) {
       return { kind: 'success' };
     }
     return { kind: 'pending' };
@@ -501,6 +568,17 @@ export async function purchasePremium(plan: 'monthly' | 'annual'): Promise<Purch
     }
     return { kind: 'error', error: e };
   }
+}
+
+/**
+ * @deprecated v9.3: prefer purchaseTier('home_team', plan). Kept as a
+ * shim so existing callers (choose-plan, PremiumPaywall) keep compiling
+ * during the tier rollout. Legacy premium_* SKUs are still restorable
+ * via restorePurchases(); this shim only affects new signups, which
+ * route to the Home Team products.
+ */
+export async function purchasePremium(plan: Plan): Promise<PurchaseResult> {
+  return purchaseTier('home_team', plan);
 }
 
 /**

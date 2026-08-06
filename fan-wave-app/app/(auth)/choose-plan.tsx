@@ -11,12 +11,15 @@ type Plan = 'monthly' | 'annual';
 // Apple Review 2.3.10 — never mention "Google Play" in iOS-rendered copy.
 const STORE_NAME = Platform.OS === 'ios' ? 'App Store' : 'Google Play';
 
+// Home Team perks — mirrors PremiumPaywall's TIER_CONFIG.home_team.features
+// so the pre-sheet preview matches what the purchase sheet displays.
 const PERKS = [
-  'Post unlimited clips + moments',
-  'Create + RSVP to watch parties',
-  'Join + create fan groups',
-  'Follow your teams + live score push',
-  'Ad-free',
+  'Unlimited clip posting',
+  'Unlimited fan groups',
+  'Public + private watch parties',
+  'Home Team badge on your profile',
+  'Priority search visibility',
+  'Ad-free experience',
 ];
 
 export default function ChoosePlanScreen() {
@@ -26,10 +29,9 @@ export default function ChoosePlanScreen() {
   const handleSelectPlan = (plan: Plan) => setPendingPlan(plan);
 
   const handlePurchaseSuccess = () => {
-    // Webhook + realtime will flip subscription_status to 'trial'.
-    // v9.x pivot: World Cup pass is no longer surfaced in onboarding —
-    // it stays in Settings → Subscription. Send trial users straight
-    // into the app.
+    // Webhook + realtime flip subscription_status to 'trial' and
+    // subscription_tier to 'home_team'. Send the new subscriber into
+    // the app.
     router.replace('/(tabs)');
   };
 
@@ -37,10 +39,10 @@ export default function ChoosePlanScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.heroSection}>
-          <Text style={styles.eyebrow}>Welcome to Fan Sphere</Text>
-          <Text style={styles.title}>Start your 7-day free trial</Text>
+          <Text style={styles.eyebrow}>Fan Sphere Home Team</Text>
+          <Text style={styles.title}>Organize the crew.</Text>
           <Text style={styles.subtitle}>
-            Try everything for a week. Cancel any time in your {STORE_NAME} settings.
+            Try Home Team free for 7 days. Cancel any time in your {STORE_NAME} settings.
           </Text>
         </View>
 
@@ -60,11 +62,11 @@ export default function ChoosePlanScreen() {
             activeOpacity={0.7}
           >
             <View style={styles.savingsBadge}>
-              <Text style={styles.savingsBadgeText}>SAVE 10%</Text>
+              <Text style={styles.savingsBadgeText}>SAVE 42%</Text>
             </View>
             <Text style={styles.planLabel}>Annual</Text>
-            <Text style={styles.planPrice}>$107.88<Text style={styles.planPricePeriod}> / year</Text></Text>
-            <Text style={styles.planEffective}>$8.99/month equivalent</Text>
+            <Text style={styles.planPrice}>$34.99<Text style={styles.planPricePeriod}> / year</Text></Text>
+            <Text style={styles.planEffective}>$2.92/month equivalent</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -73,7 +75,7 @@ export default function ChoosePlanScreen() {
             activeOpacity={0.7}
           >
             <Text style={styles.planLabel}>Monthly</Text>
-            <Text style={styles.planPrice}>$9.99<Text style={styles.planPricePeriod}> / month</Text></Text>
+            <Text style={styles.planPrice}>$4.99<Text style={styles.planPricePeriod}> / month</Text></Text>
             <Text style={styles.planEffective}>billed monthly after trial</Text>
           </TouchableOpacity>
         </View>
@@ -84,21 +86,21 @@ export default function ChoosePlanScreen() {
           in your {STORE_NAME} account settings.
         </Text>
 
-        {/* v9.1 UAT: user asked "why do we have this option" — kept as an
-            escape hatch (Expo Go / RC outage / unsupported region) but
-            copy softened to feel less like an opt-out. Per-feature
-            PaywallGate components still nudge free users into the trial
-            at the moment they try a Premium action. */}
+        {/* v9.3 freemium: onboarding no longer forces this screen — it's
+            reached only via Profile → Upgrade. Keep the escape hatch so
+            the user can back out of the paywall flow without a hard
+            router.back(). */}
         <TouchableOpacity
           style={styles.skipBtn}
           onPress={() => router.replace('/(tabs)')}
           activeOpacity={0.7}
         >
-          <Text style={styles.skipBtnText}>Continue with free plan</Text>
+          <Text style={styles.skipBtnText}>Not now</Text>
         </TouchableOpacity>
       </ScrollView>
 
       <PremiumPaywall
+        tier="home_team"
         visible={pendingPlan !== null}
         initialPlan={pendingPlan ?? 'monthly'}
         onClose={() => setPendingPlan(null)}
