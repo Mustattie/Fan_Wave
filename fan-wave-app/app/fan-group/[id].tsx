@@ -443,46 +443,47 @@ export default function FanGroupDetailScreen() {
     }
   };
 
-  // Attach flow: Record new / Choose from library → validate → upload →
-  // insert into messages with media_url so it shows up in the merged
-  // feed like a WhatsApp media message. Reuses the storage helper the
-  // Clips + Moments composers already use so the resulting URL lands in
-  // the same bucket and is served by the same CDN path.
+  // Attach flow: capture-first (v9.4.0 UAT Round 3 #15). Product
+  // direction: "capture the moment" -- no library uploads. The old
+  // sheet offered Record video / Choose from library; users could
+  // upload week-old photos from their reel which broke the moments-are-
+  // fresh promise. Now offers Take photo / Record video (both open the
+  // native camera in the corresponding mode via expo-image-picker). A
+  // fully WhatsApp-parity long-press-to-record capture UI would need a
+  // custom expo-camera screen; the two-mode split ships faster with
+  // 90% of the user value.
+  //
+  // Uploads still flow through the same storage helper Clips + Moments
+  // use so the resulting URL lands in the same bucket, served by the
+  // same CDN path.
   const handleAttachMedia = useCallback(() => {
     if (attaching || !id || !currentUserId) return;
-    Alert.alert('Send media', 'Attach a video or photo to the chat.', [
-      { text: 'Record video', onPress: () => pickMedia('camera') },
-      { text: 'Choose from library', onPress: () => pickMedia('library') },
+    Alert.alert('Capture the moment', 'Add a photo or video from the game.', [
+      { text: 'Take photo', onPress: () => pickMedia('camera-photo') },
+      { text: 'Record video', onPress: () => pickMedia('camera-video') },
       { text: 'Cancel', style: 'cancel' },
     ]);
   }, [attaching, id, currentUserId]);
 
-  const pickMedia = useCallback(async (source: 'camera' | 'library') => {
+  const pickMedia = useCallback(async (source: 'camera-photo' | 'camera-video') => {
     try {
-      if (source === 'camera') {
-        const perm = await ImagePicker.requestCameraPermissionsAsync();
-        if (perm.status !== 'granted') {
-          Alert.alert('Camera permission denied', 'Enable camera access in Settings to record.');
-          return;
-        }
-      } else {
-        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (perm.status !== 'granted') {
-          Alert.alert('Library permission denied', 'Enable photo library access in Settings.');
-          return;
-        }
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.status !== 'granted') {
+        Alert.alert('Camera permission denied', 'Enable camera access in Settings to capture.');
+        return;
       }
-      // Camera: force video-only so the launcher opens in record-video
-      // mode (default is stills → user reported "record video option is
-      // bringing up the button to take picture").
+      // Camera mode selects video-only or images-only so the launcher
+      // opens in the right mode. Prior code let users pick from the
+      // library for images/videos; that door is closed now.
       const opts = {
-        mediaTypes: (source === 'camera' ? ['videos'] : ['videos', 'images']) as any,
+        mediaTypes: (source === 'camera-video' ? ['videos'] : ['images']) as any,
         quality: 0.8,
         videoMaxDuration: 30,
       };
-      const result = source === 'camera'
-        ? await ImagePicker.launchCameraAsync(opts)
-        : await ImagePicker.launchImageLibraryAsync(opts);
+      // v9.4.0 UAT Round 3 (#15): both photo + video paths open the
+      // native camera. launchImageLibraryAsync is intentionally NOT
+      // called here anymore -- capture-only surface.
+      const result = await ImagePicker.launchCameraAsync(opts);
       if (result.canceled || !result.assets[0]?.uri) return;
       const asset = result.assets[0];
       const isVideo = asset.type === 'video';

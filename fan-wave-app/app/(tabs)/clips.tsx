@@ -284,11 +284,24 @@ const ClipCard = React.memo(function ClipCard({
           <Text style={styles.clipMeta}>
             {clip.poster} · {clip.group} · {clip.time}
           </Text>
-          {clip.userId && !isFollowingPoster && !isOwner && (
-            <TouchableOpacity style={styles.followChip} onPress={() => onFollow(clip.userId)}>
-              <UserPlus size={12} color={Colors.dark.accent} />
-              <Text style={styles.followChipText}>Follow</Text>
-            </TouchableOpacity>
+          {/* v9.4.0 UAT Round 3 (#20): card used to render a Follow
+              chip only when NOT following, so users had to leave the
+              feed and go to the creator's profile to unfollow. Now
+              swaps to a "Following" chip when already following; onFollow
+              is a toggle. Confirm sheet prevents accidental unfollows
+              on scroll-taps. */}
+          {clip.userId && !isOwner && (
+            isFollowingPoster ? (
+              <TouchableOpacity style={styles.followingChip} onPress={() => onFollow(clip.userId)}>
+                <UserPlus size={12} color={Colors.dark.text} />
+                <Text style={styles.followingChipText}>Following</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.followChip} onPress={() => onFollow(clip.userId)}>
+                <UserPlus size={12} color={Colors.dark.accent} />
+                <Text style={styles.followChipText}>Follow</Text>
+              </TouchableOpacity>
+            )
           )}
           {!isOwner && clip.userId && (
             <TouchableOpacity
@@ -836,22 +849,52 @@ export default function ClipsScreen() {
   // ClipCard including the active <VideoView>, which produced the "screen
   // flickering unstably" UAT report. Duplicate-tap guard uses the functional
   // setter (prev.has(userId) short-circuits) instead of reading state.
-  const handleFollow = useCallback(async (userId: string) => {
+  // v9.4.0 UAT Round 3 (#20): now a toggle. If the user already follows,
+  // prompt for confirmation and then call unfollow_user; otherwise call
+  // follow_user. Confirm sheet only fires on the unfollow path so the
+  // follow path stays one-tap.
+  const handleFollow = useCallback((userId: string) => {
     if (!userId) return;
-    let alreadyFollowed = false;
+    // Read latest set to decide direction without adding a dep (keeps
+    // handleFollow's identity stable per the "screen flickering
+    // unstably" fix noted below).
     setFollowedUserIds((prev) => {
-      if (prev.has(userId)) {
-        alreadyFollowed = true;
-        return prev;
+      const alreadyFollowed = prev.has(userId);
+      if (!alreadyFollowed) {
+        // Optimistic follow -> RPC in background.
+        const next = new Set(prev);
+        next.add(userId);
+        (async () => {
+          const { followUser } = await import('@/lib/userFollows');
+          const success = await followUser(userId);
+          if (!success) {
+            setFollowedUserIds((p) => { const n = new Set(p); n.delete(userId); return n; });
+          }
+        })();
+        return next;
       }
-      return new Set(prev).add(userId);
+      // Already following: confirm before unfollowing.
+      Alert.alert(
+        'Unfollow?',
+        'You can follow this creator again anytime.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Unfollow',
+            style: 'destructive',
+            onPress: async () => {
+              setFollowedUserIds((p) => { const n = new Set(p); n.delete(userId); return n; });
+              const { unfollowUser } = await import('@/lib/userFollows');
+              const success = await unfollowUser(userId);
+              if (!success) {
+                setFollowedUserIds((p) => { const n = new Set(p); n.add(userId); return n; });
+              }
+            },
+          },
+        ],
+      );
+      return prev;
     });
-    if (alreadyFollowed) return;
-    const { followUser } = await import('@/lib/userFollows');
-    const success = await followUser(userId);
-    if (!success) {
-      setFollowedUserIds((prev) => { const next = new Set(prev); next.delete(userId); return next; });
-    }
   }, []);
 
   const handleExport = useCallback(async (clip: ClipDisplay) => {
@@ -1344,6 +1387,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: Colors.dark.accent,
+  },
+  followingChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: Colors.dark.accent,
+  },
+  followingChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.dark.text,
   },
   blockChip: {
     paddingHorizontal: 8,
