@@ -36,7 +36,17 @@ export function useGames(limit = 30) {
     queryKey: ['games', limit],
     queryFn: async () => {
       const cached = await getCache<GameDisplay[]>('games', subkey);
-      if (cached) return cached;
+      // v9.4.0 UAT Round 3: treat empty AsyncStorage cache as
+      // "not yet loaded" rather than "confirmed no games". Arrays are
+      // truthy so `if (cached)` returned [] as valid cache -- if a
+      // previous session cached [] during a transient empty moment or
+      // after a Supabase timeout, the next 30s of app opens returned
+      // that empty list even after ESPN had synced fresh scores. That
+      // was the Game Day cold-load empty-state race (#13): the user
+      // opens the app, sees "No games live", pulls to refresh, and
+      // populates because RQ's invalidateQueries blows THIS cache
+      // too. Only shortcut on a cache hit with actual entries.
+      if (cached && cached.length > 0) return cached;
 
       try {
         // Carousel composition:
@@ -69,11 +79,25 @@ export function useGames(limit = 30) {
 
         if (error) throw error;
         const mapped = (data || []).map(mapGameToDisplay);
-        await setCache('games', mapped, subkey);
+        // v9.4.0 UAT Round 3: only cache non-empty results. Storing []
+        // would re-poison the `cached && cached.length > 0` shortcut on
+        // the next call and re-open the cold-load empty race.
+        if (mapped.length > 0) {
+          await setCache('games', mapped, subkey);
+        }
         return mapped;
-      } catch {
+      } catch (err) {
+        // v9.4.0 UAT Round 3: previously returned `stale?.data ?? []`
+        // on any failure. That silently converted a Supabase timeout
+        // into an empty-array success from RQ's perspective, which RQ
+        // then cached for the 60s staleTime. Users saw "No games" for
+        // 60s after a single failed call and only pull-to-refresh
+        // could recover. Prefer stale cache if we have entries; else
+        // rethrow so RQ retries with its built-in backoff and surfaces
+        // a real error state rather than a misleading empty one.
         const stale = await getStaleCache<GameDisplay[]>('games', subkey);
-        return stale?.data ?? [];
+        if (stale?.data && stale.data.length > 0) return stale.data;
+        throw err;
       }
     },
     staleTime: 60 * 1000,
