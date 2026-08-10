@@ -1280,9 +1280,18 @@ export default function CreateWatchPartyScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
-      {/* Header */}
+      {/* Header
+          v9.4.0 UAT Round 3 (#7): top back-arrow used to `router.back()`
+          from every step, exiting the whole wizard and dropping the
+          user's in-progress form. The bottom "Back" button stepped
+          within the wizard, so users hit the top arrow expecting the
+          same behavior and lost their work. Now the header arrow
+          mirrors the bottom Back on steps 2/3 and only exits on step 1. */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => (step > 1 ? setStep((step - 1) as 1 | 2 | 3) : router.back())}
+          style={styles.backBtn}
+        >
           <Text style={styles.backArrow}>{'←'}</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Create Watch Party</Text>

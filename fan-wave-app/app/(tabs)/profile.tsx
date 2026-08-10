@@ -160,7 +160,10 @@ export default function ProfileScreen() {
 
   const handleMenuPress = (label: string) => {
     if (label === 'My Sports') {
-      router.push('/(auth)/onboarding-sports' as any);
+      // v9.4.0 UAT Round 3 (#21): was routing to /(auth)/onboarding-sports
+      // which bounces to /(tabs) via its onboarded_at guard for anyone
+      // past onboarding. Dedicated /my-sports screen skips that guard.
+      router.push('/my-sports' as any);
     } else if (label === 'My Teams') {
       router.push('/my-teams' as any);
     } else if (label === 'My Clips') {

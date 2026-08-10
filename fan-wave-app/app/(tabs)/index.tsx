@@ -28,12 +28,43 @@ import { supabase } from '@/lib/supabase';
 export default function HomeScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  // v9.4.0 UAT Round 3 (#1): personalize the header. Reads from
+  // users.display_name (set at sign-up) and falls back to the email
+  // local-part / "there" so the greeting never renders "Hi undefined".
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
   // Shared React Query hooks — data is deduplicated across screens
   const { data: city = '' } = useUserCity();
   const { data: games = [], isLoading: gamesLoading } = useGames(30);
   const { data: watchParties = [], isLoading: partiesLoading } = useWatchParties(city, 3);
   const { data: groups = [], isLoading: groupsLoading } = useMyGroups(3);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || cancelled) return;
+        const { data } = await supabase
+          .from('users')
+          .select('display_name')
+          .eq('auth_id', user.id)
+          .maybeSingle();
+        if (cancelled) return;
+        const name =
+          data?.display_name ||
+          (user.user_metadata as any)?.display_name ||
+          user.email?.split('@')[0] ||
+          null;
+        setDisplayName(name);
+      } catch {
+        // Silent fallback: header just shows "Hi there".
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // User interests for the "Today's Games" carousel:
   //   • selected_sports — AsyncStorage list of lowercase sport ids set during
@@ -170,6 +201,9 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Fan Sphere 🌐</Text>
+          <Text style={styles.greeting}>
+            Hi {displayName || 'there'}
+          </Text>
           <Text style={styles.subtitle}>
             📍 {city} ·{' '}
             <Text
@@ -180,7 +214,10 @@ export default function HomeScreen() {
             </Text>
           </Text>
         </View>
-        <TouchableOpacity style={styles.bellButton}>
+        <TouchableOpacity
+          style={styles.bellButton}
+          onPress={() => router.push('/notifications' as any)}
+        >
           <Bell size={24} color={Colors.dark.text} />
         </TouchableOpacity>
       </View>
@@ -302,6 +339,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.dark.text,
     letterSpacing: -0.5,
+  },
+  greeting: {
+    fontSize: 15,
+    color: Colors.dark.text,
+    fontWeight: '500',
+    marginTop: 6,
   },
   subtitle: {
     fontSize: 14,
