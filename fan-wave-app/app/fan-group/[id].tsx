@@ -296,8 +296,21 @@ export default function FanGroupDetailScreen() {
   }, [id, currentUserId]);
 
   // Realtime: presence
+  //
+  // v9.4.0 UAT Round 3 (#11): previously fired for anyone viewing the
+  // group screen regardless of membership -- someone browsing a
+  // Suggested group without tapping Join still counted toward the
+  // "online" tally. That produced UAT screenshots showing "1 members ·
+  // 2 online" (impossible if online == member) and eroded trust in
+  // the counters. Gate presence on isMember || isOwner so non-members
+  // don't spike the count while browsing, and reset the local count
+  // to 0 when we drop off / never joined.
   useEffect(() => {
     if (!id) return;
+    if (!(isMember || isOwner)) {
+      setOnlineCount(0);
+      return;
+    }
     const unsub = subscribeToPresence(
       `presence-${id}`,
       (state) => {
@@ -306,7 +319,7 @@ export default function FanGroupDetailScreen() {
       { user_id: currentUserId || 'anon', online_at: new Date().toISOString() },
     );
     return unsub;
-  }, [id, currentUserId]);
+  }, [id, currentUserId, isMember, isOwner]);
 
   // Paginated message loading
   const loadMoreMessages = useCallback(async () => {

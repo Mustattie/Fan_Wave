@@ -535,10 +535,23 @@ export default function ClipsScreen() {
             .gte('created_at', sevenDaysAgo)
             .order('like_count', { ascending: false });
         } else {
-          // For You: fallback / catch-all. Same all-time like_count DESC
-          // as before -- personalization by followed teams/sports is a
-          // v9.3 concern once we have that signal in the user profile.
-          query = query.order('like_count', { ascending: false });
+          // For You (v9.4.0 UAT Round 3 #18): scrolling the feed showed
+          // clips jumping 47d -> 20d -> 32d ago because ordering was
+          // like_count DESC with no time bound -- ties broke unpredictably
+          // and paginated batches interleaved arbitrarily. Users read that
+          // as "sort is broken."
+          //
+          // Chronological DESC over the last 30 days is the standard until
+          // a real personalized algo lands (needs analytics_events landing
+          // consistently on iOS, which was fixed in v9.2.4 and validated
+          // by the iOS MIME + thumbnail fix in this same branch). Recency
+          // window prevents an all-time feed dominated by early adopters.
+          const thirtyDaysAgo = new Date(
+            Date.now() - 30 * 24 * 60 * 60 * 1000
+          ).toISOString();
+          query = query
+            .gte('created_at', thirtyDaysAgo)
+            .order('created_at', { ascending: false });
         }
 
         const { data, error } = await query;

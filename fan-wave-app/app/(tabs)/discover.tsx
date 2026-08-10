@@ -830,6 +830,12 @@ export default function DiscoverScreen() {
             </TouchableOpacity>
           )}
 
+          {/* v9.4.0 UAT Round 3 (#8): "Map View 🗺️" was rendered as a
+              tappable action but had no onAction handler, so it was a
+              dead affordance for months. Real map view requires
+              react-native-maps + a venue-clustering pass -- deferred
+              to a follow-up. Hiding the button until then; less
+              damaging than a button that does nothing. */}
           <SectionHeader
             title={
               partiesBroadened
@@ -838,7 +844,6 @@ export default function DiscoverScreen() {
                   ? `Watch Parties Near You · ${city}`
                   : 'Upcoming Watch Parties'
             }
-            actionText="Map View 🗺️"
           />
           {watchParties.length > 0 ? (
             watchParties.map((party) => (
