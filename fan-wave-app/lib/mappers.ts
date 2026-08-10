@@ -108,10 +108,27 @@ export interface GameDisplay {
   awayLinescore?: number[] | null;
 }
 
-function mapTeamDisplay(row: any, sport: string): TeamDisplay {
+// v9.4.0 UAT Round 3: prior fallback was `name: 'TBD'` + `icon: '🏟️'`
+// for BOTH sides when the teams-table join returned null. Side-by-side
+// "TBD vs TBD" with matching stadium emoji looked like the whole game
+// card was broken (see #14 UAT screenshot).
+//
+// The join failure itself is a data-integrity issue we don't yet have
+// prod-DB visibility on (Supabase relink is still pending) -- ESPN sync
+// upserts teams before games (sync-game-schedules/index.ts:419-448) and
+// skips games whose team lookups miss, so a systemic "every game shows
+// TBD" points to a schema/RLS/PostgREST-shorthand regression we need to
+// verify against prod. Tracked as #23 for prod-DB investigation.
+//
+// In the meantime, keep the fallback informative: use "Home"/"Away" so
+// the two sides are visually distinct instead of both saying TBD, and
+// use the sport emoji rather than the generic stadium so a WNBA game
+// fallback at least reads as basketball.
+function mapTeamDisplay(row: any, sport: string, side: 'home' | 'away'): TeamDisplay {
+  const hasRow = !!row?.name;
   return {
-    name: row?.name || 'TBD',
-    icon: row?.code ? getSportEmoji(sport) : '🏟️',
+    name: hasRow ? row.name : (side === 'home' ? 'Home' : 'Away'),
+    icon: getSportEmoji(sport),
     code: row?.code ?? null,
     logoUrl: row?.logo_url ?? null,
     primaryColor: row?.colors?.primary ?? null,
@@ -145,8 +162,8 @@ export function mapGameToDisplay(row: any): GameDisplay {
 
   return {
     id: row.id,
-    homeTeam: mapTeamDisplay(row.home_team, sport),
-    awayTeam: mapTeamDisplay(row.away_team, sport),
+    homeTeam: mapTeamDisplay(row.home_team, sport, 'home'),
+    awayTeam: mapTeamDisplay(row.away_team, sport, 'away'),
     time: row.scheduled_at ? formatGameTime(row.scheduled_at) : 'TBD',
     league: leagueName,
     sport,
