@@ -20,6 +20,7 @@ import { SPORTS } from '@/constants/Sports';
 import { getMomentTypesForSport, type MomentType } from '@/constants/MomentTypes';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 import { validateClip, UploadValidationError } from '@/lib/storage';
+import { getVideoContentType } from '@/lib/mediaContentType';
 import { withTimeout } from '@/lib/withTimeout';
 import {
   enqueueClipUpload,
@@ -305,7 +306,7 @@ export default function CreateClipScreen() {
       if (!profileId) throw new Error('Profile not found');
 
       const ext = (activeVideoUri.split('.').pop() || 'mp4').toLowerCase();
-      const contentType = ext === 'mp4' ? 'video/mp4' : `video/${ext}`;
+      const contentType = getVideoContentType(activeVideoUri);
       const durationSeconds = activeDurationMs
         ? Math.round(Number(activeDurationMs) / 1000)
         : null;

@@ -17,6 +17,7 @@ import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
+import { getVideoContentType, getImageContentType } from '@/lib/mediaContentType';
 import { Video, Film, X, Share2, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { getMomentTypesForSport, REACTION_EMOJIS } from '@/constants/MomentTypes';
@@ -349,8 +350,8 @@ export default function MomentsFeed({
         const ext = (submittedClipUri.split('.').pop() || (submittedClipType === 'video' ? 'mp4' : 'jpg')).toLowerCase();
         const contentType =
           submittedClipType === 'video'
-            ? ext === 'mp4' ? 'video/mp4' : `video/${ext}`
-            : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
+            ? getVideoContentType(submittedClipUri)
+            : getImageContentType(submittedClipUri);
         const { publicUrl } = await uploadClip(submittedClipUri, {
           contentType,
           subpath: `moments/${Date.now()}.${ext}`,

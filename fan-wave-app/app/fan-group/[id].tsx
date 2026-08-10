@@ -43,7 +43,9 @@ import {
   type ChatMessageDisplay,
 } from '@/lib/mappers';
 import * as ImagePicker from 'expo-image-picker';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
+import { getVideoContentType, getImageContentType } from '@/lib/mediaContentType';
 import { withTimeout } from '@/lib/withTimeout';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Image as RNImage } from 'react-native';
@@ -485,12 +487,39 @@ export default function FanGroupDetailScreen() {
       }
       const ext = (asset.uri.split('.').pop() || (isVideo ? 'mp4' : 'jpg')).toLowerCase();
       const contentType = isVideo
-        ? (ext === 'mp4' ? 'video/mp4' : `video/${ext}`)
-        : (ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`);
+        ? getVideoContentType(asset.uri)
+        : getImageContentType(asset.uri);
       const { publicUrl } = await uploadClip(asset.uri, {
         contentType,
         subpath: `chat/${id}/${Date.now()}.${ext}`,
       });
+
+      // v9.4.0 UAT Round 3: chat video bubbles fall back to <RNImage
+      // source={{ uri: mediaUrl }}> when thumbnail_url is null (see the
+      // renderMessage code). RNImage cannot decode a video URL as an
+      // image on iOS -- silently fails, tile looks blank, user reads it
+      // as "video vanished." The schema column (mig 072) has been there
+      // since v9.1; the insert path just never populated it. Generate a
+      // frame-0 thumbnail here so the bubble has an actual poster.
+      let thumbnailUrl: string | null = null;
+      if (isVideo) {
+        try {
+          const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(
+            asset.uri,
+            { time: 0, quality: 0.7 },
+          );
+          const thumbUpload = await uploadClip(thumbUri, {
+            contentType: 'image/jpeg',
+            subpath: `chat/${id}/${Date.now()}-thumb.jpg`,
+          });
+          thumbnailUrl = thumbUpload.publicUrl;
+        } catch (thumbErr) {
+          // Non-fatal: the bubble will still render (thumbnailUrl stays
+          // null, RNImage fails silently, ▶ overlay remains tappable).
+          // Log so we notice if this becomes systemic.
+          reportError(thumbErr, { source: 'fan-group:thumbnail', groupId: id });
+        }
+      }
 
       // Optimistic bubble with the local uri so the sender sees it
       // immediately; the DB write below promotes it with the CDN url.
@@ -505,6 +534,7 @@ export default function FanGroupDetailScreen() {
         created_at: new Date().toISOString(),
         isMe: true,
         mediaUrl: asset.uri,
+        thumbnailUrl: thumbnailUrl ?? undefined,
         mediaType: isVideo ? 'video' : 'image',
         kind: 'media',
       };
@@ -518,6 +548,7 @@ export default function FanGroupDetailScreen() {
           content: '',
           type: isVideo ? 'video' : 'image',
           media_url: publicUrl,
+          thumbnail_url: thumbnailUrl,
           media_type: isVideo ? 'video' : 'image',
         })
         .select('*')
