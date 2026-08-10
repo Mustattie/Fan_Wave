@@ -77,6 +77,44 @@ export default function HomeScreen() {
   // empty-case still shows all games (and we don't hide everything before
   // onboarding finishes propagating to AsyncStorage).
   const [interestSports, setInterestSports] = useState<Set<string> | null>(null);
+  // v9.4.0 UAT Round 3 (#6): fetch fan-group affinity for each visible
+  // watch party after the list resolves. Cheap: 3 parties on Home, one
+  // small RPC per. Keyed by party.id so re-renders don't refetch.
+  const [partyAffinity, setPartyAffinity] = useState<
+    Record<string, { groupId: string; groupName: string; goingCount: number }[]>
+  >({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (watchParties.length === 0) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      const partyIds = watchParties.map((p) => p.id);
+      const results = await Promise.all(
+        partyIds.map((pid) =>
+          supabase.rpc('get_watch_party_group_affinity', {
+            p_party_id: pid,
+            p_viewer_id: user.id,
+          }),
+        ),
+      );
+      if (cancelled) return;
+      const next: typeof partyAffinity = {};
+      partyIds.forEach((pid, i) => {
+        const rows = results[i].data ?? [];
+        next[pid] = rows.map((r: any) => ({
+          groupId: r.group_id,
+          groupName: r.group_name,
+          goingCount: r.going_count,
+        }));
+      });
+      setPartyAffinity(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [watchParties]);
 
   useEffect(() => {
     let cancelled = false;
@@ -311,7 +349,11 @@ export default function HomeScreen() {
         />
         {watchParties.length > 0 ? (
           watchParties.map((party) => (
-            <WatchPartyCard key={party.id} party={party} />
+            <WatchPartyCard
+              key={party.id}
+              party={party}
+              affinity={partyAffinity[party.id]}
+            />
           ))
         ) : (
           <View style={styles.promoCard}>
