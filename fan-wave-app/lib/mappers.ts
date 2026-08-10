@@ -96,6 +96,14 @@ export interface GameDisplay {
   homeTeam: TeamDisplay;
   awayTeam: TeamDisplay;
   time: string;
+  // v9.4.0 UAT Round 3 (#2): raw ISO timestamp so consumers can filter
+  // by local-day boundaries. Home used to lean on useGames's 24h
+  // finished-cutoff (server-side) and rendered anything the query
+  // returned under "Today's Games" -- yesterday's late-tipping games
+  // that ended within 24h bled into today's carousel. Keeping `time`
+  // as the human-readable string for card rendering and adding
+  // scheduledAt as the ISO for date math.
+  scheduledAt: string | null;
   league: string;
   sport: string;
   status?: string;
@@ -165,6 +173,7 @@ export function mapGameToDisplay(row: any): GameDisplay {
     homeTeam: mapTeamDisplay(row.home_team, sport, 'home'),
     awayTeam: mapTeamDisplay(row.away_team, sport, 'away'),
     time: row.scheduled_at ? formatGameTime(row.scheduled_at) : 'TBD',
+    scheduledAt: row.scheduled_at ?? null,
     league: leagueName,
     sport,
     status,

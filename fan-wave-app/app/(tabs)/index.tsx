@@ -116,17 +116,41 @@ export default function HomeScreen() {
     };
   }, []);
 
+  // v9.4.0 UAT Round 3 (#2): "Today's Games" carousel bled prior-day
+  // finals into today because useGames returns anything within a 24h
+  // finished-cutoff (server-side, TZ-agnostic). Add a local-day
+  // window filter + a Today/Yesterday toggle so users can see finals
+  // from either day intentionally.
+  const [dayFilter, setDayFilter] = useState<'today' | 'yesterday'>('today');
+
   const filteredGames = useMemo(() => {
-    if (!interestSports || interestSports.size === 0) return games;
-    const filtered = games.filter((g) => {
+    // Local-day boundaries relative to the client's TZ.
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfTomorrow = startOfToday + 24 * 60 * 60 * 1000;
+    const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
+
+    const [lo, hi] = dayFilter === 'today'
+      ? [startOfToday, startOfTomorrow]
+      : [startOfYesterday, startOfToday];
+
+    const withinDay = games.filter((g) => {
+      if (!g.scheduledAt) return false;
+      const t = new Date(g.scheduledAt).getTime();
+      return t >= lo && t < hi;
+    });
+
+    if (!interestSports || interestSports.size === 0) return withinDay;
+    const filtered = withinDay.filter((g) => {
       const sport = (g.sport || '').toLowerCase();
       if (!sport) return false;
       return interestSports.has(sport);
     });
-    // Don't hide everything if the filter would empty the carousel —
-    // probably a user who picked an off-season sport. Fall back to all.
-    return filtered.length > 0 ? filtered : games;
-  }, [games, interestSports]);
+    // Don't hide everything if the interest filter would empty the
+    // carousel — probably a user who picked an off-season sport. Fall
+    // back to all of the day-scoped set.
+    return filtered.length > 0 ? filtered : withinDay;
+  }, [games, interestSports, dayFilter]);
 
   const loading = gamesLoading || partiesLoading || groupsLoading;
 
@@ -234,12 +258,30 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Today's Games */}
+        {/* Today's / Yesterday's Games */}
         <SectionHeader
-          title="Today's Games"
+          title={dayFilter === 'today' ? "Today's Games" : "Yesterday's Games"}
           actionText="See All →"
           onAction={() => router.push('/(tabs)/discover')}
         />
+        <View style={styles.dayToggleRow}>
+          <TouchableOpacity
+            style={[styles.dayChip, dayFilter === 'today' && styles.dayChipActive]}
+            onPress={() => setDayFilter('today')}
+          >
+            <Text style={[styles.dayChipText, dayFilter === 'today' && styles.dayChipTextActive]}>
+              Today
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.dayChip, dayFilter === 'yesterday' && styles.dayChipActive]}
+            onPress={() => setDayFilter('yesterday')}
+          >
+            <Text style={[styles.dayChipText, dayFilter === 'yesterday' && styles.dayChipTextActive]}>
+              Yesterday
+            </Text>
+          </TouchableOpacity>
+        </View>
         {filteredGames.length > 0 ? (
           <FlatList
             data={filteredGames}
@@ -345,6 +387,31 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
     fontWeight: '500',
     marginTop: 6,
+  },
+  dayToggleRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  dayChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: Colors.dark.surface,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  dayChipActive: {
+    backgroundColor: Colors.dark.accent + '22',
+    borderColor: Colors.dark.accent,
+  },
+  dayChipText: {
+    fontSize: 13,
+    color: Colors.dark.textSecondary,
+    fontWeight: '500',
+  },
+  dayChipTextActive: {
+    color: Colors.dark.accent,
   },
   subtitle: {
     fontSize: 14,
