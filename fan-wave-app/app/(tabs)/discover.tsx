@@ -213,6 +213,28 @@ export default function DiscoverScreen() {
         return { joined: [], suggested: [] };
       }
 
+      // v9.4.0 UAT Round 3: resolve the sport pill's UUID once and apply
+      // to BOTH joined + suggested. Previously only suggested filtered by
+      // sport (lines below) -- joined skipped the check entirely, so WNBA
+      // still showed a user's football/MLB memberships. Sentinel '__NONE__'
+      // means "the pill has no matching sport row" so we can propagate the
+      // fail-closed intent (empty list) instead of falling through.
+      const NONE = '__NONE__';
+      let sportUuid: string | null = null;
+      if (sport && sport !== 'all') {
+        const sportName = SPORT_ID_MAP[sport];
+        if (sportName) {
+          const { data: sportRow } = await supabase
+            .from('sports')
+            .select('id')
+            .ilike('name', sportName)
+            .maybeSingle();
+          sportUuid = sportRow?.id ?? NONE;
+        } else {
+          sportUuid = NONE;
+        }
+      }
+
       // My groups
       let joined: ChatRoomDisplay[] = [];
       try {
@@ -221,10 +243,19 @@ export default function DiscoverScreen() {
           .select('chat_rooms(*)')
           .eq('user_id', user.id);
         if (!error && data) {
-          joined = data
+          const rawRooms = data
             .map((row: any) => row.chat_rooms)
-            .filter(Boolean)
-            .map(mapChatRoomToDisplay);
+            .filter(Boolean);
+          // Client-side sport filter -- the joined query pulls chat_rooms
+          // via a nested select so sport_id is already on each row. When
+          // the pill is 'all' (sportUuid=null) skip filtering entirely.
+          const filteredRooms =
+            sportUuid === null
+              ? rawRooms
+              : sportUuid === NONE
+                ? []
+                : rawRooms.filter((r: any) => r.sport_id === sportUuid);
+          joined = filteredRooms.map(mapChatRoomToDisplay);
         }
       } catch {
         joined = [];
@@ -248,27 +279,14 @@ export default function DiscoverScreen() {
           .order('member_count', { ascending: false })
           .limit(30);
 
-        // Sport filter — resolve sport_id from the top-level pill.
-        // v9.2.6: force a no-match filter (`sport_id = '<zero-uuid>'`)
-        // when the pill has no corresponding row in `sports`, rather than
-        // silently falling through to "return everything". Falling through
-        // was why WNBA showed baseball groups etc.
-        if (sport && sport !== 'all') {
-          const sportName = SPORT_ID_MAP[sport];
-          if (sportName) {
-            const { data: sportRow } = await supabase
-              .from('sports')
-              .select('id')
-              .ilike('name', sportName)
-              .maybeSingle();
-            if (sportRow?.id) {
-              query = query.eq('sport_id', sportRow.id);
-            } else {
-              query = query.eq('sport_id', '00000000-0000-0000-0000-000000000000');
-            }
-          } else {
-            query = query.eq('sport_id', '00000000-0000-0000-0000-000000000000');
-          }
+        // Sport filter -- v9.2.6 pattern: force a no-match zero-UUID
+        // filter when the pill has no row in `sports`, so we fail closed
+        // instead of returning every group. Uses the sportUuid resolved
+        // above to stay in sync with the joined filter.
+        if (sportUuid === NONE) {
+          query = query.eq('sport_id', '00000000-0000-0000-0000-000000000000');
+        } else if (sportUuid) {
+          query = query.eq('sport_id', sportUuid);
         }
 
         // Search filter (name ilike)
@@ -812,6 +830,12 @@ export default function DiscoverScreen() {
             </TouchableOpacity>
           )}
 
+          {/* v9.4.0 UAT Round 3 (#8): "Map View 🗺️" was rendered as a
+              tappable action but had no onAction handler, so it was a
+              dead affordance for months. Real map view requires
+              react-native-maps + a venue-clustering pass -- deferred
+              to a follow-up. Hiding the button until then; less
+              damaging than a button that does nothing. */}
           <SectionHeader
             title={
               partiesBroadened
@@ -820,7 +844,6 @@ export default function DiscoverScreen() {
                   ? `Watch Parties Near You · ${city}`
                   : 'Upcoming Watch Parties'
             }
-            actionText="Map View 🗺️"
           />
           {watchParties.length > 0 ? (
             watchParties.map((party) => (

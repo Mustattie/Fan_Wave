@@ -68,17 +68,54 @@ export function formatFullDate(dateStr: string): string {
   });
 }
 
+// v9.4.0 UAT Round 3 (#17): prior format was a flat "Xd ago" chain
+// which read as noise on Clips ("47d ago" ... "20d ago" ... "50d ago").
+// New scale, matching how Twitter/IG/Discord surface post times:
+//   * <1m           -> "Just now"
+//   * <60m          -> "5m ago"
+//   * <6h           -> "3h ago"
+//   * same local day-> "2:34 PM"
+//   * <7 days       -> "Fri · 2:34 PM"
+//   * <365 days     -> "Aug 8 · 2:34 PM"
+//   * older         -> "Aug 8, 2024"
+// Shared formatter -> Clips cards, chat lastMessageTime, moments, and
+// anywhere else the code calls formatRelativeTime all benefit at once.
 export function formatRelativeTime(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diffMs = now - then;
+  const now = new Date();
+  const then = new Date(dateStr);
+  const diffMs = now.getTime() - then.getTime();
   const diffMin = Math.floor(diffMs / 60000);
   if (diffMin < 1) return 'Just now';
   if (diffMin < 60) return `${diffMin}m ago`;
   const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  return `${diffDay}d ago`;
+  if (diffHr < 6) return `${diffHr}h ago`;
+
+  const timeStr = then.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfThen = new Date(then.getFullYear(), then.getMonth(), then.getDate()).getTime();
+  const dayDiff = Math.round((startOfToday - startOfThen) / (24 * 60 * 60 * 1000));
+
+  if (dayDiff === 0) return timeStr;
+
+  if (dayDiff < 7) {
+    const weekday = then.toLocaleDateString('en-US', { weekday: 'short' });
+    return `${weekday} · ${timeStr}`;
+  }
+
+  if (dayDiff < 365) {
+    const md = then.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `${md} · ${timeStr}`;
+  }
+
+  return then.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 // ─── Game Mapper ─────────────────────────────────────────────
@@ -96,6 +133,14 @@ export interface GameDisplay {
   homeTeam: TeamDisplay;
   awayTeam: TeamDisplay;
   time: string;
+  // v9.4.0 UAT Round 3 (#2): raw ISO timestamp so consumers can filter
+  // by local-day boundaries. Home used to lean on useGames's 24h
+  // finished-cutoff (server-side) and rendered anything the query
+  // returned under "Today's Games" -- yesterday's late-tipping games
+  // that ended within 24h bled into today's carousel. Keeping `time`
+  // as the human-readable string for card rendering and adding
+  // scheduledAt as the ISO for date math.
+  scheduledAt: string | null;
   league: string;
   sport: string;
   status?: string;
@@ -108,10 +153,27 @@ export interface GameDisplay {
   awayLinescore?: number[] | null;
 }
 
-function mapTeamDisplay(row: any, sport: string): TeamDisplay {
+// v9.4.0 UAT Round 3: prior fallback was `name: 'TBD'` + `icon: '🏟️'`
+// for BOTH sides when the teams-table join returned null. Side-by-side
+// "TBD vs TBD" with matching stadium emoji looked like the whole game
+// card was broken (see #14 UAT screenshot).
+//
+// The join failure itself is a data-integrity issue we don't yet have
+// prod-DB visibility on (Supabase relink is still pending) -- ESPN sync
+// upserts teams before games (sync-game-schedules/index.ts:419-448) and
+// skips games whose team lookups miss, so a systemic "every game shows
+// TBD" points to a schema/RLS/PostgREST-shorthand regression we need to
+// verify against prod. Tracked as #23 for prod-DB investigation.
+//
+// In the meantime, keep the fallback informative: use "Home"/"Away" so
+// the two sides are visually distinct instead of both saying TBD, and
+// use the sport emoji rather than the generic stadium so a WNBA game
+// fallback at least reads as basketball.
+function mapTeamDisplay(row: any, sport: string, side: 'home' | 'away'): TeamDisplay {
+  const hasRow = !!row?.name;
   return {
-    name: row?.name || 'TBD',
-    icon: row?.code ? getSportEmoji(sport) : '🏟️',
+    name: hasRow ? row.name : (side === 'home' ? 'Home' : 'Away'),
+    icon: getSportEmoji(sport),
     code: row?.code ?? null,
     logoUrl: row?.logo_url ?? null,
     primaryColor: row?.colors?.primary ?? null,
@@ -145,9 +207,10 @@ export function mapGameToDisplay(row: any): GameDisplay {
 
   return {
     id: row.id,
-    homeTeam: mapTeamDisplay(row.home_team, sport),
-    awayTeam: mapTeamDisplay(row.away_team, sport),
+    homeTeam: mapTeamDisplay(row.home_team, sport, 'home'),
+    awayTeam: mapTeamDisplay(row.away_team, sport, 'away'),
     time: row.scheduled_at ? formatGameTime(row.scheduled_at) : 'TBD',
+    scheduledAt: row.scheduled_at ?? null,
     league: leagueName,
     sport,
     status,

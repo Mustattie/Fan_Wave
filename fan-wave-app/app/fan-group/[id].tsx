@@ -43,7 +43,9 @@ import {
   type ChatMessageDisplay,
 } from '@/lib/mappers';
 import * as ImagePicker from 'expo-image-picker';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
+import { getVideoContentType, getImageContentType } from '@/lib/mediaContentType';
 import { withTimeout } from '@/lib/withTimeout';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Image as RNImage } from 'react-native';
@@ -294,8 +296,21 @@ export default function FanGroupDetailScreen() {
   }, [id, currentUserId]);
 
   // Realtime: presence
+  //
+  // v9.4.0 UAT Round 3 (#11): previously fired for anyone viewing the
+  // group screen regardless of membership -- someone browsing a
+  // Suggested group without tapping Join still counted toward the
+  // "online" tally. That produced UAT screenshots showing "1 members ·
+  // 2 online" (impossible if online == member) and eroded trust in
+  // the counters. Gate presence on isMember || isOwner so non-members
+  // don't spike the count while browsing, and reset the local count
+  // to 0 when we drop off / never joined.
   useEffect(() => {
     if (!id) return;
+    if (!(isMember || isOwner)) {
+      setOnlineCount(0);
+      return;
+    }
     const unsub = subscribeToPresence(
       `presence-${id}`,
       (state) => {
@@ -304,7 +319,7 @@ export default function FanGroupDetailScreen() {
       { user_id: currentUserId || 'anon', online_at: new Date().toISOString() },
     );
     return unsub;
-  }, [id, currentUserId]);
+  }, [id, currentUserId, isMember, isOwner]);
 
   // Paginated message loading
   const loadMoreMessages = useCallback(async () => {
@@ -428,46 +443,47 @@ export default function FanGroupDetailScreen() {
     }
   };
 
-  // Attach flow: Record new / Choose from library → validate → upload →
-  // insert into messages with media_url so it shows up in the merged
-  // feed like a WhatsApp media message. Reuses the storage helper the
-  // Clips + Moments composers already use so the resulting URL lands in
-  // the same bucket and is served by the same CDN path.
+  // Attach flow: capture-first (v9.4.0 UAT Round 3 #15). Product
+  // direction: "capture the moment" -- no library uploads. The old
+  // sheet offered Record video / Choose from library; users could
+  // upload week-old photos from their reel which broke the moments-are-
+  // fresh promise. Now offers Take photo / Record video (both open the
+  // native camera in the corresponding mode via expo-image-picker). A
+  // fully WhatsApp-parity long-press-to-record capture UI would need a
+  // custom expo-camera screen; the two-mode split ships faster with
+  // 90% of the user value.
+  //
+  // Uploads still flow through the same storage helper Clips + Moments
+  // use so the resulting URL lands in the same bucket, served by the
+  // same CDN path.
   const handleAttachMedia = useCallback(() => {
     if (attaching || !id || !currentUserId) return;
-    Alert.alert('Send media', 'Attach a video or photo to the chat.', [
-      { text: 'Record video', onPress: () => pickMedia('camera') },
-      { text: 'Choose from library', onPress: () => pickMedia('library') },
+    Alert.alert('Capture the moment', 'Add a photo or video from the game.', [
+      { text: 'Take photo', onPress: () => pickMedia('camera-photo') },
+      { text: 'Record video', onPress: () => pickMedia('camera-video') },
       { text: 'Cancel', style: 'cancel' },
     ]);
   }, [attaching, id, currentUserId]);
 
-  const pickMedia = useCallback(async (source: 'camera' | 'library') => {
+  const pickMedia = useCallback(async (source: 'camera-photo' | 'camera-video') => {
     try {
-      if (source === 'camera') {
-        const perm = await ImagePicker.requestCameraPermissionsAsync();
-        if (perm.status !== 'granted') {
-          Alert.alert('Camera permission denied', 'Enable camera access in Settings to record.');
-          return;
-        }
-      } else {
-        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (perm.status !== 'granted') {
-          Alert.alert('Library permission denied', 'Enable photo library access in Settings.');
-          return;
-        }
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.status !== 'granted') {
+        Alert.alert('Camera permission denied', 'Enable camera access in Settings to capture.');
+        return;
       }
-      // Camera: force video-only so the launcher opens in record-video
-      // mode (default is stills → user reported "record video option is
-      // bringing up the button to take picture").
+      // Camera mode selects video-only or images-only so the launcher
+      // opens in the right mode. Prior code let users pick from the
+      // library for images/videos; that door is closed now.
       const opts = {
-        mediaTypes: (source === 'camera' ? ['videos'] : ['videos', 'images']) as any,
+        mediaTypes: (source === 'camera-video' ? ['videos'] : ['images']) as any,
         quality: 0.8,
         videoMaxDuration: 30,
       };
-      const result = source === 'camera'
-        ? await ImagePicker.launchCameraAsync(opts)
-        : await ImagePicker.launchImageLibraryAsync(opts);
+      // v9.4.0 UAT Round 3 (#15): both photo + video paths open the
+      // native camera. launchImageLibraryAsync is intentionally NOT
+      // called here anymore -- capture-only surface.
+      const result = await ImagePicker.launchCameraAsync(opts);
       if (result.canceled || !result.assets[0]?.uri) return;
       const asset = result.assets[0];
       const isVideo = asset.type === 'video';
@@ -485,12 +501,39 @@ export default function FanGroupDetailScreen() {
       }
       const ext = (asset.uri.split('.').pop() || (isVideo ? 'mp4' : 'jpg')).toLowerCase();
       const contentType = isVideo
-        ? (ext === 'mp4' ? 'video/mp4' : `video/${ext}`)
-        : (ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`);
+        ? getVideoContentType(asset.uri)
+        : getImageContentType(asset.uri);
       const { publicUrl } = await uploadClip(asset.uri, {
         contentType,
         subpath: `chat/${id}/${Date.now()}.${ext}`,
       });
+
+      // v9.4.0 UAT Round 3: chat video bubbles fall back to <RNImage
+      // source={{ uri: mediaUrl }}> when thumbnail_url is null (see the
+      // renderMessage code). RNImage cannot decode a video URL as an
+      // image on iOS -- silently fails, tile looks blank, user reads it
+      // as "video vanished." The schema column (mig 072) has been there
+      // since v9.1; the insert path just never populated it. Generate a
+      // frame-0 thumbnail here so the bubble has an actual poster.
+      let thumbnailUrl: string | null = null;
+      if (isVideo) {
+        try {
+          const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(
+            asset.uri,
+            { time: 0, quality: 0.7 },
+          );
+          const thumbUpload = await uploadClip(thumbUri, {
+            contentType: 'image/jpeg',
+            subpath: `chat/${id}/${Date.now()}-thumb.jpg`,
+          });
+          thumbnailUrl = thumbUpload.publicUrl;
+        } catch (thumbErr) {
+          // Non-fatal: the bubble will still render (thumbnailUrl stays
+          // null, RNImage fails silently, ▶ overlay remains tappable).
+          // Log so we notice if this becomes systemic.
+          reportError(thumbErr, { source: 'fan-group:thumbnail', groupId: id });
+        }
+      }
 
       // Optimistic bubble with the local uri so the sender sees it
       // immediately; the DB write below promotes it with the CDN url.
@@ -505,6 +548,7 @@ export default function FanGroupDetailScreen() {
         created_at: new Date().toISOString(),
         isMe: true,
         mediaUrl: asset.uri,
+        thumbnailUrl: thumbnailUrl ?? undefined,
         mediaType: isVideo ? 'video' : 'image',
         kind: 'media',
       };
@@ -518,6 +562,7 @@ export default function FanGroupDetailScreen() {
           content: '',
           type: isVideo ? 'video' : 'image',
           media_url: publicUrl,
+          thumbnail_url: thumbnailUrl,
           media_type: isVideo ? 'video' : 'image',
         })
         .select('*')
@@ -720,11 +765,13 @@ export default function FanGroupDetailScreen() {
               <Text style={styles.joinPinnedText}>Join</Text>
             )}
           </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={styles.pinnedRsvp} onPress={openInviteSheet}>
-            <Text style={styles.pinnedRsvpText}>Share</Text>
-          </TouchableOpacity>
-        )}
+        ) : null}
+        {/* v9.4.0 UAT Round 3 (#10): the pinned banner used to render a
+            duplicate "Share" pill next to the group tile once the user
+            had joined, on top of the header-icon Share (line ~731).
+            Same handler, redundant affordance, cluttered a card that
+            should surface identity (name + member count). Dropped the
+            pill; the header icon remains the canonical share entry. */}
       </View>
 
       {/* v9.1: Sub-Tabs Chat/Highlights removed per UAT (twice). The feed

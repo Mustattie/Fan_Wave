@@ -40,7 +40,21 @@ interface Attendee {
   name: string;
   initial: string;
   avatarBg: string;
-  status: 'going' | 'interested';
+  status: 'going' | 'interested' | 'cant_go';
+}
+
+// v9.4.0 UAT Round 3 (#6, #9): totals used to render the "N going · N
+// maybe · N can't go" summary line and the per-status host sections.
+interface AttendeeTotals {
+  going: number;
+  maybe: number;
+  cantGo: number;
+}
+
+interface GroupAffinity {
+  groupId: string;
+  groupName: string;
+  goingCount: number;
 }
 
 interface WatchPartyDetail {
@@ -87,6 +101,9 @@ export default function WatchPartyDetailScreen() {
 
   const [party, setParty] = useState<WatchPartyDetail | null>(null);
   const [attendees, setAttendees] = useState<Attendee[]>([]);
+  const [attendeeTotals, setAttendeeTotals] = useState<AttendeeTotals>({ going: 0, maybe: 0, cantGo: 0 });
+  const [groupAffinity, setGroupAffinity] = useState<GroupAffinity[]>([]);
+  const [isViewerHost, setIsViewerHost] = useState(false);
   const [invitees, setInvitees] = useState<{ name: string; phone: string; status: string }[]>([]);
   const [isCreator, setIsCreator] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -223,22 +240,54 @@ export default function WatchPartyDetailScreen() {
   const loadAttendees = async () => {
     if (!id) return;
     try {
-      const { data, error } = await supabase
-        .rpc('get_watch_party_attendees', { p_party_id: id });
+      // v9.4.0 UAT Round 3 (#6, #9): moved to _v2 RPC (mig 084) which
+      // is host-aware and returns totals per row. Guest branch gets
+      // going only + summary; host branch gets all statuses ordered
+      // going -> maybe -> cant_go with the same totals.
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const viewerId = currentUser?.id ?? null;
+
+      const { data, error } = await supabase.rpc('get_watch_party_attendees_v2', {
+        p_party_id: id,
+        p_viewer_id: viewerId,
+      });
 
       if (error) throw error;
+
       if (!data || data.length === 0) {
         setAttendees([]);
-        return;
+        setAttendeeTotals({ going: 0, maybe: 0, cantGo: 0 });
+      } else {
+        setAttendees(data.map((r: any, i: number) => ({
+          id: r.id,
+          name: r.display_name,
+          initial: r.display_name.charAt(0).toUpperCase(),
+          avatarBg: AVATAR_COLORS[i % AVATAR_COLORS.length],
+          status: r.status as 'going' | 'interested' | 'cant_go',
+        })));
+        setAttendeeTotals({
+          going: data[0].total_going ?? 0,
+          maybe: data[0].total_maybe ?? 0,
+          cantGo: data[0].total_cant_go ?? 0,
+        });
+        setIsViewerHost(!!data[0].is_host);
       }
 
-      setAttendees(data.map((r: any, i: number) => ({
-        id: r.id,
-        name: r.display_name,
-        initial: r.display_name.charAt(0).toUpperCase(),
-        avatarBg: AVATAR_COLORS[i % AVATAR_COLORS.length],
-        status: r.status as 'going' | 'interested',
-      })));
+      // Fan-group affinity callout (#6). Silent-fail so the section
+      // still renders even if the RPC hits an unexpected error.
+      if (viewerId) {
+        const { data: affinityData } = await supabase.rpc(
+          'get_watch_party_group_affinity',
+          { p_party_id: id, p_viewer_id: viewerId },
+        );
+        setGroupAffinity((affinityData ?? []).map((r: any) => ({
+          groupId: r.group_id,
+          groupName: r.group_name,
+          goingCount: r.going_count,
+        })));
+      } else {
+        setGroupAffinity([]);
+      }
     } catch {
       // Keep existing attendees
     }
@@ -439,16 +488,19 @@ export default function WatchPartyDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Map Placeholder */}
+        {/* Venue card
+            v9.4.0 UAT Round 3 (#5): prior pill showed a "33.2056, -96.7335"
+            lat/lng line in monospace beneath the address. Debug-y, no
+            user value, actively cluttered a card that should read as
+            professional. Dropped the coords line and boosted the venue
+            typography. A real inline map preview needs react-native-maps
+            + a static-tile URL; deferred to a follow-up. */}
         <View style={styles.mapPlaceholder}>
           <View style={styles.mapIconRow}>
-            <MapPin size={20} color={Colors.dark.accent} />
-            <Text style={styles.mapVenueName}>📍 {party.venue_name}</Text>
+            <MapPin size={22} color={Colors.dark.accent} />
+            <Text style={styles.mapVenueName}>{party.venue_name}</Text>
           </View>
           <Text style={styles.mapAddress}>{party.venue_address}</Text>
-          <Text style={styles.mapCoords}>
-            {party.latitude.toFixed(4)}, {party.longitude.toFixed(4)}
-          </Text>
         </View>
 
         {/* Party Info */}
@@ -526,7 +578,7 @@ export default function WatchPartyDetailScreen() {
                 { color: rsvpStatus === 'interested' ? '#000000' : Colors.dark.warning },
               ]}
             >
-              Interested
+              Maybe
             </Text>
           </TouchableOpacity>
 
@@ -593,14 +645,54 @@ export default function WatchPartyDetailScreen() {
           </View>
         </View>
 
-        {/* Attendees Section */}
+        {/* Attendees Section
+            v9.4.0 UAT Round 3 (#6, #9): shows a totals line at the top,
+            a fan-group affinity callout when there are friends going
+            from any of the viewer's groups, and either a host-view
+            per-status breakdown or a guest-view "going only" list. */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
-            Attendees ({attendees.length})
+            Attendees
           </Text>
+          <Text style={styles.attendeeTotalsRow}>
+            {attendeeTotals.going} going · {attendeeTotals.maybe} maybe · {attendeeTotals.cantGo} can't go
+          </Text>
+
+          {groupAffinity.length > 0 && (
+            <View style={styles.affinityCard}>
+              {groupAffinity.map((g) => (
+                <Text key={g.groupId} style={styles.affinityLine}>
+                  🎉 {g.goingCount} {g.goingCount === 1 ? 'fan' : 'fans'} from {g.groupName} also going
+                </Text>
+              ))}
+            </View>
+          )}
+
           {attendees.length === 0 ? (
             <Text style={styles.descriptionText}>No attendees yet — be the first!</Text>
+          ) : isViewerHost ? (
+            // Host: grouped by status so they can see who's on the maybe /
+            // can't-go lists. Guests never see this branch.
+            (['going', 'interested', 'cant_go'] as const).map((bucket) => {
+              const rows = attendees.filter((a) => a.status === bucket);
+              if (rows.length === 0) return null;
+              const label = bucket === 'going' ? 'Going' : bucket === 'interested' ? 'Maybe' : "Can't Go";
+              return (
+                <View key={bucket} style={{ marginTop: 8 }}>
+                  <Text style={styles.attendeeSubheading}>{label} · {rows.length}</Text>
+                  {rows.map((attendee) => (
+                    <View key={attendee.id} style={styles.attendeeRow}>
+                      <View style={[styles.avatar, { backgroundColor: attendee.avatarBg }]}>
+                        <Text style={styles.avatarText}>{attendee.initial}</Text>
+                      </View>
+                      <Text style={styles.attendeeName}>{attendee.name}</Text>
+                    </View>
+                  ))}
+                </View>
+              );
+            })
           ) : (
+            // Guest: going-only list with same "View all" collapse.
             <>
               {displayedAttendees.map((attendee) => (
                 <View key={attendee.id} style={styles.attendeeRow}>
@@ -608,29 +700,9 @@ export default function WatchPartyDetailScreen() {
                     <Text style={styles.avatarText}>{attendee.initial}</Text>
                   </View>
                   <Text style={styles.attendeeName}>{attendee.name}</Text>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      {
-                        backgroundColor:
-                          attendee.status === 'going'
-                            ? Colors.dark.accent + '22'
-                            : Colors.dark.warning + '22',
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.statusBadgeText,
-                        {
-                          color:
-                            attendee.status === 'going'
-                              ? Colors.dark.accent
-                              : Colors.dark.warning,
-                        },
-                      ]}
-                    >
-                      {attendee.status === 'going' ? 'Going' : 'Interested'}
+                  <View style={[styles.statusBadge, { backgroundColor: Colors.dark.accent + '22' }]}>
+                    <Text style={[styles.statusBadgeText, { color: Colors.dark.accent }]}>
+                      Going
                     </Text>
                   </View>
                 </View>
@@ -798,17 +870,13 @@ const styles = StyleSheet.create({
   scrollView: { flex: 1 },
   scrollContent: { paddingBottom: 20 },
   mapPlaceholder: {
-    height: 180, backgroundColor: Colors.dark.surface,
+    backgroundColor: Colors.dark.surface,
     marginHorizontal: 16, marginTop: 16, borderRadius: 16, padding: 20,
     justifyContent: 'center', borderWidth: 1, borderColor: Colors.dark.border,
   },
-  mapIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  mapVenueName: { fontSize: 16, fontWeight: '700', color: Colors.dark.text },
-  mapAddress: { fontSize: 13, color: Colors.dark.textSecondary, marginBottom: 6 },
-  mapCoords: {
-    fontSize: 11, color: Colors.dark.textMuted,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
+  mapIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  mapVenueName: { fontSize: 18, fontWeight: '800', color: Colors.dark.text, letterSpacing: -0.2 },
+  mapAddress: { fontSize: 13, color: Colors.dark.textSecondary, marginLeft: 30 },
   infoSection: { paddingHorizontal: 16, paddingTop: 20, gap: 10 },
   sportBadge: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
   sportBadgeText: { fontSize: 13, fontWeight: '700' },
@@ -838,6 +906,18 @@ const styles = StyleSheet.create({
   hostBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.dark.accent },
   attendeeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   attendeeName: { fontSize: 14, color: Colors.dark.text, flex: 1 },
+  attendeeTotalsRow: { fontSize: 13, color: Colors.dark.textSecondary, marginBottom: 10 },
+  attendeeSubheading: { fontSize: 12, color: Colors.dark.textMuted, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 },
+  affinityCard: {
+    backgroundColor: Colors.dark.accent + '18',
+    borderColor: Colors.dark.accent + '55',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    gap: 4,
+  },
+  affinityLine: { fontSize: 13, color: Colors.dark.text, fontWeight: '600' },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   statusBadgeText: { fontSize: 11, fontWeight: '700' },
   viewAllLink: { fontSize: 13, color: Colors.dark.accent, fontWeight: '600', marginTop: 4 },

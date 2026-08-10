@@ -16,12 +16,20 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "org.fansphere.app",
+      "associatedDomains": [
+        "applinks:fansphere.org"
+      ],
       "infoPlist": {
         "NSCameraUsageDescription": "Fan Sphere needs camera access to record highlights and update your profile photo.",
         "NSPhotoLibraryUsageDescription": "Fan Sphere needs photo access to share highlights and set your profile photo.",
         "NSLocationWhenInUseUsageDescription": "Fan Sphere uses your location to find watch parties and fan groups near you.",
         "NSContactsUsageDescription": "Fan Sphere uses your contacts so you can quickly invite friends to private watch parties.",
-        "LSApplicationQueriesSchemes": ["instagram", "instagram-stories", "tiktok", "snssdk1233"]
+        "LSApplicationQueriesSchemes": [
+          "instagram",
+          "instagram-stories",
+          "tiktok",
+          "snssdk1233"
+        ]
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -35,6 +43,23 @@
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
       "package": "org.fansphere.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "fansphere.org",
+              "pathPrefix": "/party/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -63,7 +88,8 @@
       "expo-localization",
       "expo-web-browser",
       "expo-font",
-      "./plugins/with-share-target-queries.js"
+      "./plugins/with-share-target-queries.js",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true

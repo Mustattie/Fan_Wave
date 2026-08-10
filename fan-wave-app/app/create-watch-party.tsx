@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Globe, Lock, UserPlus, X, Users, Search, MapPin, CheckCircle2 } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
 import * as Location from 'expo-location';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Colors } from '@/constants/Colors';
 import { SPORTS } from '@/constants/Sports';
 import {
@@ -81,10 +82,13 @@ function lookupMetroFallback(
   return US_METRO_FALLBACKS[key] ?? null;
 }
 
-const SPORT_FILTERS = [
-  { id: 'all', name: 'All' },
-  ...SPORTS.filter((s) => ['nfl', 'nba', 'mls', 'mlb', 'nhl'].includes(s.id)),
-];
+// v9.4.0 UAT Round 3 (#4): prior filter was a hardcoded subset of 5
+// sports (nfl/nba/mls/mlb/nhl) that stayed static while Discover's sport
+// pills already included wnba/cfb/cbb/soccer/etc. per constants/Sports.ts.
+// Hosts trying to link a WNBA game had no pill to select. Fold every
+// sport in SPORTS into the filter row so the wizard stays in sync with
+// the source of truth automatically.
+const SPORT_FILTERS = [{ id: 'all', name: 'All' }, ...SPORTS];
 
 type Atmosphere = 'chill' | 'moderate' | 'loud' | 'rowdy';
 
@@ -185,6 +189,20 @@ export default function CreateWatchPartyScreen() {
   // user who returned to a stale screen never picks a past preset.
   const TIME_PRESETS = React.useMemo(() => computeTimePresets(), []);
   const [selectedTime, setSelectedTime] = useState(TIME_PRESETS[0].value);
+  // v9.4.0 UAT Round 3 (#4): custom date+time picker for hosts scheduling
+  // 1-2+ weeks out. Presets stop at "This Weekend"; without a custom
+  // path the wizard couldn't create an August 22nd party. `customTime`
+  // holds the user's picked ISO; when set, it wins over any preset.
+  const [customTime, setCustomTime] = useState<string | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [customPickerDraft, setCustomPickerDraft] = useState<Date>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    d.setHours(19, 0, 0, 0);
+    return d;
+  });
+  const effectiveStartTime = customTime ?? selectedTime;
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [invitedFriends, setInvitedFriends] = useState<{ name: string; phone: string }[]>([]);
   const [friendName, setFriendName] = useState('');
@@ -335,7 +353,13 @@ export default function CreateWatchPartyScreen() {
     };
   }, []);
 
-  // Load upcoming games from Supabase
+  // Load upcoming games from Supabase.
+  //
+  // v9.4.0 UAT Round 3 (#4): prior code capped at 20 rows which is a
+  // day or two of MLB during the regular season. Hosts scheduling a
+  // party 1-2 weeks out saw an empty list because those games hadn't
+  // scrolled into the first 20. Bumped to 200 so a ~2-week window is
+  // returned and rendered in day-grouped sections below.
   useEffect(() => {
     (async () => {
       setGamesLoading(true);
@@ -345,7 +369,7 @@ export default function CreateWatchPartyScreen() {
           .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
           .gt('scheduled_at', new Date().toISOString())
           .order('scheduled_at', { ascending: true })
-          .limit(20);
+          .limit(200);
 
         if (error) throw error;
         setAllGames((data || []).map(mapGameToDisplay));
@@ -620,6 +644,46 @@ export default function CreateWatchPartyScreen() {
             (sportFilter === 'mls' && g.sport === 'soccer')
         );
 
+  // v9.4.0 UAT Round 3 (#4): group filtered games by local-day into an
+  // ESPN/Google-style layout (Today / Tomorrow / Fri Aug 14 / ...). Each
+  // section renders 5 games and reveals the rest behind a "Show more"
+  // toggle. Sections without any games are omitted entirely.
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
+  const gamesByDay = React.useMemo(() => {
+    const buckets = new Map<string, { label: string; games: GameDisplay[] }>();
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+    for (const g of filteredGames) {
+      if (!g.scheduledAt) continue;
+      const d = new Date(g.scheduledAt);
+      const dayKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      const diffDays = Math.round((dayStart - startOfToday) / (24 * 60 * 60 * 1000));
+      let label: string;
+      if (diffDays === 0) label = 'Today';
+      else if (diffDays === 1) label = 'Tomorrow';
+      else label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+      const bucket = buckets.get(dayKey);
+      if (bucket) {
+        bucket.games.push(g);
+      } else {
+        buckets.set(dayKey, { label, games: [g] });
+      }
+    }
+    return [...buckets.entries()].map(([key, val]) => ({ key, ...val }));
+  }, [filteredGames]);
+
+  const toggleDay = (key: string) => {
+    setExpandedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   // Auto-generate title when entering step 3
   const goToStep3 = () => {
     let autoTitle = '';
@@ -660,7 +724,7 @@ export default function CreateWatchPartyScreen() {
       game_id: selectedGame?.id ?? null,
       atmosphere,
       capacity,
-      starts_at: selectedTime,
+      starts_at: effectiveStartTime,
       visibility: visibility === 'private' ? 'private' : 'public',
     };
 
@@ -1006,30 +1070,60 @@ export default function CreateWatchPartyScreen() {
         </Text>
       </TouchableOpacity>
 
-      {/* Game list */}
+      {/* Game list -- v9.4.0 UAT Round 3 (#4): grouped by local day
+          with a 5-per-section preview + "Show more" toggle. Mirrors
+          how Google/ESPN render an upcoming schedule so a host
+          planning 1-2 weeks out can scroll to Fri/Sat and pick the
+          game without an overwhelming flat list. */}
       {gamesLoading && (
         <ActivityIndicator color={C.accent} style={{ marginVertical: 20 }} />
       )}
-      {filteredGames.map((g) => {
-        const isSelected = selectedGame?.id === g.id;
+      {gamesByDay.map((day) => {
+        const expanded = expandedDays.has(day.key);
+        const visible = expanded ? day.games : day.games.slice(0, 5);
+        const hidden = day.games.length - visible.length;
         return (
-          <TouchableOpacity
-            key={g.id}
-            style={[styles.gameCard, isSelected && styles.gameCardSelected]}
-            onPress={() => {
-              setSelectedGame(g);
-              setNoGame(false);
-            }}
-          >
-            <Text style={styles.gameTeams}>
-              {g.homeTeam.icon} {g.homeTeam.name}{'  '}vs{'  '}
-              {g.awayTeam.icon} {g.awayTeam.name}
-            </Text>
-            <View style={styles.gameMetaRow}>
-              <Text style={styles.gameTime}>{g.time}</Text>
-              <Text style={styles.gameLeague}>{g.league}</Text>
-            </View>
-          </TouchableOpacity>
+          <View key={day.key} style={{ marginTop: 8 }}>
+            <Text style={styles.dayHeader}>{day.label}</Text>
+            {visible.map((g) => {
+              const isSelected = selectedGame?.id === g.id;
+              return (
+                <TouchableOpacity
+                  key={g.id}
+                  style={[styles.gameCard, isSelected && styles.gameCardSelected]}
+                  onPress={() => {
+                    setSelectedGame(g);
+                    setNoGame(false);
+                  }}
+                >
+                  <Text style={styles.gameTeams}>
+                    {g.homeTeam.icon} {g.homeTeam.name}{'  '}vs{'  '}
+                    {g.awayTeam.icon} {g.awayTeam.name}
+                  </Text>
+                  <View style={styles.gameMetaRow}>
+                    <Text style={styles.gameTime}>{g.time}</Text>
+                    <Text style={styles.gameLeague}>{g.league}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+            {hidden > 0 && (
+              <TouchableOpacity
+                style={styles.showMoreBtn}
+                onPress={() => toggleDay(day.key)}
+              >
+                <Text style={styles.showMoreText}>Show {hidden} more</Text>
+              </TouchableOpacity>
+            )}
+            {expanded && day.games.length > 5 && (
+              <TouchableOpacity
+                style={styles.showMoreBtn}
+                onPress={() => toggleDay(day.key)}
+              >
+                <Text style={styles.showMoreText}>Show less</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         );
       })}
 
@@ -1121,29 +1215,83 @@ export default function CreateWatchPartyScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Start time */}
+      {/* Start time
+          v9.4.0 UAT Round 3 (#4): custom-date chip added so hosts
+          scheduling 1-2+ weeks out (e.g. "Sunday Aug 22, 4pm") have a
+          path. Selecting a preset clears customTime; picking a custom
+          time deselects the preset visually via customTime !== null. */}
       <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Start time</Text>
       <View style={styles.timeRow}>
-        {TIME_PRESETS.map((t) => (
-          <TouchableOpacity
-            key={t.value}
-            style={[
-              styles.timeChip,
-              selectedTime === t.value && styles.timeChipActive,
-            ]}
-            onPress={() => setSelectedTime(t.value)}
-          >
-            <Text
-              style={[
-                styles.timeChipText,
-                selectedTime === t.value && styles.timeChipTextActive,
-              ]}
+        {TIME_PRESETS.map((t) => {
+          const isActive = !customTime && selectedTime === t.value;
+          return (
+            <TouchableOpacity
+              key={t.value}
+              style={[styles.timeChip, isActive && styles.timeChipActive]}
+              onPress={() => {
+                setSelectedTime(t.value);
+                setCustomTime(null);
+              }}
             >
-              {t.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[styles.timeChipText, isActive && styles.timeChipTextActive]}
+              >
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+        <TouchableOpacity
+          style={[styles.timeChip, !!customTime && styles.timeChipActive]}
+          onPress={() => setShowDatePicker(true)}
+        >
+          <Text
+            style={[
+              styles.timeChipText,
+              !!customTime && styles.timeChipTextActive,
+            ]}
+          >
+            {customTime
+              ? new Date(customTime).toLocaleString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })
+              : 'Custom…'}
+          </Text>
+        </TouchableOpacity>
       </View>
+      {showDatePicker && (
+        <DateTimePicker
+          value={customPickerDraft}
+          mode="date"
+          minimumDate={new Date()}
+          maximumDate={new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)}
+          onChange={(e: DateTimePickerEvent, d?: Date) => {
+            setShowDatePicker(false);
+            if (e.type === 'dismissed' || !d) return;
+            const merged = new Date(customPickerDraft);
+            merged.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
+            setCustomPickerDraft(merged);
+            setShowTimePicker(true);
+          }}
+        />
+      )}
+      {showTimePicker && (
+        <DateTimePicker
+          value={customPickerDraft}
+          mode="time"
+          onChange={(e: DateTimePickerEvent, d?: Date) => {
+            setShowTimePicker(false);
+            if (e.type === 'dismissed' || !d) return;
+            const merged = new Date(customPickerDraft);
+            merged.setHours(d.getHours(), d.getMinutes(), 0, 0);
+            setCustomPickerDraft(merged);
+            setCustomTime(merged.toISOString());
+          }}
+        />
+      )}
 
       {/* Visibility */}
       <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Visibility</Text>
@@ -1280,9 +1428,18 @@ export default function CreateWatchPartyScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
-      {/* Header */}
+      {/* Header
+          v9.4.0 UAT Round 3 (#7): top back-arrow used to `router.back()`
+          from every step, exiting the whole wizard and dropping the
+          user's in-progress form. The bottom "Back" button stepped
+          within the wizard, so users hit the top arrow expecting the
+          same behavior and lost their work. Now the header arrow
+          mirrors the bottom Back on steps 2/3 and only exits on step 1. */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => (step > 1 ? setStep((step - 1) as 1 | 2 | 3) : router.back())}
+          style={styles.backBtn}
+        >
           <Text style={styles.backArrow}>{'←'}</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Create Watch Party</Text>
@@ -1705,6 +1862,25 @@ const styles = StyleSheet.create({
   },
   gameCardSelected: {
     borderColor: C.accent,
+  },
+  dayHeader: {
+    color: C.text,
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 6,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  showMoreBtn: {
+    paddingVertical: 8,
+    marginBottom: 6,
+    alignItems: 'center',
+  },
+  showMoreText: {
+    color: C.accent,
+    fontSize: 13,
+    fontWeight: '600',
   },
   noGameText: {
     color: C.textSecondary,

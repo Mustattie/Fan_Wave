@@ -11,9 +11,14 @@ import type { WatchPartyDisplay } from '@/lib/mappers';
 
 interface WatchPartyCardProps {
   party: WatchPartyDisplay;
+  // v9.4.0 UAT Round 3 (#6): optional affinity callout wired by the
+  // parent (Home / Discover) after batching a group_affinity RPC across
+  // the visible cards. Undefined = don't render the badge; empty array
+  // = render nothing but treat as loaded.
+  affinity?: { groupId: string; groupName: string; goingCount: number }[];
 }
 
-export function WatchPartyCard({ party }: WatchPartyCardProps) {
+export function WatchPartyCard({ party, affinity }: WatchPartyCardProps) {
   const router = useRouter();
   const { data: myRsvps = {} } = useMyRsvps();
   // v8.7+ P0: hydrate from the shared cache so the same party renders the
@@ -133,6 +138,13 @@ export function WatchPartyCard({ party }: WatchPartyCardProps) {
           👥 {displayCount}/{party.capacity} going
         </Text>
       </View>
+
+      {affinity && affinity.length > 0 && (
+        <Text style={styles.affinityLine}>
+          🎉 {affinity[0].goingCount} from {affinity[0].groupName} going
+          {affinity.length > 1 ? ` +${affinity.length - 1} more` : ''}
+        </Text>
+      )}
 
       {party.attendees.length > 0 && (
         <View style={styles.attendeeRow}>
@@ -263,5 +275,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.dark.textSecondary,
     fontWeight: '600',
+  },
+  affinityLine: {
+    fontSize: 12,
+    color: Colors.dark.accent,
+    fontWeight: '600',
+    marginTop: 6,
   },
 });

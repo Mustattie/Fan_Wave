@@ -28,12 +28,43 @@ import { supabase } from '@/lib/supabase';
 export default function HomeScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  // v9.4.0 UAT Round 3 (#1): personalize the header. Reads from
+  // users.display_name (set at sign-up) and falls back to the email
+  // local-part / "there" so the greeting never renders "Hi undefined".
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
   // Shared React Query hooks — data is deduplicated across screens
   const { data: city = '' } = useUserCity();
   const { data: games = [], isLoading: gamesLoading } = useGames(30);
   const { data: watchParties = [], isLoading: partiesLoading } = useWatchParties(city, 3);
   const { data: groups = [], isLoading: groupsLoading } = useMyGroups(3);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || cancelled) return;
+        const { data } = await supabase
+          .from('users')
+          .select('display_name')
+          .eq('auth_id', user.id)
+          .maybeSingle();
+        if (cancelled) return;
+        const name =
+          data?.display_name ||
+          (user.user_metadata as any)?.display_name ||
+          user.email?.split('@')[0] ||
+          null;
+        setDisplayName(name);
+      } catch {
+        // Silent fallback: header just shows "Hi there".
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // User interests for the "Today's Games" carousel:
   //   • selected_sports — AsyncStorage list of lowercase sport ids set during
@@ -46,6 +77,44 @@ export default function HomeScreen() {
   // empty-case still shows all games (and we don't hide everything before
   // onboarding finishes propagating to AsyncStorage).
   const [interestSports, setInterestSports] = useState<Set<string> | null>(null);
+  // v9.4.0 UAT Round 3 (#6): fetch fan-group affinity for each visible
+  // watch party after the list resolves. Cheap: 3 parties on Home, one
+  // small RPC per. Keyed by party.id so re-renders don't refetch.
+  const [partyAffinity, setPartyAffinity] = useState<
+    Record<string, { groupId: string; groupName: string; goingCount: number }[]>
+  >({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (watchParties.length === 0) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      const partyIds = watchParties.map((p) => p.id);
+      const results = await Promise.all(
+        partyIds.map((pid) =>
+          supabase.rpc('get_watch_party_group_affinity', {
+            p_party_id: pid,
+            p_viewer_id: user.id,
+          }),
+        ),
+      );
+      if (cancelled) return;
+      const next: typeof partyAffinity = {};
+      partyIds.forEach((pid, i) => {
+        const rows = results[i].data ?? [];
+        next[pid] = rows.map((r: any) => ({
+          groupId: r.group_id,
+          groupName: r.group_name,
+          goingCount: r.going_count,
+        }));
+      });
+      setPartyAffinity(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [watchParties]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,17 +154,41 @@ export default function HomeScreen() {
     };
   }, []);
 
+  // v9.4.0 UAT Round 3 (#2): "Today's Games" carousel bled prior-day
+  // finals into today because useGames returns anything within a 24h
+  // finished-cutoff (server-side, TZ-agnostic). Add a local-day
+  // window filter + a Today/Yesterday toggle so users can see finals
+  // from either day intentionally.
+  const [dayFilter, setDayFilter] = useState<'today' | 'yesterday'>('today');
+
   const filteredGames = useMemo(() => {
-    if (!interestSports || interestSports.size === 0) return games;
-    const filtered = games.filter((g) => {
+    // Local-day boundaries relative to the client's TZ.
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfTomorrow = startOfToday + 24 * 60 * 60 * 1000;
+    const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
+
+    const [lo, hi] = dayFilter === 'today'
+      ? [startOfToday, startOfTomorrow]
+      : [startOfYesterday, startOfToday];
+
+    const withinDay = games.filter((g) => {
+      if (!g.scheduledAt) return false;
+      const t = new Date(g.scheduledAt).getTime();
+      return t >= lo && t < hi;
+    });
+
+    if (!interestSports || interestSports.size === 0) return withinDay;
+    const filtered = withinDay.filter((g) => {
       const sport = (g.sport || '').toLowerCase();
       if (!sport) return false;
       return interestSports.has(sport);
     });
-    // Don't hide everything if the filter would empty the carousel —
-    // probably a user who picked an off-season sport. Fall back to all.
-    return filtered.length > 0 ? filtered : games;
-  }, [games, interestSports]);
+    // Don't hide everything if the interest filter would empty the
+    // carousel — probably a user who picked an off-season sport. Fall
+    // back to all of the day-scoped set.
+    return filtered.length > 0 ? filtered : withinDay;
+  }, [games, interestSports, dayFilter]);
 
   const loading = gamesLoading || partiesLoading || groupsLoading;
 
@@ -170,6 +263,9 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Fan Sphere 🌐</Text>
+          <Text style={styles.greeting}>
+            Hi {displayName || 'there'}
+          </Text>
           <Text style={styles.subtitle}>
             📍 {city} ·{' '}
             <Text
@@ -180,7 +276,10 @@ export default function HomeScreen() {
             </Text>
           </Text>
         </View>
-        <TouchableOpacity style={styles.bellButton}>
+        <TouchableOpacity
+          style={styles.bellButton}
+          onPress={() => router.push('/notifications' as any)}
+        >
           <Bell size={24} color={Colors.dark.text} />
         </TouchableOpacity>
       </View>
@@ -197,12 +296,30 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Today's Games */}
+        {/* Today's / Yesterday's Games */}
         <SectionHeader
-          title="Today's Games"
+          title={dayFilter === 'today' ? "Today's Games" : "Yesterday's Games"}
           actionText="See All →"
           onAction={() => router.push('/(tabs)/discover')}
         />
+        <View style={styles.dayToggleRow}>
+          <TouchableOpacity
+            style={[styles.dayChip, dayFilter === 'today' && styles.dayChipActive]}
+            onPress={() => setDayFilter('today')}
+          >
+            <Text style={[styles.dayChipText, dayFilter === 'today' && styles.dayChipTextActive]}>
+              Today
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.dayChip, dayFilter === 'yesterday' && styles.dayChipActive]}
+            onPress={() => setDayFilter('yesterday')}
+          >
+            <Text style={[styles.dayChipText, dayFilter === 'yesterday' && styles.dayChipTextActive]}>
+              Yesterday
+            </Text>
+          </TouchableOpacity>
+        </View>
         {filteredGames.length > 0 ? (
           <FlatList
             data={filteredGames}
@@ -232,7 +349,11 @@ export default function HomeScreen() {
         />
         {watchParties.length > 0 ? (
           watchParties.map((party) => (
-            <WatchPartyCard key={party.id} party={party} />
+            <WatchPartyCard
+              key={party.id}
+              party={party}
+              affinity={partyAffinity[party.id]}
+            />
           ))
         ) : (
           <View style={styles.promoCard}>
@@ -302,6 +423,37 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.dark.text,
     letterSpacing: -0.5,
+  },
+  greeting: {
+    fontSize: 15,
+    color: Colors.dark.text,
+    fontWeight: '500',
+    marginTop: 6,
+  },
+  dayToggleRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  dayChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: Colors.dark.surface,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  dayChipActive: {
+    backgroundColor: Colors.dark.accent + '22',
+    borderColor: Colors.dark.accent,
+  },
+  dayChipText: {
+    fontSize: 13,
+    color: Colors.dark.textSecondary,
+    fontWeight: '500',
+  },
+  dayChipTextActive: {
+    color: Colors.dark.accent,
   },
   subtitle: {
     fontSize: 14,
