@@ -68,17 +68,54 @@ export function formatFullDate(dateStr: string): string {
   });
 }
 
+// v9.4.0 UAT Round 3 (#17): prior format was a flat "Xd ago" chain
+// which read as noise on Clips ("47d ago" ... "20d ago" ... "50d ago").
+// New scale, matching how Twitter/IG/Discord surface post times:
+//   * <1m           -> "Just now"
+//   * <60m          -> "5m ago"
+//   * <6h           -> "3h ago"
+//   * same local day-> "2:34 PM"
+//   * <7 days       -> "Fri · 2:34 PM"
+//   * <365 days     -> "Aug 8 · 2:34 PM"
+//   * older         -> "Aug 8, 2024"
+// Shared formatter -> Clips cards, chat lastMessageTime, moments, and
+// anywhere else the code calls formatRelativeTime all benefit at once.
 export function formatRelativeTime(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diffMs = now - then;
+  const now = new Date();
+  const then = new Date(dateStr);
+  const diffMs = now.getTime() - then.getTime();
   const diffMin = Math.floor(diffMs / 60000);
   if (diffMin < 1) return 'Just now';
   if (diffMin < 60) return `${diffMin}m ago`;
   const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  return `${diffDay}d ago`;
+  if (diffHr < 6) return `${diffHr}h ago`;
+
+  const timeStr = then.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfThen = new Date(then.getFullYear(), then.getMonth(), then.getDate()).getTime();
+  const dayDiff = Math.round((startOfToday - startOfThen) / (24 * 60 * 60 * 1000));
+
+  if (dayDiff === 0) return timeStr;
+
+  if (dayDiff < 7) {
+    const weekday = then.toLocaleDateString('en-US', { weekday: 'short' });
+    return `${weekday} · ${timeStr}`;
+  }
+
+  if (dayDiff < 365) {
+    const md = then.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `${md} · ${timeStr}`;
+  }
+
+  return then.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 // ─── Game Mapper ─────────────────────────────────────────────

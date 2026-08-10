@@ -439,16 +439,19 @@ export default function WatchPartyDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Map Placeholder */}
+        {/* Venue card
+            v9.4.0 UAT Round 3 (#5): prior pill showed a "33.2056, -96.7335"
+            lat/lng line in monospace beneath the address. Debug-y, no
+            user value, actively cluttered a card that should read as
+            professional. Dropped the coords line and boosted the venue
+            typography. A real inline map preview needs react-native-maps
+            + a static-tile URL; deferred to a follow-up. */}
         <View style={styles.mapPlaceholder}>
           <View style={styles.mapIconRow}>
-            <MapPin size={20} color={Colors.dark.accent} />
-            <Text style={styles.mapVenueName}>📍 {party.venue_name}</Text>
+            <MapPin size={22} color={Colors.dark.accent} />
+            <Text style={styles.mapVenueName}>{party.venue_name}</Text>
           </View>
           <Text style={styles.mapAddress}>{party.venue_address}</Text>
-          <Text style={styles.mapCoords}>
-            {party.latitude.toFixed(4)}, {party.longitude.toFixed(4)}
-          </Text>
         </View>
 
         {/* Party Info */}
@@ -526,7 +529,7 @@ export default function WatchPartyDetailScreen() {
                 { color: rsvpStatus === 'interested' ? '#000000' : Colors.dark.warning },
               ]}
             >
-              Interested
+              Maybe
             </Text>
           </TouchableOpacity>
 
@@ -630,7 +633,7 @@ export default function WatchPartyDetailScreen() {
                         },
                       ]}
                     >
-                      {attendee.status === 'going' ? 'Going' : 'Interested'}
+                      {attendee.status === 'going' ? 'Going' : 'Maybe'}
                     </Text>
                   </View>
                 </View>
@@ -798,17 +801,13 @@ const styles = StyleSheet.create({
   scrollView: { flex: 1 },
   scrollContent: { paddingBottom: 20 },
   mapPlaceholder: {
-    height: 180, backgroundColor: Colors.dark.surface,
+    backgroundColor: Colors.dark.surface,
     marginHorizontal: 16, marginTop: 16, borderRadius: 16, padding: 20,
     justifyContent: 'center', borderWidth: 1, borderColor: Colors.dark.border,
   },
-  mapIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  mapVenueName: { fontSize: 16, fontWeight: '700', color: Colors.dark.text },
-  mapAddress: { fontSize: 13, color: Colors.dark.textSecondary, marginBottom: 6 },
-  mapCoords: {
-    fontSize: 11, color: Colors.dark.textMuted,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
+  mapIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  mapVenueName: { fontSize: 18, fontWeight: '800', color: Colors.dark.text, letterSpacing: -0.2 },
+  mapAddress: { fontSize: 13, color: Colors.dark.textSecondary, marginLeft: 30 },
   infoSection: { paddingHorizontal: 16, paddingTop: 20, gap: 10 },
   sportBadge: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
   sportBadgeText: { fontSize: 13, fontWeight: '700' },

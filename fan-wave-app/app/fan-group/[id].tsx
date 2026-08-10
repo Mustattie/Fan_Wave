@@ -764,11 +764,13 @@ export default function FanGroupDetailScreen() {
               <Text style={styles.joinPinnedText}>Join</Text>
             )}
           </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={styles.pinnedRsvp} onPress={openInviteSheet}>
-            <Text style={styles.pinnedRsvpText}>Share</Text>
-          </TouchableOpacity>
-        )}
+        ) : null}
+        {/* v9.4.0 UAT Round 3 (#10): the pinned banner used to render a
+            duplicate "Share" pill next to the group tile once the user
+            had joined, on top of the header-icon Share (line ~731).
+            Same handler, redundant affordance, cluttered a card that
+            should surface identity (name + member count). Dropped the
+            pill; the header icon remains the canonical share entry. */}
       </View>
 
       {/* v9.1: Sub-Tabs Chat/Highlights removed per UAT (twice). The feed
