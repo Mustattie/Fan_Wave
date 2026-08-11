@@ -39,32 +39,91 @@ export function subscribeToTable(
 /**
  * Subscribe to presence on a channel.
  * Returns an unsubscribe function.
+ *
+ * v9.4.1 hotfix (2026-08-10, build 19 TestFlight):
+ *   The prior implementation crashed the whole screen with
+ *   "Something went wrong / cannot add presence callbacks after
+ *   joining a channel" when a user tapped Join on a fan group.
+ *
+ *   Root cause: Supabase Realtime throws synchronously if
+ *   `.on('presence', ...)` is called on a channel already in
+ *   state='joined'. Two paths hit that state:
+ *     1. `supabase.removeChannel()` is async on the underlying
+ *        socket. `supabase.channel(name)` on a rapid remount
+ *        returns the previous channel still tearing down.
+ *     2. The #11 fix made the presence useEffect depend on
+ *        [id, currentUserId, isMember, isOwner] so an isMember
+ *        false->true flip re-runs the effect. The synchronous
+ *        throw during .on('presence') unwinds React and hits
+ *        the RootErrorBoundary.
+ *
+ *   Two-part defense:
+ *   (a) Force-remove any lingering channel with the same topic
+ *       before creating the new one -- kills the common race.
+ *   (b) Wrap the .on/.subscribe chain in try/catch and return a
+ *       no-op unsub if it still throws. Presence just won't
+ *       track for that instance, but the app doesn't crash.
  */
 export function subscribeToPresence(
   channelName: string,
   onSync: (presenceState: Record<string, any[]>) => void,
   trackPayload?: Record<string, any>,
 ): () => void {
+  // (a) Force-cleanup any leftover channel with this topic. Supabase
+  // topics are prefixed with 'realtime:'. Cleanup is fire-and-forget
+  // -- the underlying socket unsubscribe completes before the new
+  // channel finishes joining, and even if there's overlap the new
+  // channel below has its callbacks registered PRE-subscribe, which
+  // is the state Supabase requires for presence.
+  try {
+    const prior = supabase
+      .getChannels()
+      .find((c) => c.topic === `realtime:${channelName}`);
+    if (prior) {
+      supabase.removeChannel(prior);
+    }
+  } catch (e) {
+    reportError(e, { source: 'realtime:presenceCleanupPrior', channelName });
+  }
+
   const channel = supabase.channel(channelName);
 
-  channel
-    .on('presence', { event: 'sync' }, () => {
-      try {
-        const state = channel.presenceState();
-        onSync(state);
-      } catch (e) {
-        reportError(e, { source: 'realtime:presenceSync', channelName });
-      }
-    })
-    .subscribe(async (status: string) => {
-      if (status === 'SUBSCRIBED' && trackPayload) {
+  // (b) Belt-and-suspenders: if the .on/.subscribe chain throws
+  // synchronously (race not cleaned up in time), catch it and drop
+  // the channel silently. Better than an ErrorBoundary crash.
+  try {
+    channel
+      .on('presence', { event: 'sync' }, () => {
         try {
-          await channel.track(trackPayload);
+          const state = channel.presenceState();
+          onSync(state);
         } catch (e) {
-          reportError(e, { source: 'realtime:presenceTrack', channelName });
+          reportError(e, { source: 'realtime:presenceSync', channelName });
         }
-      }
-    });
+      })
+      .subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED' && trackPayload) {
+          try {
+            await channel.track(trackPayload);
+          } catch (e) {
+            reportError(e, {
+              source: 'realtime:presenceTrack',
+              channelName,
+            });
+          }
+        }
+      });
+  } catch (e) {
+    reportError(e, { source: 'realtime:presenceSubscribe', channelName });
+    try {
+      supabase.removeChannel(channel);
+    } catch {
+      /* swallow -- cleanup best-effort */
+    }
+    return () => {
+      /* no-op: subscription failed to establish */
+    };
+  }
 
   return () => {
     supabase.removeChannel(channel);
