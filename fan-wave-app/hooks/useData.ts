@@ -66,6 +66,15 @@ export function useGames(limit = 30) {
           () => supabase
             .from('games')
             .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
+            // v9.4.2 UAT: drop orphaned games where the team FK is null
+            // (historical seed rows + a handful of ESPN sync writes where
+            // the payload landed before the team row upserted). Without
+            // these filters, cards render as generic ⚾ + "Home"/"Away"
+            // placeholders on Home / Game Day. Real ESPN-synced games all
+            // have both FKs populated (sync skips otherwise, see
+            // supabase/functions/sync-game-schedules/index.ts:475-480).
+            .not('home_team_id', 'is', null)
+            .not('away_team_id', 'is', null)
             .or(
               `status.eq.in,` +
               `and(status.eq.scheduled,scheduled_at.gte.${upcomingCutoff}),` +

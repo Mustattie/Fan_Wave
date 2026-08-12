@@ -497,6 +497,17 @@ export default function CreateWatchPartyScreen() {
       } else {
         lastSearchFailedRef.current = true;
         console.error('[create-watch-party] venue search failed:', result.errorMessage);
+        // v9.4.2 UAT: pipe the actual edge-function errorMessage into
+        // error reporting so a production "Search temporarily unavailable"
+        // no longer disappears into device console-log. Common cause is
+        // the venue-search function missing GOOGLE_PLACES_API_KEY on prod.
+        reportError(new Error(result.errorMessage ?? 'venue-search returned non-ok'), {
+          source: 'create-watch-party:handleVenueSearch',
+          status: result.status,
+          coordSource,
+          city: userCity ?? null,
+          query: venueQuery.trim(),
+        });
         setSearchError(
           'Search temporarily unavailable. Check your connection and tap Search to retry, or "Enter venue manually".' +
             debugSuffix(result.errorMessage)
@@ -505,6 +516,12 @@ export default function CreateWatchPartyScreen() {
     } catch (e: any) {
       lastSearchFailedRef.current = true;
       console.error('[create-watch-party] unexpected venue search error:', e);
+      reportError(e, {
+        source: 'create-watch-party:handleVenueSearch',
+        coordSource,
+        city: userCity ?? null,
+        query: venueQuery.trim(),
+      });
       setVenueResults([]);
       setSearchError(
         'Something went wrong searching for venues. Tap Search to retry, or "Enter venue manually".' +

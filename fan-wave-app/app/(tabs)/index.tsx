@@ -296,11 +296,13 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Today's / Yesterday's Games */}
+        {/* Today's / Yesterday's Games — See All routes to the Game Day
+            tab (v9.4.2: previously routed to Discover which drops users on
+            fan groups instead of the full scoreboard they expect). */}
         <SectionHeader
           title={dayFilter === 'today' ? "Today's Games" : "Yesterday's Games"}
           actionText="See All →"
-          onAction={() => router.push('/(tabs)/discover')}
+          onAction={() => router.push('/(tabs)/game-day')}
         />
         <View style={styles.dayToggleRow}>
           <TouchableOpacity
@@ -475,7 +477,10 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   spacer: {
-    height: 20,
+    // v9.4.2 UAT: was 20 — insufficient once the FAB (bottom:24 + size:56)
+    // sits above the tab bar. Bumped so the final "Your Groups" section
+    // isn't clipped by the FAB on Home on smaller Android devices.
+    height: 96,
   },
   loadingContainer: {
     flex: 1,

@@ -347,6 +347,7 @@ export default function WatchPartyDetailScreen() {
       }
     }
 
+    const previousStatus = rsvpStatus;
     setRsvpStatus(newStatus);
 
     try {
@@ -360,7 +361,7 @@ export default function WatchPartyDetailScreen() {
           /row-level security/i.test(error.message ?? '')
         ) {
           // Roll back optimistic update before surfacing paywall.
-          setRsvpStatus(rsvpStatus);
+          setRsvpStatus(previousStatus);
           if (isWcParty) {
             setShowWCPaywall(true);
           } else {
@@ -373,8 +374,21 @@ export default function WatchPartyDetailScreen() {
         }
         throw error;
       }
+      // Refetch after server confirms so the totals + list reflect the
+      // authoritative watch_party_rsvps state (was drifting on race
+      // between optimistic UI and slow server acks — v9.4.2 UAT).
+      loadAttendees();
     } catch (e) {
+      // v9.4.2: was silently swallowing everything, which meant the RSVP
+      // RPC being missing on prod (PGRST202) looked like a successful
+      // "Going" tap while nothing was written server-side. Roll back the
+      // optimistic pill AND surface a toast so the user knows to retry.
+      setRsvpStatus(previousStatus);
       reportError(e, { source: 'watch-party:handleRsvp', partyId: id, status: newStatus });
+      Alert.alert(
+        "Couldn't save RSVP",
+        "We couldn't reach the server. Check your connection and try again.",
+      );
     }
   };
 

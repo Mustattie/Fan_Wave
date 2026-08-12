@@ -6,26 +6,22 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  FlatList,
   RefreshControl,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, MapPin, Users, Film, MessageCircle, Trophy } from 'lucide-react-native';
+import { ArrowLeft, MapPin, Users, MessageCircle, Trophy } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { TeamBadge } from '@/components/TeamBadge';
-import * as ImagePicker from 'expo-image-picker';
 import {
   mapGameToDisplay,
   mapWatchPartyToDisplay,
-  mapClipToDisplay,
   getSportEmoji,
   getSportColor,
   type GameDisplay,
   type WatchPartyDisplay,
-  type ClipDisplay,
 } from '@/lib/mappers';
 import { subscribeToGames } from '@/lib/realtime';
 import { MvpVoteSheet } from '@/components/MvpVoteSheet';
@@ -33,7 +29,6 @@ import { MvpVoteSheet } from '@/components/MvpVoteSheet';
 // Game detail screen. Shows:
 //   * Score / status header with live period label
 //   * Watch Parties for this game (watch_parties.game_id FK)
-//   * Clips for this game (media_clips.game_id FK)
 //   * Fan Groups for either team (chat_rooms.team_id in [home, away])
 //   * Live chat CTA (mig 067 chat_rooms.game_id + get_or_create_game_chat RPC)
 //   * MVP vote CTA (mig 068 mvp_votes + cast_mvp_vote / get_mvp_tally RPCs)
@@ -56,7 +51,6 @@ export default function GameDetailScreen() {
     away: null,
   });
   const [parties, setParties] = useState<WatchPartyDisplay[]>([]);
-  const [clips, setClips] = useState<ClipDisplay[]>([]);
   const [groups, setGroups] = useState<FanGroupRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -87,20 +81,16 @@ export default function GameDetailScreen() {
     const awayTeamId = gameRes.data.away_team_id;
     setTeamIds({ home: homeTeamId ?? null, away: awayTeamId ?? null });
 
-    // Related data — three parallel queries. Failures on any one leave the
-    // section empty rather than breaking the whole screen.
-    const [partyRes, clipRes, groupRes] = await Promise.all([
+    // Related data — two parallel queries. Failures on either leave the
+    // section empty rather than breaking the whole screen. Clips fetch
+    // was removed in v9.4.2 along with the on-screen Clips section
+    // (Clips tab + chat clips cover the same surface).
+    const [partyRes, groupRes] = await Promise.all([
       supabase
         .from('watch_parties')
         .select('*, sport:sports!sport_id(*)')
         .eq('game_id', id)
         .order('starts_at', { ascending: true })
-        .limit(20),
-      supabase
-        .from('media_clips')
-        .select('*')
-        .eq('game_id', id)
-        .order('like_count', { ascending: false })
         .limit(20),
       homeTeamId || awayTeamId
         ? supabase
@@ -117,7 +107,6 @@ export default function GameDetailScreen() {
     ]);
 
     setParties((partyRes.data ?? []).map(mapWatchPartyToDisplay));
-    setClips((clipRes.data ?? []).map(mapClipToDisplay));
     setGroups(groupRes.data ?? []);
   }, [id]);
 
@@ -189,82 +178,6 @@ export default function GameDetailScreen() {
       setOpeningChat(false);
     }
   }, [id, openingChat, router]);
-
-  // v9.2.6 UAT 2026-07-28: prior "+ Upload" wired straight to /create-clip
-  // with only { gameId }. create-clip expects videoUri as its route param,
-  // so the screen sat on the "New Clip" fallback prompt with a black video
-  // area, sport picker empty. Every clip attempted from Game Day silently
-  // failed at handlePost's `if (!activeVideoUri) return`. Prompt for the
-  // source here, launch the picker, and hand create-clip the URI + the
-  // game's sport so it can auto-tag instead of forcing a manual pick.
-  const handleUploadClip = useCallback(
-    (gameId: string, sport: string) => {
-      Alert.alert('New Clip', 'Add a highlight to the feed.', [
-        {
-          text: 'Record new',
-          onPress: async () => {
-            const { status } = await ImagePicker.requestCameraPermissionsAsync();
-            if (status !== 'granted') {
-              Alert.alert(
-                'Camera permission denied',
-                'Enable camera access in Settings to record clips.',
-              );
-              return;
-            }
-            const result = await ImagePicker.launchCameraAsync({
-              mediaTypes: ['videos'] as any,
-              videoMaxDuration: 30,
-              quality: 0.8,
-            });
-            if (!result.canceled && result.assets[0]?.uri) {
-              const asset = result.assets[0];
-              router.push({
-                pathname: '/create-clip',
-                params: {
-                  videoUri: asset.uri,
-                  durationMs: String(asset.duration ?? ''),
-                  gameId,
-                  sport,
-                },
-              });
-            }
-          },
-        },
-        {
-          text: 'Choose from library',
-          onPress: async () => {
-            const { status } =
-              await ImagePicker.requestMediaLibraryPermissionsAsync();
-            if (status !== 'granted') {
-              Alert.alert(
-                'Library permission denied',
-                'Enable photo library access in Settings to pick a clip.',
-              );
-              return;
-            }
-            const result = await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ['videos'] as any,
-              quality: 0.8,
-            });
-            if (!result.canceled && result.assets[0]?.uri) {
-              const asset = result.assets[0];
-              router.push({
-                pathname: '/create-clip',
-                params: {
-                  videoUri: asset.uri,
-                  durationMs: String(asset.duration ?? ''),
-                  gameId,
-                  sport,
-                },
-              });
-            }
-          },
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-    },
-    [router],
-  );
 
   if (loading) {
     return (
@@ -473,53 +386,12 @@ export default function GameDetailScreen() {
           )}
         </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Clips</Text>
-            <TouchableOpacity
-              onPress={() => handleUploadClip(game.id, game.sport)}
-            >
-              <Text style={styles.sectionAction}>+ Upload</Text>
-            </TouchableOpacity>
-          </View>
-          {clips.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>
-                No clips yet. Be the first to share a moment.
-              </Text>
-            </View>
-          ) : (
-            <FlatList
-              data={clips}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.clipRow}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.clipCard}
-                  onPress={() => router.push('/(tabs)/clips')}
-                  activeOpacity={0.85}
-                >
-                  <View
-                    style={[
-                      styles.clipPoster,
-                      { backgroundColor: item.bgColors?.[0] || Colors.dark.surface },
-                    ]}
-                  >
-                    <Film size={22} color="#fff" />
-                  </View>
-                  <Text style={styles.clipTitle} numberOfLines={2}>
-                    {item.title}
-                  </Text>
-                  <Text style={styles.clipMeta}>
-                    {item.poster} · {item.like_count} ♥
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
-          )}
-        </View>
+        {/* v9.4.2 UAT: removed the per-game Clips section. Clips already
+            surface via the dedicated Clips tab and the in-game chat
+            attachments on the same screen, and the empty state made the
+            game screen feel padded with dead space. Upload flow is still
+            reachable from the Clips tab and (tabs)/game-day's + Upload
+            chip. */}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Fan Groups</Text>
@@ -822,30 +694,6 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
     fontSize: 12,
     fontWeight: '700',
-  },
-  clipRow: {
-    gap: 12,
-    paddingVertical: 4,
-  },
-  clipCard: {
-    width: 140,
-    gap: 6,
-  },
-  clipPoster: {
-    width: 140,
-    height: 90,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  clipTitle: {
-    color: Colors.dark.text,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  clipMeta: {
-    color: Colors.dark.textSecondary,
-    fontSize: 11,
   },
   groupBadge: {
     width: 42,
