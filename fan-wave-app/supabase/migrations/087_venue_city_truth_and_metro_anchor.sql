@@ -99,6 +99,11 @@ UPDATE public.watch_parties wp
 
 COMMIT;
 
+-- PostgREST caches the table's column list. Without this, venue_metro is
+-- invisible to the API and the client's .or('venue_metro.ilike...') filter
+-- fails until the cache happens to refresh.
+NOTIFY pgrst, 'reload schema';
+
 -- ─── Verification ──────────────────────────────────────────────────
 --
 --   -- The party from the UAT screenshot:
