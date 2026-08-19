@@ -81,7 +81,10 @@ export default function HomeScreen() {
   // watch party after the list resolves. Cheap: 3 parties on Home, one
   // small RPC per. Keyed by party.id so re-renders don't refetch.
   const [partyAffinity, setPartyAffinity] = useState<
-    Record<string, { groupId: string; groupName: string; goingCount: number }[]>
+    Record<
+      string,
+      { groupId: string; groupName: string; goingCount: number; distinctFans: number }[]
+    >
   >({});
 
   useEffect(() => {
@@ -107,6 +110,7 @@ export default function HomeScreen() {
           groupId: r.group_id,
           groupName: r.group_name,
           goingCount: r.going_count,
+          distinctFans: r.distinct_fans ?? r.going_count,
         }));
       });
       setPartyAffinity(next);
