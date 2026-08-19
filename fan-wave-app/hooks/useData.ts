@@ -137,19 +137,45 @@ export function useWatchParties(city: string, limit = 3) {
       try {
         const startedAfter = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 
-        // Local-city query first.
-        const { data: localData, error: localError } = await withTimeout(
-          () => supabase
+        // Local-metro query first.
+        //
+        // v9.4.3 (mig 087): venue_city now names the VENUE's city, so a
+        // McKinney bar no longer reads as "Dallas". Matching moved to
+        // venue_metro -- the creator's home city, which is what venue_city
+        // used to hold. The OR keeps rows written by pre-087 clients (metro
+        // still NULL) matching on venue_city as before.
+        const localSelect = () =>
+          supabase
             .from('watch_parties')
             .select('*, sport:sports!sport_id(*)')
-            .ilike('venue_city', city)
             .gt('starts_at', startedAfter)
             .order('starts_at', { ascending: true })
-            .limit(limit),
+            .limit(limit);
+
+        // Quote the value: PostgREST treats , . ( ) : as syntax inside
+        // or(), so "St. Louis" / "Washington, D.C." would otherwise parse as
+        // extra filter terms. No wildcards -- ilike here is exact-match,
+        // same as the .ilike() call it replaces.
+        const anchor = `"${city.replace(/"/g, '')}"`;
+        let { data: localData, error: localError } = await withTimeout(
+          () => localSelect().or(
+            `venue_metro.ilike.${anchor},venue_city.ilike.${anchor}`
+          ),
           FETCH_TIMEOUT
         );
 
-        if (localError) throw localError;
+        // If venue_metro doesn't exist yet (migration 087 not applied on
+        // this environment), don't blank the section -- fall back to the
+        // pre-087 query rather than dropping into the offline-cache catch.
+        if (localError) {
+          const legacy = await withTimeout(
+            () => localSelect().ilike('venue_city', city),
+            FETCH_TIMEOUT
+          );
+          if (legacy.error) throw localError;
+          localData = legacy.data;
+          localError = null;
+        }
 
         let rows = localData || [];
 

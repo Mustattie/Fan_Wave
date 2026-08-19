@@ -274,6 +274,14 @@ export interface AddressSuggestion {
   displayName: string;
   lat: number;
   lon: number;
+  /**
+   * v9.4.3: Nominatim already returns the locality on every result and we
+   * were throwing it away, which is half of why watch parties were stamped
+   * with the creator's home city instead of the venue's. Exact when present;
+   * `cityFromAddress` is the fallback for the Places path, which only ever
+   * gives us a formatted string.
+   */
+  city?: string;
 }
 
 export async function searchAddress(
@@ -338,6 +346,7 @@ export async function searchAddress(
         displayName,
         lat: parseFloat(r.lat),
         lon: parseFloat(r.lon),
+        city: city || undefined,
       };
     });
 

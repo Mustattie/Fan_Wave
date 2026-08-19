@@ -180,9 +180,21 @@ export default function DiscoverScreen() {
             .limit(20);
 
         if (city) {
-          const localQuery = baseSelect(supabase).ilike('venue_city', city);
-          const { data, error } = await localQuery;
-          if (error) throw error;
+          // v9.4.3 (mig 087): match the metro anchor, not the venue's own
+          // city. venue_city is display truth now; venue_metro is what
+          // "near you" means. OR-ing venue_city keeps pre-087 rows (metro
+          // NULL) matching, and the legacy retry covers an environment
+          // where 087 hasn't run yet.
+          // Quoted: , . ( ) : are or() syntax, and city names contain them.
+          const anchor = `"${city.replace(/"/g, '')}"`;
+          let { data, error } = await baseSelect(supabase).or(
+            `venue_metro.ilike.${anchor},venue_city.ilike.${anchor}`
+          );
+          if (error) {
+            const legacy = await baseSelect(supabase).ilike('venue_city', city);
+            if (legacy.error) throw error;
+            data = legacy.data;
+          }
           const mapped = (data || []).map(mapWatchPartyToDisplay);
           if (mapped.length > 0) {
             return { items: mapped, hasMore: mapped.length === 20, broadened: false };

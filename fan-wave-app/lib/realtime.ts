@@ -166,7 +166,9 @@ export function subscribeToWatchParties(
         onUpdate(payload.new);
       }
     },
-    `venue_city=ilike.${city}`,
+    // v9.4.3 (mig 087): venue_city is the venue's own city now; the metro
+    // anchor is what "parties near <city>" means.
+    `venue_metro=ilike.${city}`,
   );
 }
 

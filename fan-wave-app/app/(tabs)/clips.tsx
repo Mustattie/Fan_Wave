@@ -511,6 +511,38 @@ export default function ClipsScreen() {
     }, [sharedPlayer])
   );
 
+  // v9.4.3 UAT Round 4: every card read "@unknown" -- own clips included.
+  // mapClipToDisplay wants row.user.display_name, but media_clips has no FK
+  // to users so PostgREST cannot embed it, get_following_clips returns bare
+  // SETOF media_clips, and users RLS is own-profile-only (mig 001) so a
+  // client-side join returns nothing for anyone else either. mig 086 adds a
+  // SECURITY DEFINER batch accessor; one call per page, same shape as the
+  // follow-state batch below. Silent-fail keeps the feed rendering with the
+  // '@unknown' fallback if the RPC is unavailable.
+  const hydratePosters = useCallback(async (mapped: ClipDisplay[]) => {
+    const ids = Array.from(
+      new Set(mapped.map((c) => c.userId).filter(Boolean))
+    );
+    if (ids.length === 0) return mapped;
+    try {
+      const { data, error } = await supabase.rpc('get_public_profiles', {
+        p_user_ids: ids,
+      });
+      if (error || !data) return mapped;
+      const names = new Map<string, string>(
+        (data as any[])
+          .filter((r) => r.display_name)
+          .map((r) => [r.user_id as string, r.display_name as string])
+      );
+      if (names.size === 0) return mapped;
+      return mapped.map((c) =>
+        names.has(c.userId) ? { ...c, poster: `@${names.get(c.userId)}` } : c
+      );
+    } catch {
+      return mapped;
+    }
+  }, []);
+
   const fetchClips = useCallback(
     async (pageNum: number, filter: string, replace: boolean = false) => {
       try {
@@ -524,7 +556,7 @@ export default function ClipsScreen() {
             p_offset: pageNum * PAGE_SIZE,
           });
           if (error) throw error;
-          const mapped = (data ?? []).map(mapClipToDisplay);
+          const mapped = await hydratePosters((data ?? []).map(mapClipToDisplay));
           if (replace) setClips(mapped);
           else setClips((prev) => [...prev, ...mapped]);
           setHasMore(mapped.length === PAGE_SIZE);
@@ -571,7 +603,7 @@ export default function ClipsScreen() {
         if (error) throw error;
 
         if (data && data.length > 0) {
-          const mapped = data.map(mapClipToDisplay);
+          const mapped = await hydratePosters(data.map(mapClipToDisplay));
           if (replace) setClips(mapped);
           else setClips((prev) => [...prev, ...mapped]);
           setHasMore(data.length === PAGE_SIZE);
@@ -584,7 +616,7 @@ export default function ClipsScreen() {
         setHasMore(false);
       }
     },
-    []
+    [hydratePosters]
   );
 
   // v9.2.0: hydrate liked/followed sets whenever the visible clip list
