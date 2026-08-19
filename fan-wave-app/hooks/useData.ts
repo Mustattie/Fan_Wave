@@ -152,11 +152,14 @@ export function useWatchParties(city: string, limit = 3) {
             .order('starts_at', { ascending: true })
             .limit(limit);
 
-        // Quote the value: PostgREST treats , . ( ) : as syntax inside
-        // or(), so "St. Louis" / "Washington, D.C." would otherwise parse as
-        // extra filter terms. No wildcards -- ilike here is exact-match,
+        // Normalise to the bare locality: home_city is stored as a mix of
+        // "Dallas" and "Dallas, Texas", and mig 087 writes venue_metro the
+        // same first-segment way, so both sides have to agree. (Before this,
+        // a "Dallas, Texas" profile matched only rows that happened to store
+        // the state too.) Quoted because PostgREST treats , . ( ) : as
+        // syntax inside or(). No wildcards -- ilike here is exact-match,
         // same as the .ilike() call it replaces.
-        const anchor = `"${city.replace(/"/g, '')}"`;
+        const anchor = `"${city.split(',')[0]!.trim().replace(/"/g, '')}"`;
         let { data: localData, error: localError } = await withTimeout(
           () => localSelect().or(
             `venue_metro.ilike.${anchor},venue_city.ilike.${anchor}`

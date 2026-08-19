@@ -167,8 +167,9 @@ export function subscribeToWatchParties(
       }
     },
     // v9.4.3 (mig 087): venue_city is the venue's own city now; the metro
-    // anchor is what "parties near <city>" means.
-    `venue_metro=ilike.${city}`,
+    // anchor is what "parties near <city>" means. First comma segment only,
+    // matching how 087 backfills venue_metro.
+    `venue_metro=ilike.${city.split(',')[0]!.trim()}`,
   );
 }
 

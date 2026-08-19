@@ -185,8 +185,8 @@ export default function DiscoverScreen() {
           // "near you" means. OR-ing venue_city keeps pre-087 rows (metro
           // NULL) matching, and the legacy retry covers an environment
           // where 087 hasn't run yet.
-          // Quoted: , . ( ) : are or() syntax, and city names contain them.
-          const anchor = `"${city.replace(/"/g, '')}"`;
+          // Bare locality, quoted -- see the note in useData.useWatchParties.
+          const anchor = `"${city.split(',')[0]!.trim().replace(/"/g, '')}"`;
           let { data, error } = await baseSelect(supabase).or(
             `venue_metro.ilike.${anchor},venue_city.ilike.${anchor}`
           );
