@@ -51,8 +51,15 @@ export class UploadValidationError extends Error {
   }
 }
 
-const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
-const DEFAULT_MAX_DURATION_SEC = 30;
+// v9.4.4: exported so the picker, the validator and the on-screen copy all
+// read the SAME numbers. They used to be private here while create-clip
+// hard-coded `videoMaxDuration: 30` separately -- two sources of truth for
+// one promise to the user.
+export const MAX_CLIP_BYTES = 25 * 1024 * 1024;
+export const MAX_CLIP_SECONDS = 30;
+
+const DEFAULT_MAX_BYTES = MAX_CLIP_BYTES;
+const DEFAULT_MAX_DURATION_SEC = MAX_CLIP_SECONDS;
 
 function getProvider(): StorageProvider {
   const p = process.env.EXPO_PUBLIC_STORAGE_PROVIDER;
@@ -167,4 +174,60 @@ async function uploadToCloudinary(_uri: string, _path: string, _contentType: str
   // FW-109 implementation. Until then, we never get here because the
   // env var defaults to 'supabase'.
   throw new Error('Cloudinary provider not yet implemented — see FW-109');
+}
+
+// ---------------------------------------------------------------------------
+// Blob lifecycle — v9.4.4.
+//
+// Storage was leaking on two paths and prod had 26 orphaned objects holding
+// 304 MB against 6 live clips (91 MB) — 77% of the bucket was dead weight:
+//
+//   1. Both delete handlers (clips feed + my-clips) deleted the media_clips
+//      row and never touched the object behind it.
+//   2. clipUploads.tryRun() uploads first, then inserts the row. When the
+//      insert failed the job was marked 'failed' with the blob already
+//      uploaded — and a retry uploaded a SECOND copy under a new subpath.
+//
+// Both now call deleteClipAssets. Supabase Storage RLS (mig 021) scopes
+// delete to the object's top-level folder being the caller's auth uid, so a
+// user can only ever remove their own files.
+// ---------------------------------------------------------------------------
+
+/**
+ * Recover the in-bucket path from a public URL.
+ *
+ * getPublicUrl produces
+ *   <supabase>/storage/v1/object/public/clips/<uid>/<subpath>
+ * and we need the "<uid>/<subpath>" tail. Returns null for anything that
+ * isn't a clips-bucket URL (Cloudinary, a local file://, an empty column)
+ * so callers can skip it rather than issue a bogus delete.
+ */
+export function clipPathFromPublicUrl(url: string | null | undefined): string | null {
+  if (!url || typeof url !== 'string') return null;
+  const marker = '/storage/v1/object/public/clips/';
+  const i = url.indexOf(marker);
+  if (i === -1) return null;
+  const path = url.slice(i + marker.length).split('?')[0]!;
+  return path ? decodeURIComponent(path) : null;
+}
+
+/**
+ * Best-effort removal of the objects behind a clip (video + thumbnail).
+ * Never throws: a failed cleanup must not block the row delete the user
+ * actually asked for, or turn a failed upload into an error loop. Returns
+ * how many paths were handed to Storage.
+ */
+export async function deleteClipAssets(
+  urls: (string | null | undefined)[],
+): Promise<number> {
+  const paths = urls
+    .map(clipPathFromPublicUrl)
+    .filter((p): p is string => !!p);
+  if (paths.length === 0) return 0;
+  try {
+    await supabase.storage.from('clips').remove(paths);
+  } catch {
+    // Swallowed deliberately — see doc comment.
+  }
+  return paths.length;
 }

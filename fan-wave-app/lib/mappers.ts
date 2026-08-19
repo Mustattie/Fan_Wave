@@ -434,6 +434,11 @@ export interface ClipDisplay {
   shares: number;
   bgColors: string[];
   videoUrl: string;
+  /** v9.4.4: still frame generated at post time (expo-video-thumbnails) and
+   *  uploaded alongside the video. Lets inactive feed cards show a real
+   *  preview instead of a flat colour, and means scrolling the feed costs a
+   *  ~40 KB JPEG per card instead of pulling a 12 MB video. */
+  thumbnailUrl: string | null;
   userId: string;
   mediaType: 'video' | 'image';
   // Optimistic-upload lifecycle. 'live' is the default for rows mapped
@@ -468,6 +473,7 @@ export function mapClipToDisplay(row: any): ClipDisplay {
     shares: row.share_count || 0,
     bgColors: row.bg_colors || ['#1a3a5c', '#2a4a7c'],
     videoUrl: row.media_url || row.video_url || '',
+    thumbnailUrl: row.thumbnail_url ?? null,
     userId: row.user_id || '',
     mediaType: row.media_type || 'video',
     status: 'live',

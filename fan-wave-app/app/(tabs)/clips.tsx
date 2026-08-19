@@ -13,6 +13,7 @@ import {
   ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { Heart, MessageCircle, Share2, UserPlus, Download, Plus, Trash2, Slash, Pause, Play } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,6 +21,7 @@ import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import { SportPillRow } from '@/components/SportPill';
 import { supabase } from '@/lib/supabase';
+import { deleteClipAssets } from '@/lib/storage';
 import { subscribeToClips } from '@/lib/realtime';
 import { mapClipToDisplay, type ClipDisplay } from '@/lib/mappers';
 import {
@@ -191,14 +193,25 @@ const ClipCard = React.memo(function ClipCard({
             nativeControls={false}
             contentFit="cover"
           />
+        ) : clip.thumbnailUrl || clip.localUri ? (
+          // v9.4.4: inactive cards show the real still frame instead of a
+          // flat colour. Generated at post time by expo-video-thumbnails
+          // (create-clip) and uploaded next to the video. This is the big
+          // egress win: scrolling the feed now costs a ~40 KB JPEG per
+          // card instead of pulling down a 12 MB video to see what it is.
+          // Still ZERO MediaCodec slots -- an <Image> is not a player.
+          <Image
+            source={{ uri: clip.thumbnailUrl || clip.localUri! }}
+            style={styles.video}
+            contentFit="cover"
+            transition={150}
+            cachePolicy="memory-disk"
+          />
         ) : (
           <View
             style={[styles.video, { backgroundColor: clip.bgColors[0] }]}
-            // Gradient-coloured placeholder. Title overlay below gives
-            // the card enough identity that the feed doesn't look blank
-            // mid-scroll. Animated thumbnails can be added in a future
-            // build once media_clips.thumbnail_url is generated server-
-            // side at upload (see qa/pre-eas-build-checklist.md).
+            // Fallback for clips posted before thumbnails existed. Gradient
+            // placeholder + title overlay still give the card identity.
           />
         )}
         {/* Loading placeholder — masks the solid-black first paint that
@@ -743,6 +756,7 @@ export default function ClipsScreen() {
             comments: 0, comment_count: 0, shares: 0,
             bgColors: ['#1a3a5c', '#2a4a7c'],
             videoUrl: state.mediaUrl,
+            thumbnailUrl: state.thumbnailUrl ?? null,
             userId: state.userId,
             mediaType: 'video',
             status: 'live',
@@ -759,6 +773,9 @@ export default function ClipsScreen() {
           tempId: state.tempId,
           localUri: state.localUri,
           pendingMediaUrl: state.mediaUrl,
+          // Local still, so the optimistic card is not a flat colour while
+          // the upload runs. Falls back to the local video URI's poster.
+          thumbnailUrl: state.thumbnailUrl ?? null,
           title: state.title,
           poster: `@${state.displayName}`,
           group: 'Fan Sphere',
@@ -965,7 +982,14 @@ export default function ClipsScreen() {
               .eq('id', clip.id);
             if (error) {
               Alert.alert('Could not delete', error.message);
+              return;
             }
+            // v9.4.4: drop the blobs too. Deleting only the row left the
+            // video in the bucket forever -- prod had 26 such orphans
+            // holding 304 MB against 6 live clips. Runs after the row
+            // delete succeeds so a storage hiccup can never strand a
+            // visible clip whose file is already gone.
+            await deleteClipAssets([clip.videoUrl, clip.thumbnailUrl]);
           },
         },
       ],

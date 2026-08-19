@@ -13,13 +13,18 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { SPORTS } from '@/constants/Sports';
 import { getMomentTypesForSport, type MomentType } from '@/constants/MomentTypes';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
-import { validateClip, UploadValidationError } from '@/lib/storage';
+import {
+  validateClip,
+  UploadValidationError,
+  MAX_CLIP_SECONDS,
+} from '@/lib/storage';
 import { getVideoContentType } from '@/lib/mediaContentType';
 import { withTimeout } from '@/lib/withTimeout';
 import {
@@ -140,8 +145,14 @@ export default function CreateClipScreen() {
       // an empty assets array on Android, so the recorded clip vanished
       // and the New Clip screen sat on a black preview forever.
       mediaTypes: ['videos'] as any,
-      videoMaxDuration: 30,
+      videoMaxDuration: MAX_CLIP_SECONDS,
       quality: 0.8,
+      // v9.4.4: record at 720p instead of the device default. Prod clips
+      // averaged 12 MB for EIGHT seconds (~12 Mbps, straight off the
+      // camera) -- so a full-length clip could not fit the 25 MB cap at
+      // all. iOS-only knob; Android keeps the platform default until a
+      // real transcoder lands (see MAX_CLIP_SECONDS note).
+      videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720,
     });
     if (!result.canceled && result.assets[0]?.uri) {
       const asset = result.assets[0];
@@ -167,6 +178,9 @@ export default function CreateClipScreen() {
       // and the New Clip screen sat on a black preview forever.
       mediaTypes: ['videos'] as any,
       quality: 0.8,
+      // Library picks cannot be duration-capped by the picker, so they are
+      // caught by validateClip below instead.
+      videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720,
     });
     if (!result.canceled && result.assets[0]?.uri) {
       const asset = result.assets[0];
@@ -203,10 +217,14 @@ export default function CreateClipScreen() {
         // Don't strand the user with a single "OK" button — they're holding
         // a clip that can't be posted. Give them a clear escape path:
         // re-record from the camera, pick a different clip, or cancel out.
-        // TODO(compression): once we ship expo-video-compressor we can add
-        // an "Auto-compress" button here instead of forcing a re-record.
+        // v9.4.4: name the actual reason. This said "Clip too large" even
+        // when the clip was too LONG, which reads as a contradiction right
+        // after the camera let you record the full length. Recording now
+        // happens at 720p on iOS so a full-length clip fits; the residual
+        // gap is Android, where there is no transcoder and a long clip can
+        // still exceed the size cap.
         Alert.alert(
-          'Clip too large',
+          e.reason === 'too_long' ? 'Clip too long' : 'Clip too large',
           `${e.message}\n\nRe-record a shorter clip or pick a smaller one from your library.`,
           [
             { text: 'Re-record', onPress: reRecord },
@@ -305,6 +323,21 @@ export default function CreateClipScreen() {
       const profileId = profile?.id;
       if (!profileId) throw new Error('Profile not found');
 
+      // v9.4.4: grab a still frame before enqueuing. Cheap (~40 KB JPEG)
+      // and it is what lets the feed render inactive cards without pulling
+      // the whole video down. Best-effort: expo-video-thumbnails can fail
+      // on odd codecs, and a clip posts perfectly well without one.
+      let localThumbnailUri: string | null = null;
+      try {
+        const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(
+          activeVideoUri,
+          { time: 1000, quality: 0.6 },
+        );
+        localThumbnailUri = thumbUri;
+      } catch {
+        localThumbnailUri = null;
+      }
+
       const ext = (activeVideoUri.split('.').pop() || 'mp4').toLowerCase();
       const contentType = getVideoContentType(activeVideoUri);
       const durationSeconds = activeDurationMs
@@ -334,6 +367,7 @@ export default function CreateClipScreen() {
           user.email?.split('@')[0] ||
           'Fan',
         createdAt: new Date().toISOString(),
+        localThumbnailUri,
       });
 
       // The user is done from their POV. Clips feed will render the
