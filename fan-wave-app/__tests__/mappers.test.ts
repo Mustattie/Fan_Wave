@@ -47,9 +47,11 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime(threeHoursAgo)).toBe('3h ago');
   });
 
-  it('returns days ago for older times', () => {
+  it('returns weekday and time for dates within the past week', () => {
     const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
-    expect(formatRelativeTime(twoDaysAgo)).toBe('2d ago');
+    expect(formatRelativeTime(twoDaysAgo)).toMatch(
+      /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) · \d{1,2}:\d{2}\s?(AM|PM)$/
+    );
   });
 });
 
