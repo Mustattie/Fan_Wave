@@ -514,22 +514,74 @@ async function findPackageForTierPlan(
     const customRcId = `${tier}_${plan}`;
     const productId = TIER_PRODUCT_IDS[tier][plan];
 
+    // v9.4.5: the legacy `$rc_monthly` / `$rc_annual` fallback that used to
+    // sit at the end of this chain is GONE, and must not come back.
+    //
+    // It was meant as resilience against a dashboard configured to the old
+    // shape. What it actually did, because the v9.3 SKUs were never created
+    // in RevenueCat, was resolve every Home Team tap to the LEGACY Premium
+    // product and bill it:
+    //
+    //   UI "Home Team $4.99/mo"  -> premium_monthly_999   -> charged $9.99
+    //   UI "Home Team $34.99/yr" -> premium_annual_10788  -> charged $107.88
+    //
+    // Apple/Google take that payment before any of our code can intervene,
+    // and the webhook then grants tier 'mvp' because legacy SKUs grandfather
+    // upward. Advertising one price and charging 2-3x is a refund magnet and
+    // an App Store metadata rejection.
+    //
+    // A lookup for a $4.99 product must never return a $9.99 one. If the
+    // tier's own SKU is absent, the correct answer is "no package" -- the
+    // paywall fails closed and says plans are unavailable. Selling nothing
+    // beats mis-billing.
     return (
       packages.find((p) => p.identifier === customRcId) ??
       packages.find((p) => {
         const pid: string = p.product?.identifier ?? '';
         return pid === productId || pid.startsWith(productId + ':');
       }) ??
-      // Home Team fallback to legacy $rc_monthly / $rc_annual so
-      // dashboards misconfigured against the old shape still function.
-      (tier === 'home_team'
-        ? packages.find((p) => p.identifier === (plan === 'monthly' ? '$rc_monthly' : '$rc_annual'))
-        : null) ??
       null
     );
   } catch (e) {
     if (__DEV__) console.warn('[entitlements] findPackageForTierPlan failed:', e);
     return null;
+  }
+}
+
+/**
+ * v9.4.5: live price for a tier+plan, straight off the RevenueCat package
+ * that `purchaseTier` would buy.
+ *
+ * The paywall used to render hardcoded strings ('$4.99/mo'), so the number
+ * on screen and the number the store charged were two independent facts
+ * that could -- and did -- disagree. Reading both from the same package
+ * makes that class of bug impossible.
+ *
+ * Returns:
+ *   { available: true, priceString }  package exists; priceString is
+ *                                     RC's localised price, already in the
+ *                                     user's own currency
+ *   { available: false }              no package for this tier+plan. The
+ *                                     paywall must fail closed rather than
+ *                                     fall back to a hardcoded price -- an
+ *                                     unpurchasable plan should never show
+ *                                     a price at all.
+ */
+export type TierPrice =
+  | { available: true; priceString: string }
+  | { available: false };
+
+export async function getTierPrice(tier: PaidTier, plan: Plan): Promise<TierPrice> {
+  // Expo Go has no native module; paywalls there are display-only anyway.
+  if (isExpoGo()) return { available: false };
+  try {
+    const pkg: any = await findPackageForTierPlan(tier, plan);
+    const priceString: string | undefined = pkg?.product?.priceString;
+    if (!pkg || !priceString) return { available: false };
+    return { available: true, priceString };
+  } catch (e) {
+    reportError(e, { source: 'entitlements:getTierPrice', tier, plan });
+    return { available: false };
   }
 }
 
