@@ -184,10 +184,16 @@ export function mapGameToDisplay(row: any): GameDisplay {
   // Prefer the column we now write directly (migration 031). Fall back
   // to the deep team→league→sport lookup for rows queried without
   // sport_id selected, or seeded rows not yet backfilled.
-  const sport = (row.sport_id
+  let sport = (row.sport_id
     || row.home_team?.league?.sport?.name
     || row.sport_name
     || '').toString().toLowerCase();
+  // v9.4.2: Discover chip 'soccer' was retired in favour of the league-
+  // specific 'mls' chip. Coalesce so games ESPN sync writes with
+  // sport='soccer' still bucket under MLS on Game Day / Home instead of
+  // rendering a stray "SOCCER" chip via game-day.tsx's unknown-sport
+  // fallthrough.
+  if (sport === 'soccer') sport = 'mls';
   const leagueName = row.home_team?.league?.name
     || row.league_name
     || row.event?.name
@@ -428,6 +434,11 @@ export interface ClipDisplay {
   shares: number;
   bgColors: string[];
   videoUrl: string;
+  /** v9.4.4: still frame generated at post time (expo-video-thumbnails) and
+   *  uploaded alongside the video. Lets inactive feed cards show a real
+   *  preview instead of a flat colour, and means scrolling the feed costs a
+   *  ~40 KB JPEG per card instead of pulling a 12 MB video. */
+  thumbnailUrl: string | null;
   userId: string;
   mediaType: 'video' | 'image';
   // Optimistic-upload lifecycle. 'live' is the default for rows mapped
@@ -462,6 +473,7 @@ export function mapClipToDisplay(row: any): ClipDisplay {
     shares: row.share_count || 0,
     bgColors: row.bg_colors || ['#1a3a5c', '#2a4a7c'],
     videoUrl: row.media_url || row.video_url || '',
+    thumbnailUrl: row.thumbnail_url ?? null,
     userId: row.user_id || '',
     mediaType: row.media_type || 'video',
     status: 'live',

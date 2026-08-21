@@ -15,7 +15,13 @@ interface WatchPartyCardProps {
   // parent (Home / Discover) after batching a group_affinity RPC across
   // the visible cards. Undefined = don't render the badge; empty array
   // = render nothing but treat as loaded.
-  affinity?: { groupId: string; groupName: string; goingCount: number }[];
+  affinity?: {
+    groupId: string;
+    groupName: string;
+    goingCount: number;
+    // v9.4.3 (mig 085): unique people across all the viewer's groups.
+    distinctFans: number;
+  }[];
 }
 
 export function WatchPartyCard({ party, affinity }: WatchPartyCardProps) {
@@ -139,10 +145,12 @@ export function WatchPartyCard({ party, affinity }: WatchPartyCardProps) {
         </Text>
       </View>
 
-      {affinity && affinity.length > 0 && (
+      {/* v9.4.3 UAT Round 4: "+N more" counted rooms, not people, so one
+          fan in five shared rooms read as five. distinctFans is people. */}
+      {affinity && affinity.length > 0 && affinity[0].distinctFans > 0 && (
         <Text style={styles.affinityLine}>
-          🎉 {affinity[0].goingCount} from {affinity[0].groupName} going
-          {affinity.length > 1 ? ` +${affinity.length - 1} more` : ''}
+          🎉 {affinity[0].distinctFans} from{' '}
+          {affinity.length === 1 ? affinity[0].groupName : 'your groups'} going
         </Text>
       )}
 

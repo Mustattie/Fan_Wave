@@ -29,6 +29,7 @@ import {
   Venue,
   AddressSuggestion,
 } from '@/lib/venueSearchApi';
+import { cityFromAddress } from '@/lib/addressCity';
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mapGameToDisplay, type GameDisplay } from '@/lib/mappers';
@@ -170,6 +171,10 @@ export default function CreateWatchPartyScreen() {
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [addressLoading, setAddressLoading] = useState(false);
   const [selectedManualCoords, setSelectedManualCoords] = useState<{ lat: number; lon: number } | null>(null);
+  // v9.4.3 UAT Round 4: locality of the picked manual address, so the party
+  // is not stamped with the creator's home city. See selectedManualCity use
+  // in handleCreate.
+  const [selectedManualCity, setSelectedManualCity] = useState<string | null>(null);
   const addressDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Step 2 state
@@ -497,6 +502,17 @@ export default function CreateWatchPartyScreen() {
       } else {
         lastSearchFailedRef.current = true;
         console.error('[create-watch-party] venue search failed:', result.errorMessage);
+        // v9.4.2 UAT: pipe the actual edge-function errorMessage into
+        // error reporting so a production "Search temporarily unavailable"
+        // no longer disappears into device console-log. Common cause is
+        // the venue-search function missing GOOGLE_PLACES_API_KEY on prod.
+        reportError(new Error(result.errorMessage ?? 'venue-search returned non-ok'), {
+          source: 'create-watch-party:handleVenueSearch',
+          status: result.status,
+          coordSource,
+          city: userCity ?? null,
+          query: venueQuery.trim(),
+        });
         setSearchError(
           'Search temporarily unavailable. Check your connection and tap Search to retry, or "Enter venue manually".' +
             debugSuffix(result.errorMessage)
@@ -505,6 +521,12 @@ export default function CreateWatchPartyScreen() {
     } catch (e: any) {
       lastSearchFailedRef.current = true;
       console.error('[create-watch-party] unexpected venue search error:', e);
+      reportError(e, {
+        source: 'create-watch-party:handleVenueSearch',
+        coordSource,
+        city: userCity ?? null,
+        query: venueQuery.trim(),
+      });
       setVenueResults([]);
       setSearchError(
         'Something went wrong searching for venues. Tap Search to retry, or "Enter venue manually".' +
@@ -543,6 +565,9 @@ export default function CreateWatchPartyScreen() {
   const handleSelectAddress = useCallback((suggestion: AddressSuggestion) => {
     setManualAddress(suggestion.displayName);
     setSelectedManualCoords({ lat: suggestion.lat, lon: suggestion.lon });
+    // v9.4.3: Nominatim hands back the locality for the picked suggestion --
+    // exact, so it beats re-parsing the formatted string later.
+    setSelectedManualCity(suggestion.city ?? null);
     setAddressSuggestions([]);
   }, []);
 
@@ -711,6 +736,10 @@ export default function CreateWatchPartyScreen() {
       ? manualAddress.trim()
       : selectedVenue?.address ?? '';
 
+    const venueCity = manualEntry
+      ? selectedManualCity ?? cityFromAddress(venueAddress)
+      : cityFromAddress(venueAddress);
+
     const localId = `wp-${Date.now()}`;
 
     const partyData: Record<string, any> = {
@@ -718,7 +747,18 @@ export default function CreateWatchPartyScreen() {
       description: description.trim(),
       venue_name: venueName,
       venue_address: venueAddress,
-      venue_city: userCity || null,
+      // v9.4.3 UAT Round 4: was `userCity`, the CREATOR's home city. A party
+      // at "301 N Custer Rd #180, McKinney, TX 75071" created by a Dallas
+      // user rendered as "Uncork'd Bar & Grill · Dallas" on the detail
+      // screen and the RSVP tab. The search radius stays anchored to
+      // home_city (a McKinney fan wants the whole metro) but the SAVED city
+      // must describe the venue. userCity survives only as a last resort
+      // for an unparseable address.
+      venue_city: venueCity ?? (userCity ? userCity.split(',')[0]!.trim() : null),
+      // The metro this party is filed under for "near you" matching (mig
+      // 087). Keeps a McKinney venue discoverable by Dallas fans now that
+      // venue_city names the venue's own city.
+      venue_metro: userCity ? userCity.split(',')[0]!.trim() : null,
       venue_lat: manualEntry ? (selectedManualCoords?.lat ?? DEFAULT_LAT) : (selectedVenue?.lat ?? DEFAULT_LAT),
       venue_lon: manualEntry ? (selectedManualCoords?.lon ?? DEFAULT_LON) : (selectedVenue?.lon ?? DEFAULT_LON),
       game_id: selectedGame?.id ?? null,

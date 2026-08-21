@@ -16,6 +16,7 @@ import { Image } from 'expo-image';
 import { ArrowLeft, Play, X, Eye, Heart, MessageCircle, Share2, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { deleteClipAssets } from '@/lib/storage';
 import { useRouter, useFocusEffect } from 'expo-router';
 
 // v8.5 P0: previously every clip card rendered as a featureless black
@@ -125,6 +126,10 @@ export default function MyClipsScreen() {
                 .eq('id', clip.id);
 
               if (error) throw error;
+              // v9.4.4: remove the underlying objects as well. Without
+              // this the row goes but the video stays in the bucket --
+              // see the note in lib/storage.ts deleteClipAssets.
+              await deleteClipAssets([clip.media_url, clip.thumbnail_url]);
             } catch {
               // local fallback
             }

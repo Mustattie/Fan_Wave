@@ -66,6 +66,15 @@ export function useGames(limit = 30) {
           () => supabase
             .from('games')
             .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
+            // v9.4.2 UAT: drop orphaned games where the team FK is null
+            // (historical seed rows + a handful of ESPN sync writes where
+            // the payload landed before the team row upserted). Without
+            // these filters, cards render as generic ⚾ + "Home"/"Away"
+            // placeholders on Home / Game Day. Real ESPN-synced games all
+            // have both FKs populated (sync skips otherwise, see
+            // supabase/functions/sync-game-schedules/index.ts:475-480).
+            .not('home_team_id', 'is', null)
+            .not('away_team_id', 'is', null)
             .or(
               `status.eq.in,` +
               `and(status.eq.scheduled,scheduled_at.gte.${upcomingCutoff}),` +
@@ -128,19 +137,48 @@ export function useWatchParties(city: string, limit = 3) {
       try {
         const startedAfter = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
 
-        // Local-city query first.
-        const { data: localData, error: localError } = await withTimeout(
-          () => supabase
+        // Local-metro query first.
+        //
+        // v9.4.3 (mig 087): venue_city now names the VENUE's city, so a
+        // McKinney bar no longer reads as "Dallas". Matching moved to
+        // venue_metro -- the creator's home city, which is what venue_city
+        // used to hold. The OR keeps rows written by pre-087 clients (metro
+        // still NULL) matching on venue_city as before.
+        const localSelect = () =>
+          supabase
             .from('watch_parties')
             .select('*, sport:sports!sport_id(*)')
-            .ilike('venue_city', city)
             .gt('starts_at', startedAfter)
             .order('starts_at', { ascending: true })
-            .limit(limit),
+            .limit(limit);
+
+        // Normalise to the bare locality: home_city is stored as a mix of
+        // "Dallas" and "Dallas, Texas", and mig 087 writes venue_metro the
+        // same first-segment way, so both sides have to agree. (Before this,
+        // a "Dallas, Texas" profile matched only rows that happened to store
+        // the state too.) Quoted because PostgREST treats , . ( ) : as
+        // syntax inside or(). No wildcards -- ilike here is exact-match,
+        // same as the .ilike() call it replaces.
+        const anchor = `"${city.split(',')[0]!.trim().replace(/"/g, '')}"`;
+        let { data: localData, error: localError } = await withTimeout(
+          () => localSelect().or(
+            `venue_metro.ilike.${anchor},venue_city.ilike.${anchor}`
+          ),
           FETCH_TIMEOUT
         );
 
-        if (localError) throw localError;
+        // If venue_metro doesn't exist yet (migration 087 not applied on
+        // this environment), don't blank the section -- fall back to the
+        // pre-087 query rather than dropping into the offline-cache catch.
+        if (localError) {
+          const legacy = await withTimeout(
+            () => localSelect().ilike('venue_city', city),
+            FETCH_TIMEOUT
+          );
+          if (legacy.error) throw localError;
+          localData = legacy.data;
+          localError = null;
+        }
 
         let rows = localData || [];
 

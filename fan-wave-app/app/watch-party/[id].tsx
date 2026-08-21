@@ -55,6 +55,10 @@ interface GroupAffinity {
   groupId: string;
   groupName: string;
   goingCount: number;
+  // v9.4.3: unique people across ALL the viewer's groups (mig 085). Same
+  // value on every row -- one fan in three shared groups is 1 here and 3
+  // across the goingCount fields.
+  distinctFans: number;
 }
 
 interface WatchPartyDetail {
@@ -284,6 +288,7 @@ export default function WatchPartyDetailScreen() {
           groupId: r.group_id,
           groupName: r.group_name,
           goingCount: r.going_count,
+          distinctFans: r.distinct_fans ?? r.going_count,
         })));
       } else {
         setGroupAffinity([]);
@@ -347,6 +352,7 @@ export default function WatchPartyDetailScreen() {
       }
     }
 
+    const previousStatus = rsvpStatus;
     setRsvpStatus(newStatus);
 
     try {
@@ -360,7 +366,7 @@ export default function WatchPartyDetailScreen() {
           /row-level security/i.test(error.message ?? '')
         ) {
           // Roll back optimistic update before surfacing paywall.
-          setRsvpStatus(rsvpStatus);
+          setRsvpStatus(previousStatus);
           if (isWcParty) {
             setShowWCPaywall(true);
           } else {
@@ -373,8 +379,21 @@ export default function WatchPartyDetailScreen() {
         }
         throw error;
       }
+      // Refetch after server confirms so the totals + list reflect the
+      // authoritative watch_party_rsvps state (was drifting on race
+      // between optimistic UI and slow server acks — v9.4.2 UAT).
+      loadAttendees();
     } catch (e) {
+      // v9.4.2: was silently swallowing everything, which meant the RSVP
+      // RPC being missing on prod (PGRST202) looked like a successful
+      // "Going" tap while nothing was written server-side. Roll back the
+      // optimistic pill AND surface a toast so the user knows to retry.
+      setRsvpStatus(previousStatus);
       reportError(e, { source: 'watch-party:handleRsvp', partyId: id, status: newStatus });
+      Alert.alert(
+        "Couldn't save RSVP",
+        "We couldn't reach the server. Check your connection and try again.",
+      );
     }
   };
 
@@ -658,13 +677,21 @@ export default function WatchPartyDetailScreen() {
             {attendeeTotals.going} going · {attendeeTotals.maybe} maybe · {attendeeTotals.cantGo} can't go
           </Text>
 
-          {groupAffinity.length > 0 && (
+          {/* v9.4.3 UAT Round 4: ONE line, not one per group. The old
+              per-group stack read as a headcount -- a single fan sharing
+              five rooms with the viewer rendered five "1 fan ... also
+              going" lines under a "1 going" header. distinctFans (mig 085)
+              is the real number of people; the group names are context. */}
+          {groupAffinity.length > 0 && groupAffinity[0].distinctFans > 0 && (
             <View style={styles.affinityCard}>
-              {groupAffinity.map((g) => (
-                <Text key={g.groupId} style={styles.affinityLine}>
-                  🎉 {g.goingCount} {g.goingCount === 1 ? 'fan' : 'fans'} from {g.groupName} also going
-                </Text>
-              ))}
+              <Text style={styles.affinityLine}>
+                🎉 {groupAffinity[0].distinctFans}{' '}
+                {groupAffinity[0].distinctFans === 1 ? 'fan' : 'fans'} from{' '}
+                {groupAffinity.length === 1
+                  ? groupAffinity[0].groupName
+                  : `your groups (${groupAffinity.map((g) => g.groupName).join(', ')})`}
+                {' '}also going
+              </Text>
             </View>
           )}
 

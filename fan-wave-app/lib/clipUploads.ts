@@ -16,7 +16,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
-import { uploadClip } from './storage';
+import { uploadClip, deleteClipAssets } from './storage';
 import { reportError } from './errorReporting';
 
 const PENDING_KEY = 'clipUploads.pending.v1';
@@ -38,6 +38,11 @@ export interface PendingClipJob {
   profileId: string;
   displayName: string;
   createdAt: string;
+  /** v9.4.4: local file:// still frame produced by expo-video-thumbnails at
+   *  post time. Uploaded next to the video so the feed can show a real
+   *  preview on inactive cards. Optional -- thumbnail generation is
+   *  best-effort and a clip posts fine without one. */
+  localThumbnailUri?: string | null;
 }
 
 export interface JobState extends PendingClipJob {
@@ -46,6 +51,7 @@ export interface JobState extends PendingClipJob {
   error?: string;
   realId?: string;
   mediaUrl?: string;
+  thumbnailUrl?: string | null;
 }
 
 type Listener = (state: JobState) => void;
@@ -90,6 +96,7 @@ async function persistPending(): Promise<void> {
       profileId: j.profileId,
       displayName: j.displayName,
       createdAt: j.createdAt,
+      localThumbnailUri: j.localThumbnailUri ?? null,
     }));
   try {
     await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(pending));
@@ -166,11 +173,28 @@ async function tryRun(): Promise<void> {
       },
     });
 
+    // v9.4.4: ship the still frame alongside the video. Best-effort --
+    // a failed thumbnail must never fail the post, it just means the card
+    // falls back to the gradient placeholder as before.
+    let thumbnailUrl: string | null = null;
+    if (next.localThumbnailUri) {
+      try {
+        const thumb = await uploadClip(next.localThumbnailUri, {
+          contentType: 'image/jpeg',
+          subpath: next.subpath.replace(/\.[^.]+$/, '') + '.thumb.jpg',
+        });
+        thumbnailUrl = thumb.publicUrl;
+      } catch (e) {
+        reportError(e, { source: 'clipUploads.thumbnail', tempId: next.tempId });
+      }
+    }
+
     emit({
       ...(jobs.get(next.tempId) || next),
       status: 'inserting',
       progress: 99,
       mediaUrl: publicUrl,
+      thumbnailUrl,
     });
 
     const { data: row, error } = await supabase
@@ -180,6 +204,7 @@ async function tryRun(): Promise<void> {
         title: next.title,
         description: next.description,
         media_url: publicUrl,
+        thumbnail_url: thumbnailUrl,
         media_type: 'video',
         duration_seconds: next.durationSeconds,
         sport_id: next.sportId,
@@ -187,7 +212,15 @@ async function tryRun(): Promise<void> {
       })
       .select('*')
       .single();
-    if (error) throw error;
+    if (error) {
+      // v9.4.4: the blob is already in the bucket at this point. Before
+      // this, a failed insert left it there forever AND a retry uploaded a
+      // second copy under a fresh subpath -- that is where prod's 26
+      // orphans (304 MB against 6 live clips) came from. Drop what we
+      // just uploaded before surfacing the failure.
+      await deleteClipAssets([publicUrl, thumbnailUrl]);
+      throw error;
+    }
 
     emit({
       ...(jobs.get(next.tempId) || next),
@@ -195,6 +228,7 @@ async function tryRun(): Promise<void> {
       progress: 100,
       realId: row.id,
       mediaUrl: publicUrl,
+      thumbnailUrl,
     });
     jobs.delete(next.tempId);
     await persistPending();
