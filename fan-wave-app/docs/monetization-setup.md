@@ -1,108 +1,215 @@
 # Monetization Setup Checklist
 
-> Manual configuration steps that need to be done in **App Store Connect**, **Google Play Console**, and the **RevenueCat dashboard** before the Premium subscription + WC Pass can be sold.
+> Manual configuration in **App Store Connect**, **Google Play Console**, and the
+> **RevenueCat dashboard**. Nothing on the tiered plans can be sold until every
+> step here is done.
 >
-> The code side (FW-85, FW-86, FW-87, FW-90+) ships independently of these steps. The app gracefully handles the case where RevenueCat keys aren't configured (`useHasPremium` returns false safely, paywall sheets show a "Configuration error — try again later" state).
+> **Current as of v9.4.5 (2026-08-21).** This doc previously described the
+> pre-v9.3 flat `$9.99 Premium` model and pointed the webhook at the retired
+> legacy Supabase project. Both were wrong; see [Legacy products](#legacy-products-do-not-sell).
 
 ---
 
-## FW-88 — App Store / Play Store Product Setup
+## Blocking state — read first
+
+The v9.3 tiered SKUs **do not exist yet** in any of the three dashboards. Read
+through the public SDK keys in `eas.json`, the RevenueCat `default` offering
+currently contains only:
+
+```
+ios      $rc_monthly -> premium_monthly_999     $rc_annual -> premium_annual_10788
+android  $rc_monthly -> premium_monthly_999     $rc_annual -> premium_annual_10788
+```
+
+Since v9.4.5 the client **fails closed** against that: a tier whose own SKU is
+absent resolves to "no package", the paywall renders `Unavailable`, the CTA is
+disabled, and no billing disclosure is shown. That is deliberate — before
+v9.4.5 the client fell back to the legacy `$rc_monthly` / `$rc_annual` packages,
+so a "Home Team $34.99/yr" tap actually bought `premium_annual_10788` and
+charged **$107.88**. Zero revenue beats mis-billing.
+
+**Consequence:** until steps FW-88 / FW-89 below are complete, the app sells
+nothing. There is no client-side change that can safely unblock it.
+
+---
+
+## The products the code expects
+
+Source of truth: `lib/entitlements.ts` (`TIER_PRODUCT_IDS`,
+`TIER_ENTITLEMENT_ID`), `supabase/functions/revenuecat-webhook/index.ts`
+(`HOME_TEAM_PRODUCTS`, `MVP_PRODUCTS`), migration `082_subscription_tiers.sql`.
+
+| Tier | Plan | Product ID | Price | Free trial |
+|---|---|---|---|---|
+| Home Team | monthly | `home_team_monthly_499` | $4.99 / mo | 7 days |
+| Home Team | annual | `home_team_annual_3499` | $34.99 / yr | 7 days |
+| MVP | monthly | `mvp_monthly_1499` | $14.99 / mo | none |
+| MVP | annual | `mvp_annual_9999` | $99.99 / yr | none |
+
+Prices above are the *intended* US prices and must be entered in the stores.
+They are **not** shipped as strings the user sees: since v9.4.5 the paywall
+renders `product.priceString` off the very package `purchaseTier()` would buy
+(`getTierPrice()`), so whatever you type into App Store Connect / Play *is* what
+the UI displays, localised. If the store price and the table above disagree, the
+store wins on screen — fix the store, not the code.
+
+`business` is a valid tier in the DB CHECK and `TIER_RANK`, reserved for manual
+grants (venues / partners). It has no store product and no paywall.
+
+---
+
+## FW-88 — App Store / Play Store product setup
 
 ### Apple App Store Connect
 
-1. **Sign in** to [App Store Connect](https://appstoreconnect.apple.com) with the Apple Developer account that owns `org.fansphere.app`.
-2. **Apple Small Business Program** — go to Agreements, Tax & Banking → enroll. Reduces fee from 30% to 15% (Fan Sphere qualifies under $1M annual). Allow 1–2 days to verify banking.
-3. **Banking + Tax & Agreements** — must be signed before products go live.
-4. **Create Subscription Group** (e.g. "Fan Sphere Premium").
-5. **Create products** inside the group:
-   - **`premium_monthly_999`** — auto-renewable subscription, $9.99/mo, **7-day intro free trial offer**
-   - **`premium_annual_10788`** — auto-renewable subscription, $107.88/yr, **7-day intro free trial offer**
-6. **Create one-time product**:
-   - **`wc_pass_2026`** — non-consumable, $19.99
-7. **Localizations** — at minimum US English. Use Apple's automatic price tier conversion for other markets.
-8. **Sandbox testers** — Users and Access → Sandbox Testers → create at least one (use a non-iCloud email).
-9. **Required metadata for each product**: display name, description, screenshot.
+1. **Sign in** to [App Store Connect](https://appstoreconnect.apple.com) with the
+   account that owns `org.fansphere.app` (`ascAppId` 6774325670).
+2. **Apple Small Business Program** — Agreements, Tax & Banking, then enroll.
+   30% to 15%. Allow 1-2 days for banking verification.
+3. **Banking + Tax & Agreements signed.** An expired agreement also breaks
+   `eas submit` with `403 REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED`.
+4. **One subscription group** (e.g. "Fan Sphere") holding all four subscriptions,
+   so upgrade/downgrade between Home Team and MVP is a store-managed change
+   rather than two parallel subscriptions.
+   - Ranking inside the group: **MVP above Home Team**. Level order is what makes
+     Home Team to MVP an immediate upgrade with proration.
+5. **Create the four auto-renewable subscriptions** exactly as named in the table
+   above. Per product: reference name, duration, US price, display name,
+   description, review screenshot.
+6. **Introductory offer — 7-day free trial on the two `home_team_*` products only.**
+   MVP has `offersTrial: false` in `TIER_CONFIG`; adding a trial there would make
+   the paywall copy ("Subscribe", no trial disclosure) wrong.
+7. **Localizations** — US English minimum; use Apple's automatic price conversion
+   elsewhere. The client shows RevenueCat's localised `priceString`, so converted
+   prices surface correctly with no code change.
+8. **Sandbox tester** — Users and Access, Sandbox Testers. Use a **non**
+   `fansphere.reviewer@gmail.com` account: the reviewer account is entitlement-
+   bypassed on both client and server, so it can never exercise a real purchase.
+9. **Attach the subscriptions to the build** in the version's In-App Purchases
+   section before submitting, or review rejects the metadata.
 
 ### Google Play Console
 
-1. **Sign in** to [Play Console](https://play.google.com/console) with the publisher account for the app.
-2. **Mirror the three products** with the same IDs, prices, and trial terms:
-   - `premium_monthly_999` — auto-renewing subscription, $9.99/mo, 7-day intro free trial
-   - `premium_annual_10788` — auto-renewing subscription, $107.88/yr, 7-day intro free trial
-   - `wc_pass_2026` — managed product, $19.99
-3. **License testers** — Setup → License testing → add tester accounts.
+1. **Sign in** to [Play Console](https://play.google.com/console) for `org.fansphere.app`.
+2. **Mirror all four subscriptions** with the same product IDs, prices, and the
+   Home-Team-only 7-day trial.
+3. Play subscriptions carry **base plans**: the client tolerates the
+   `productId:basePlanId` shape Play sends (`home_team_monthly_499:monthly`) in
+   both `findPackageForTierPlan` and the webhook's `baseProductId` normalisation.
+   Name base plans `monthly` / `annual` for legibility, but nothing breaks if they
+   differ.
+4. **License testers** — Setup, License testing.
 
 ---
 
-## FW-89 — RevenueCat Dashboard Configuration
+## FW-89 — RevenueCat dashboard configuration
 
-1. **Create project** at [app.revenuecat.com](https://app.revenuecat.com) — name "Fan Sphere".
-2. **Add apps**: iOS bundle `org.fansphere.app`, Android package `org.fansphere.app`.
-3. **Entitlements** (under "Entitlements" tab):
-   - Create `premium` → attach products `premium_monthly_999` and `premium_annual_10788`
-   - Create `wc_pass` → attach product `wc_pass_2026`
-4. **Offerings** (under "Offerings" tab):
-   - Create offering `default` with the two Premium subscriptions
-   - Create offering `wc_pass` with the WC Pass
-5. **Upload App Store / Play Store credentials** for receipt validation:
-   - Apple: App Store Connect API key (issuer ID, key ID, .p8 file)
-   - Google: Play Service Account JSON
-6. **Webhook configuration** (Integrations → Webhooks):
-   - URL: `https://azkmymxdjylmkytrvyfn.supabase.co/functions/v1/revenuecat-webhook`
-   - Auth Header: paste your `REVENUECAT_WEBHOOK_SECRET` here (must match the secret set via `supabase secrets set`)
-   - Subscribe to: All event types
-7. **Test event** — use RevenueCat's "Send test event" button → verify a row appears in Supabase `purchase_events` table within seconds.
+1. **Project** "Fan Sphere" at [app.revenuecat.com](https://app.revenuecat.com);
+   apps for iOS bundle `org.fansphere.app` and Android package `org.fansphere.app`.
+   Public SDK keys already shipped in `eas.json` (preview + production):
+   `appl_JmblLQHAuNHfPBzUQkjBzKmROAM`, `goog_bZTjvIlQzCauhtncdPYeTjSkJmv`.
+2. **Entitlements** — identifiers must match `TIER_ENTITLEMENT_ID` exactly:
+   - `home_team` — attach `home_team_monthly_499`, `home_team_annual_3499`, **and**
+     both `mvp_*` products. MVP is additive: `purchaseTier('mvp', …)` accepts
+     either `mvp` or `home_team` as the success signal, and every Home Team perk
+     is inherited by MVP.
+   - `mvp` — attach `mvp_monthly_1499`, `mvp_annual_9999`.
+3. **Offering `default`, set as current.** The client reads `offerings.current`
+   only. It must carry all four packages.
+   - Package identifiers: `home_team_monthly`, `home_team_annual`, `mvp_monthly`,
+     `mvp_annual` (`{tier}_{plan}` — the first lookup `findPackageForTierPlan`
+     tries). If you use RevenueCat's built-in `$rc_monthly` / `$rc_annual`
+     identifiers instead, the lookup still succeeds via exact product-ID match —
+     but only one tier can own `$rc_monthly`, so custom identifiers are required
+     for four SKUs.
+   - **Do not** put a legacy `premium_*` product in the current offering. There is
+     no longer a fallback that would resolve to it, so it cannot mis-bill any more;
+     it would simply show up as a purchasable plan the app has no UI for.
+4. **Store credentials** for receipt validation:
+   - Apple: App Store Connect API key (issuer ID, key ID, `.p8`).
+   - Google: Play service account JSON.
+5. **Webhook** (Integrations, Webhooks):
+   - URL: `https://fwlfiejvxmslkpoojggs.supabase.co/functions/v1/revenuecat-webhook`
+     — the **production** project. Anything pointing at `azkmymxdjylmkytrvyfn` is
+     the retired legacy project: purchases would validate, users would be charged,
+     and no entitlement row would ever land in prod.
+   - Auth Header: the `REVENUECAT_WEBHOOK_SECRET` value (below). Mismatch is a 401.
+   - Subscribe to **all** event types. `PRODUCT_CHANGE` is what carries tier
+     upgrades/downgrades, and `EXPIRATION` / `REFUND` are what drop
+     `subscription_tier` back to `free`.
+6. **Test event** — RevenueCat's "Send test event", then confirm a row in prod
+   `purchase_events` within seconds. Then verify the derived write: `users`
+   `subscription_status`, `subscription_tier`, `premium_active_until`.
 
-### Setting the webhook secret in Supabase
-
-Generate a UUID locally, then:
+### Setting the webhook secret
 
 ```bash
-supabase secrets set REVENUECAT_WEBHOOK_SECRET=<paste-uuid-here>
+# from fan-wave-app/, against the PROD project
+supabase secrets set REVENUECAT_WEBHOOK_SECRET=<uuid> --project-ref fwlfiejvxmslkpoojggs
 ```
 
-And paste the **same value** into the RevenueCat dashboard's Webhook Auth Header field. The two must match exactly or the function returns 401.
+Paste the identical value into RevenueCat's Webhook Auth Header. Check
+`docs/env-swap-runbook.md` if you rotate it — the same secret-vs-dashboard drift
+that produced the "ESPN sync 401" class of bug applies here.
 
 ---
 
-## FW-105 — Supabase Egress Bandwidth Alerts
+## Legacy products (do not sell)
 
-In the Supabase dashboard for project `azkmymxdjylmkytrvyfn`:
+Kept in the lookup tables for restore-purchases and grandfathering only. None
+belong in the current offering.
 
-1. Project Settings → Billing → Usage → Egress
-2. Set alert at **70%** of monthly bandwidth → email on-call
-3. Set alert at **90%** → email on-call + product owner
-4. Document the response in `docs/runbooks.md`: "If 90% alert fires, evaluate (a) upgrading Supabase plan tier for the month, or (b) accelerating Cloudinary migration from FW-E18".
+| Product | Was | Now |
+|---|---|---|
+| `premium_monthly_999` | $9.99/mo flat Premium | webhook maps to tier `mvp` (grandfathered upward) |
+| `premium_annual_10788` | $107.88/yr flat Premium | webhook maps to tier `mvp` |
+| `wc_pass_2026` | $19.99 World Cup pass | not sold; sets `wc_pass_active_until` only. WC ended 2026-07-26 |
 
----
-
-## FW-107 — App Store + Play Store Submission
-
-1. **Production EAS build** triggered via `eas-cli build --platform android --profile production` (and iOS equivalent when iOS is in scope)
-2. **App Store screenshots** updated:
-   - Choose Plan screen
-   - Premium paywall
-   - WC Pass paywall
-   - WC Schedule with FINAL/LIVE labels
-3. **App Store metadata** updated:
-   - Description must disclose subscription pricing ($9.99/mo or $107.88/yr) and 7-day free trial
-   - Privacy policy link, Terms of Service link (Apple required)
-   - "Auto-renewable subscriptions" copy
-4. **Play Store metadata** updated similarly
-5. **App Review notes**:
-   - Explain subscription model
-   - Provide sandbox/license tester credentials for the reviewer to test
-   - Confirm "Restore Purchases" works on a fresh install with the same account
-6. **Hard deadline**: submit by **June 4, 2026** (5 days before WC kickoff on June 11) to absorb 3–5 day Apple review + 1–3 day Google review.
-7. Live in production by **June 6, 2026**.
+The v9 pivot made the app year-round multi-sport, so there is no WC Pass paywall
+left to reach. Existing holders keep their access via `has_wc_access`.
 
 ---
 
-## Verification once everything is connected
+## FW-105 — Supabase egress bandwidth alerts
 
-- [ ] Send a test event from RevenueCat → row appears in Supabase `purchase_events` table
-- [ ] Sandbox tester starts a trial in TestFlight → `users.subscription_status='trial'`, `premium_active_until` set ~7 days out
-- [ ] Sandbox tester advances clock 7 days → next renewal event fires → `users.subscription_status='active'`
-- [ ] Sandbox tester cancels in App Store settings → `entitlements.status='cancelled'` but `users.subscription_status` stays `'active'`
-- [ ] After expiration date passes → `users.subscription_status='expired'`, `premium_active_until` is null
-- [ ] Apple-side refund → `users.subscription_status='cancelled'`, columns cleared, access revoked within ~1 minute
+In the Supabase dashboard for **`fwlfiejvxmslkpoojggs`** (prod):
+
+1. Project Settings, Billing, Usage, Egress
+2. Alert at **70%** of monthly bandwidth — email on-call
+3. Alert at **90%** — email on-call + product owner
+4. Response documented in `docs/runbooks.md`: at 90%, either upgrade the plan tier
+   for the month or accelerate the CDN / Cloudinary migration.
+
+Clip storage is the dominant term. v9.4.4 cut capture bitrate and purged 156 MB of
+orphaned objects; `supabase/scripts/find_orphaned_clip_objects.sql` is the
+recurring check.
+
+---
+
+## FW-107 — Store submission
+
+1. Production build: `eas build --platform android --profile production` (and the
+   iOS equivalent). Preview and production both carry `autoIncrement: true` plus
+   `cli.appVersionSource: "remote"`, so builds replace installs instead of
+   silently keeping old code.
+2. **Screenshots** — Choose Plan, Home Team paywall, MVP paywall, a live Watch
+   Party, Discover. iOS screenshots must come from an iOS device or simulator.
+3. **Metadata must disclose the real terms**: $4.99/mo or $34.99/yr Home Team with
+   a 7-day free trial; $14.99/mo or $99.99/yr MVP with no trial; auto-renewable;
+   privacy policy and terms links. Advertising a price the store does not charge is
+   exactly the v9.4.5 defect, in metadata form.
+4. Do not submit while the paywall reads "Plans are temporarily unavailable" —
+   review will treat a non-functional purchase flow as a broken feature.
+
+---
+
+## Verification before flipping this live
+
+- [ ] All four products **Ready to Submit** / **Active** in ASC and Play
+- [ ] `home_team` and `mvp` entitlements attached per FW-89 step 2
+- [ ] `default` offering is **current** and lists four packages
+- [ ] Paywall on a real device shows live prices, not `Unavailable`
+- [ ] Displayed price equals charged price on a sandbox purchase of each of the four
+- [ ] Home Team to MVP upgrade lands `subscription_tier = 'mvp'` in prod `users`
+- [ ] Cancel, then `EXPIRATION`, drops the tier back to `free` and re-gates the UI
+- [ ] Restore purchases on a grandfathered `premium_*` account still grants `mvp`
