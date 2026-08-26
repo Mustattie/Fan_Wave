@@ -210,20 +210,44 @@ left to reach. Existing holders keep their access via `has_wc_access`.
 
 ---
 
-## Known gap — Android tier upgrade double-bills
+## Android subscription replacement
 
-`purchaseTier` calls `Purchases.purchasePackage(pkg)` with no
-`googleProductChangeInfo` / `oldProductIdentifier` (`lib/entitlements.ts:611`).
+**Fixed in v9.4.7.** Play has no subscription groups, so the four SKUs are four
+independent subscriptions: buying a second while the first is live leaves both
+active and bills both, with no error raised and no store warning. iOS is immune —
+all four sit in one subscription group with MVP ranked above Home Team, so the
+App Store performs the swap itself.
 
-On iOS that is fine: all four subscriptions sit in one subscription group with
-MVP ranked above Home Team, so the store treats Home Team → MVP as an upgrade
-with proration. **Play has no subscription groups.** Four separate subscription
-products mean a Home Team subscriber who taps MVP starts a *second* independent
-subscription and is charged for both, with no error surfaced anywhere.
+`purchaseTier` now declares what the purchase replaces:
 
-Fix is to pass the active purchase as the replacement target on Android before
-the upgrade CTA ships on that platform. Until then, treat Android tier upgrade as
-unsupported.
+```
+purchasePackage(pkg, null, { oldProductIdentifier, replacementMode })
+```
+
+The decision lives in `lib/androidReplacement.ts` (`chooseAndroidReplacement`),
+covered by `__tests__/androidReplacement.test.ts`:
+
+| Situation | Result |
+|---|---|
+| No active subscription | no replacement — declaring one makes Play reject the purchase |
+| Already on the target product | no replacement — Play rejects replacing a subscription with itself |
+| Home Team → MVP, or monthly → annual | upgrade → `WITH_TIME_PRORATION` (immediate, unused time credited) |
+| MVP → Home Team, or annual → monthly | downgrade → `DEFERRED` (takes effect at renewal, matching iOS) |
+| Grandfathered `premium_*` → `mvp_*` | downgrade/lateral — `premium_*` ranks as MVP, since that is what the webhook grandfathers it to |
+| Several active (an account that already hit the bug) | replaces the **most valuable** one; replacing the cheap one would leave the expensive one billing |
+
+Two notes for anyone touching this:
+
+- `purchasePackage`'s **second** parameter is the deprecated `UpgradeInfo`;
+  product change info is the **third**. Passing it second binds to the legacy
+  shape and the replacement is silently ignored.
+- `WITH_TIME_PRORATION`, not `CHARGE_PRORATED_PRICE` — Play only accepts the
+  latter for upgrades that keep the same billing period, so Home Team monthly →
+  MVP annual would fail.
+
+Still needs on-device UAT: it cannot be exercised in Expo Go, and a sandbox
+account must hold a live Home Team subscription before the MVP tap means
+anything.
 
 ---
 
@@ -268,5 +292,7 @@ recurring check.
 - [ ] Paywall on a real device shows live prices, not `Unavailable`
 - [ ] Displayed price equals charged price on a sandbox purchase of each of the four
 - [ ] Home Team to MVP upgrade lands `subscription_tier = 'mvp'` in prod `users`
+- [ ] **Android**: after that upgrade, Play shows exactly **one** active
+      subscription, not two (see [Android subscription replacement](#android-subscription-replacement))
 - [ ] Cancel, then `EXPIRATION`, drops the tier back to `free` and re-gates the UI
 - [ ] Restore purchases on a grandfathered `premium_*` account still grants `mvp`

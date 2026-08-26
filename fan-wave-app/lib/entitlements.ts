@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { supabase } from './supabase';
 import { reportError } from './errorReporting';
+import { chooseAndroidReplacement } from './androidReplacement';
 
 // ---------------------------------------------------------------------------
 // IAP diagnostic state — exposes runtime visibility into the RevenueCat
@@ -585,6 +586,47 @@ export async function getTierPrice(tier: PaidTier, plan: Plan): Promise<TierPric
   }
 }
 
+/**
+ * Google Play product-change info for a purchase, or null when the purchase is
+ * a plain new subscription (or we are not on Android).
+ *
+ * Play has no subscription groups: buying a second subscription while the
+ * first is live leaves both active and bills both, with no error raised. The
+ * App Store handles this itself via the shared subscription group, so this is
+ * Android-only by design, not by omission.
+ *
+ * Mode choice: WITH_TIME_PRORATION switches immediately and credits the unused
+ * time. CHARGE_PRORATED_PRICE would keep the billing date, but Play only
+ * accepts it for upgrades that keep the same billing period — Home Team
+ * monthly → MVP annual would fail. Downgrades defer to the renewal date, which
+ * is what the App Store does for a lower level in the same group, so a tier
+ * change behaves the same on both platforms.
+ */
+async function androidProductChange(
+  Purchases: any,
+  targetProductId: string,
+): Promise<{ oldProductIdentifier: string; replacementMode: string } | null> {
+  if (Platform.OS !== 'android') return null;
+  try {
+    const info = await Purchases.getCustomerInfo();
+    const choice = chooseAndroidReplacement(info?.activeSubscriptions ?? [], targetProductId);
+    if (!choice) return null;
+    const MODES = Purchases?.STORE_REPLACEMENT_MODE ?? {};
+    return {
+      oldProductIdentifier: choice.oldProductIdentifier,
+      replacementMode: choice.isUpgrade
+        ? MODES.WITH_TIME_PRORATION ?? 'WITH_TIME_PRORATION'
+        : MODES.DEFERRED ?? 'DEFERRED',
+    };
+  } catch (e) {
+    // Never block a purchase on this lookup. Falling back to null reverts to
+    // the pre-fix behaviour for one purchase, which is exactly why it is
+    // reported rather than swallowed.
+    reportError(e, { source: 'entitlements:androidProductChange', targetProductId });
+    return null;
+  }
+}
+
 // v9.3 primary purchase API. Tier + plan → purchase → success if RC
 // reports any of the tier's entitlement identifiers active.
 export async function purchaseTier(tier: PaidTier, plan: Plan): Promise<PurchaseResult> {
@@ -608,7 +650,11 @@ export async function purchaseTier(tier: PaidTier, plan: Plan): Promise<Purchase
         ),
       };
     }
-    const result = await Purchases.purchasePackage(pkg);
+    const replacement = await androidProductChange(Purchases, TIER_PRODUCT_IDS[tier][plan]);
+    // NB: purchasePackage's SECOND parameter is the deprecated UpgradeInfo.
+    // Product change info is the THIRD — passing it second silently binds to
+    // the legacy shape and the replacement is ignored.
+    const result = await Purchases.purchasePackage(pkg, null, replacement);
     const active = result?.customerInfo?.entitlements?.active ?? {};
     if (TIER_ENTITLEMENT_ID[tier].some((id) => active[id])) {
       return { kind: 'success' };
