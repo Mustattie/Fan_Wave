@@ -4,32 +4,49 @@
 > **RevenueCat dashboard**. Nothing on the tiered plans can be sold until every
 > step here is done.
 >
-> **Current as of v9.4.5 (2026-08-21).** This doc previously described the
-> pre-v9.3 flat `$9.99 Premium` model and pointed the webhook at the retired
+> **Current as of v9.4.6 (2026-08-26).** FW-89 is done — see
+> [Blocking state](#blocking-state--read-first). This doc previously described
+> the pre-v9.3 flat `$9.99 Premium` model and pointed the webhook at the retired
 > legacy Supabase project. Both were wrong; see [Legacy products](#legacy-products-do-not-sell).
 
 ---
 
 ## Blocking state — read first
 
-The v9.3 tiered SKUs **do not exist yet** in any of the three dashboards. Read
-through the public SDK keys in `eas.json`, the RevenueCat `default` offering
-currently contains only:
+**RevenueCat (FW-89) is configured** as of 2026-08-26, by
+`scripts/setup-revenuecat.mjs` run against project `proja57677fc`. The `default`
+offering — the only one the client reads — now serves exactly four packages, each
+carrying both platform rows:
 
 ```
-ios      $rc_monthly -> premium_monthly_999     $rc_annual -> premium_annual_10788
-android  $rc_monthly -> premium_monthly_999     $rc_annual -> premium_annual_10788
+home_team_monthly   ios home_team_monthly_499    android home_team_monthly_499:monthly
+home_team_annual    ios home_team_annual_3499    android home_team_annual_3499:annual
+mvp_monthly         ios mvp_monthly_1499         android mvp_monthly_1499:monthly
+mvp_annual          ios mvp_annual_9999          android mvp_annual_9999:annual
 ```
 
-Since v9.4.5 the client **fails closed** against that: a tier whose own SKU is
-absent resolves to "no package", the paywall renders `Unavailable`, the CTA is
-disabled, and no billing disclosure is shown. That is deliberate — before
-v9.4.5 the client fell back to the legacy `$rc_monthly` / `$rc_annual` packages,
-so a "Home Team $34.99/yr" tap actually bought `premium_annual_10788` and
-charged **$107.88**. Zero revenue beats mis-billing.
+Entitlement `home_team` holds all eight products (both tiers — MVP is additive);
+`mvp` holds the four `mvp_*` rows. The legacy `$rc_monthly` / `$rc_annual` /
+`wc_pass` packages were deleted from the offering; their products and the
+`premium` entitlement remain, so restore-purchases still grandfathers
+`premium_*` holders up to `mvp`.
 
-**Consequence:** until steps FW-88 / FW-89 below are complete, the app sells
-nothing. There is no client-side change that can safely unblock it.
+**Still blocking a sale**, and none of it is scriptable:
+
+1. **Store products must go live.** Play base plans save as **Draft** and must be
+   Activated; ASC subscriptions need US prices and at least Ready to Submit.
+   Until then the packages exist but carry no price.
+2. **Store credentials** for receipt validation (FW-89 step 4) — without them a
+   purchase validates nowhere and no entitlement is ever granted.
+3. **Webhook** (FW-89 step 5) — without it the store charges the card and
+   `users.subscription_tier` never leaves `free`.
+
+Until all three, the client **fails closed**: a tier whose own SKU resolves to no
+package renders `Unavailable` with a disabled CTA and no billing disclosure.
+That is deliberate — before v9.4.5 the client fell back to the legacy
+`$rc_monthly` / `$rc_annual` packages, so a "Home Team $34.99/yr" tap actually
+bought `premium_annual_10788` and charged **$107.88**. Zero revenue beats
+mis-billing.
 
 ---
 
@@ -93,16 +110,39 @@ grants (venues / partners). It has no store product and no paywall.
 1. **Sign in** to [Play Console](https://play.google.com/console) for `org.fansphere.app`.
 2. **Mirror all four subscriptions** with the same product IDs, prices, and the
    Home-Team-only 7-day trial.
-3. Play subscriptions carry **base plans**: the client tolerates the
-   `productId:basePlanId` shape Play sends (`home_team_monthly_499:monthly`) in
-   both `findPackageForTierPlan` and the webhook's `baseProductId` normalisation.
-   Name base plans `monthly` / `annual` for legibility, but nothing breaks if they
-   differ.
-4. **License testers** — Setup, License testing.
+3. Play subscriptions carry **base plans**, and the ID is **load-bearing**. Name
+   them exactly `monthly` and `annual`. RevenueCat addresses a Play product as
+   `{productId}:{basePlanId}`, so the base plan ID is embedded in the RC
+   `store_identifier` (`home_team_monthly_499:monthly`) and in `BASE_PLAN` in
+   `scripts/setup-revenuecat.mjs`. Rename a base plan and the RC row points at a
+   Play SKU that does not exist: the package comes back priceless,
+   `getTierPrice()` returns `{ available: false }`, and the paywall reads
+   `Unavailable` with nothing logged. The *client* tolerates the suffix fine —
+   `findPackageForTierPlan` and the webhook's `baseProductId` normalisation both
+   split on `:` — but only if the RC row resolves in the first place.
+4. **Grace period 7 days**, account hold left enabled, on all four base plans.
+   The webhook holds access on `BILLING_ISSUE` and only revokes on `EXPIRATION`
+   (`revenuecat-webhook/index.ts:107`), so the grace window is real recovery
+   time, not free access.
+5. **License testers** — Setup, License testing.
 
 ---
 
 ## FW-89 — RevenueCat dashboard configuration
+
+> **Steps 1–3 are done** — applied by `scripts/setup-revenuecat.mjs` on
+> 2026-08-26. Re-running it is safe and idempotent (GET-first, matched on
+> `lookup_key` / `store_identifier`); use a dry run to audit drift:
+>
+> ```bash
+> # from fan-wave-app/, with RC_SECRET_KEY + RC_PROJECT_ID in .env.revenuecat
+> node --env-file=.env.revenuecat scripts/setup-revenuecat.mjs          # dry run
+> node --env-file=.env.revenuecat scripts/setup-revenuecat.mjs --apply  # write
+> ```
+>
+> The key must be a **v2 secret key** (`sk_`) with `read_write` on
+> `project_configuration`. **Steps 4–6 remain manual** and are what still block a
+> sale.
 
 1. **Project** "Fan Sphere" at [app.revenuecat.com](https://app.revenuecat.com);
    apps for iOS bundle `org.fansphere.app` and Android package `org.fansphere.app`.
@@ -170,6 +210,23 @@ left to reach. Existing holders keep their access via `has_wc_access`.
 
 ---
 
+## Known gap — Android tier upgrade double-bills
+
+`purchaseTier` calls `Purchases.purchasePackage(pkg)` with no
+`googleProductChangeInfo` / `oldProductIdentifier` (`lib/entitlements.ts:611`).
+
+On iOS that is fine: all four subscriptions sit in one subscription group with
+MVP ranked above Home Team, so the store treats Home Team → MVP as an upgrade
+with proration. **Play has no subscription groups.** Four separate subscription
+products mean a Home Team subscriber who taps MVP starts a *second* independent
+subscription and is charged for both, with no error surfaced anywhere.
+
+Fix is to pass the active purchase as the replacement target on Android before
+the upgrade CTA ships on that platform. Until then, treat Android tier upgrade as
+unsupported.
+
+---
+
 ## FW-105 — Supabase egress bandwidth alerts
 
 In the Supabase dashboard for **`fwlfiejvxmslkpoojggs`** (prod):
@@ -206,8 +263,8 @@ recurring check.
 ## Verification before flipping this live
 
 - [ ] All four products **Ready to Submit** / **Active** in ASC and Play
-- [ ] `home_team` and `mvp` entitlements attached per FW-89 step 2
-- [ ] `default` offering is **current** and lists four packages
+- [x] `home_team` and `mvp` entitlements attached per FW-89 step 2 — 2026-08-26
+- [x] `default` offering is **current** and lists four packages — 2026-08-26
 - [ ] Paywall on a real device shows live prices, not `Unavailable`
 - [ ] Displayed price equals charged price on a sandbox purchase of each of the four
 - [ ] Home Team to MVP upgrade lands `subscription_tier = 'mvp'` in prod `users`
