@@ -4,7 +4,7 @@
 > **RevenueCat dashboard**. Nothing on the tiered plans can be sold until every
 > step here is done.
 >
-> **Current as of v9.4.6 (2026-08-26).** FW-89 is done — see
+> **Current as of v9.4.8 (2026-08-27).** FW-89 is done — see
 > [Blocking state](#blocking-state--read-first). This doc previously described
 > the pre-v9.3 flat `$9.99 Premium` model and pointed the webhook at the retired
 > legacy Supabase project. Both were wrong; see [Legacy products](#legacy-products-do-not-sell).
@@ -31,17 +31,35 @@ Entitlement `home_team` holds all eight products (both tiers — MVP is additive
 `premium` entitlement remain, so restore-purchases still grandfathers
 `premium_*` holders up to `mvp`.
 
+**Cleared since** (2026-08-27):
+
+- **Webhook** — "Fan Sphere Prod — Supabase" now points at prod
+  `fwlfiejvxmslkpoojggs`, all events, Production **and** Sandbox. Its test event
+  returned `200 {"ok":true,"ignored":"TEST"}` and landed a `purchase_events`
+  row. A second webhook aimed at the retired `azkmymxdjylmkytrvyfn` had been
+  live the whole time; it was deleted.
+- **Apple store credentials** — both RevenueCat slots filled. They take two
+  *different* keys; see [FW-89 step 4](#fw-89--revenuecat-dashboard-configuration).
+
 **Still blocking a sale**, and none of it is scriptable:
 
-1. **Store products must go live.** Play base plans save as **Draft** and must be
-   Activated; ASC subscriptions need US prices and at least Ready to Submit.
-   Until then the packages exist but carry no price.
-2. **Store credentials** for receipt validation (FW-89 step 4) — without them a
-   purchase validates nowhere and no entitlement is ever granted.
-3. **Webhook** (FW-89 step 5) — without it the store charges the card and
-   `users.subscription_tier` never leaves `free`.
+1. **iOS products are Missing Metadata.** Each of the four needs a Review
+   Information **screenshot**. Chicken-and-egg: no screenshot → not Ready to
+   Submit → StoreKit serves no price → the paywall reads `Unavailable`. Break it
+   with a provisional image — Apple does not validate the contents before
+   submission. `play-store-screenshots/paywall_apple_review.png` predates the
+   tiers and shows the old $9.99 sheet: good enough to unblock, must be replaced
+   with real tier screenshots before FW-107.
+2. **Play base plans save as Draft** and must be **Activated**; ASC subscriptions
+   need US prices and at least Ready to Submit. Until then the packages exist but
+   carry no price.
+3. **Google Play service account JSON** is still empty in RevenueCat, so Android
+   receipts validate nowhere and Google developer notifications stay blocked
+   behind it (FW-89 step 4).
+4. **Apple Server Notifications V2** URL is unset in ASC (production *and*
+   sandbox) — RevenueCat still reports "No notifications received".
 
-Until all three, the client **fails closed**: a tier whose own SKU resolves to no
+Until those, the client **fails closed**: a tier whose own SKU resolves to no
 package renders `Unavailable` with a disabled CTA and no billing disclosure.
 That is deliberate — before v9.4.5 the client fell back to the legacy
 `$rc_monthly` / `$rc_annual` packages, so a "Home Team $34.99/yr" tap actually
@@ -92,7 +110,11 @@ grants (venues / partners). It has no store product and no paywall.
      Home Team to MVP an immediate upgrade with proration.
 5. **Create the four auto-renewable subscriptions** exactly as named in the table
    above. Per product: reference name, duration, US price, display name,
-   description, review screenshot.
+   description, review screenshot. The **review screenshot is what holds a
+   product at Missing Metadata**, and Missing Metadata means StoreKit serves no
+   price at all — the paywall reads `Unavailable` on a real device even when
+   RevenueCat is configured correctly. Upload a provisional image to break that
+   loop; contents are not validated until submission.
 6. **Introductory offer — 7-day free trial on the two `home_team_*` products only.**
    MVP has `offersTrial: false` in `TIER_CONFIG`; adding a trial there would make
    the paywall copy ("Subscribe", no trial disclosure) wrong.
@@ -104,6 +126,12 @@ grants (venues / partners). It has no store product and no paywall.
    bypassed on both client and server, so it can never exercise a real purchase.
 9. **Attach the subscriptions to the build** in the version's In-App Purchases
    section before submitting, or review rejects the metadata.
+10. **App Store Server Notifications V2** — App Information, set the production
+    *and* sandbox URLs to the one RevenueCat shows under the iOS app's Apple
+    Server Notifications section. Still unset as of 2026-08-27; RevenueCat reads
+    "No notifications received". Without it RC learns of cancellations and
+    billing failures only on its own polling schedule, so `EXPIRATION` reaches
+    the webhook late and access is revoked late.
 
 ### Google Play Console
 
@@ -165,10 +193,27 @@ grants (venues / partners). It has no store product and no paywall.
    - **Do not** put a legacy `premium_*` product in the current offering. There is
      no longer a fallback that would resolve to it, so it cannot mis-bill any more;
      it would simply show up as a purchasable plan the app has no UI for.
-4. **Store credentials** for receipt validation:
-   - Apple: App Store Connect API key (issuer ID, key ID, `.p8`).
-   - Google: Play service account JSON.
-5. **Webhook** (Integrations, Webhooks):
+4. **Store credentials** for receipt validation. The iOS app needs **both**
+   Apple slots and they take **different** keys — an empty App Store Connect API
+   slot makes every product read "Could not check", including known-good legacy
+   ones, which reads like a product problem and is not one. Both filled
+   2026-08-27:
+   - **In-app purchase key** — `SubscriptionKey_A4TF99P3RW.p8`, Key ID
+     `A4TF99P3RW`.
+   - **App Store Connect API key** — `AuthKey_DP56C6TV9V.p8`, Key ID
+     `DP56C6TV9V`, Issuer ID `e60d3fc7-a3e5-4eb4-8fcf-1e2c155ff7a4`. The issuer
+     ID is team-wide, not per-key. RevenueCat wants the file under its downloaded
+     `AuthKey_XXXXXXXXXX.p8` name. **Do not revoke `DP56C6TV9V`** —
+     `eas.json:67` submits with it.
+   - **Google: Play service account JSON — still empty.** Create the key in GCP,
+     then grant it Play API access **including "Manage orders and
+     subscriptions"**. Without that grant Google auto-refunds any purchase the
+     app fails to acknowledge, three days after the charge.
+5. **Webhook** (Integrations, Webhooks) — **done and verified 2026-08-27**,
+   named "Fan Sphere Prod — Supabase", subscribed to all events, Production and
+   Sandbox both on. HMAC signing is enabled but the function does **not** verify
+   the signature; it gates on `Authorization: Bearer <REVENUECAT_WEBHOOK_SECRET>`
+   only, so that header is the whole authentication story.
    - URL: `https://fwlfiejvxmslkpoojggs.supabase.co/functions/v1/revenuecat-webhook`
      — the **production** project. Anything pointing at `azkmymxdjylmkytrvyfn` is
      the retired legacy project: purchases would validate, users would be charged,
@@ -178,8 +223,11 @@ grants (venues / partners). It has no store product and no paywall.
      upgrades/downgrades, and `EXPIRATION` / `REFUND` are what drop
      `subscription_tier` back to `free`.
 6. **Test event** — RevenueCat's "Send test event", then confirm a row in prod
-   `purchase_events` within seconds. Then verify the derived write: `users`
-   `subscription_status`, `subscription_tier`, `premium_active_until`.
+   `purchase_events` within seconds. Done 2026-08-27: `200
+   {"ok":true,"ignored":"TEST"}`, row present. That does **not** cover the
+   derived write to `users` (`subscription_status`, `subscription_tier`,
+   `premium_active_until`), because the function ignores `TEST` events by design.
+   Only a real sandbox purchase exercises it.
 
 ### Setting the webhook secret
 
@@ -188,7 +236,10 @@ grants (venues / partners). It has no store product and no paywall.
 supabase secrets set REVENUECAT_WEBHOOK_SECRET=<uuid> --project-ref fwlfiejvxmslkpoojggs
 ```
 
-Paste the identical value into RevenueCat's Webhook Auth Header. Check
+Paste the identical value into RevenueCat's Webhook Auth Header. Rotated
+2026-08-27; it lives in exactly **two** places — Supabase Edge Function Secrets
+and the RevenueCat webhook's Edit button. Change one without the other and every
+purchase 401s silently. Check
 `docs/env-swap-runbook.md` if you rotate it — the same secret-vs-dashboard drift
 that produced the "ESPN sync 401" class of bug applies here.
 
@@ -289,6 +340,13 @@ recurring check.
 - [ ] All four products **Ready to Submit** / **Active** in ASC and Play
 - [x] `home_team` and `mvp` entitlements attached per FW-89 step 2 — 2026-08-26
 - [x] `default` offering is **current** and lists four packages — 2026-08-26
+- [x] Webhook points at prod, all events, both environments; test event landed a
+      `purchase_events` row — 2026-08-27
+- [x] Apple in-app-purchase key **and** App Store Connect API key both in
+      RevenueCat — 2026-08-27
+- [ ] Google Play service account JSON in RevenueCat, with **Manage orders and
+      subscriptions** granted
+- [ ] App Store Server Notifications V2 URL set for production and sandbox
 - [ ] Paywall on a real device shows live prices, not `Unavailable`
 - [ ] Displayed price equals charged price on a sandbox purchase of each of the four
 - [ ] Home Team to MVP upgrade lands `subscription_tier = 'mvp'` in prod `users`
