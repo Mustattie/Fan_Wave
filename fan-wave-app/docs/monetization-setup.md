@@ -50,12 +50,24 @@ Entitlement `home_team` holds all eight products (both tiers — MVP is additive
    submission. `play-store-screenshots/paywall_apple_review.png` predates the
    tiers and shows the old $9.99 sheet: good enough to unblock, must be replaced
    with real tier screenshots before FW-107.
-2. **Play base plans save as Draft** and must be **Activated**; ASC subscriptions
-   need US prices and at least Ready to Submit. Until then the packages exist but
-   carry no price.
+2. **The Home Team free trial is not live on Play.** Audited 2026-08-27 with
+   `scripts/check-play-catalog.mjs`: all four base plans are **ACTIVE** at
+   exactly 4.99 / 34.99 / 14.99 / 99.99 USD — that half is done — but
+   `home_team_monthly_499:monthly` carries offer `freetrial7` in **DRAFT** and
+   `home_team_annual_3499:annual` has **no offer at all**, while the paywall
+   renders "Start your 7-day free trial. We'll charge $X after the trial ends"
+   for both (`offersTrial: true`, `PremiumPaywall.tsx:51`). A Draft offer is not
+   served, so Play charges on day zero against copy promising seven free days.
+   Same family as the v9.4.5 defect: the store does not do what the sheet says.
+   Fix in Play, not in code — activate `freetrial7`, add the matching offer to
+   the annual base plan.
 3. **Google Play service account JSON** is still empty in RevenueCat, so Android
    receipts validate nowhere and Google developer notifications stay blocked
-   behind it (FW-89 step 4).
+   behind it (FW-89 step 4). The key itself already exists —
+   `play-store-key.json`, the one `eas submit` uses — but its Play grants are
+   catalogue-only: `purchases.subscriptionsv2.get` and
+   `purchases.voidedpurchases.list` both return **401**, which is precisely
+   what receipt validation calls.
 4. **Apple Server Notifications V2** URL is unset in ASC (production *and*
    sandbox) — RevenueCat still reports "No notifications received".
 
@@ -126,12 +138,22 @@ grants (venues / partners). It has no store product and no paywall.
    bypassed on both client and server, so it can never exercise a real purchase.
 9. **Attach the subscriptions to the build** in the version's In-App Purchases
    section before submitting, or review rejects the metadata.
-10. **App Store Server Notifications V2** — App Information, set the production
-    *and* sandbox URLs to the one RevenueCat shows under the iOS app's Apple
-    Server Notifications section. Still unset as of 2026-08-27; RevenueCat reads
-    "No notifications received". Without it RC learns of cancellations and
-    billing failures only on its own polling schedule, so `EXPIRATION` reaches
-    the webhook late and access is revoked late.
+10. **App Store Server Notifications V2** — still unset as of 2026-08-27;
+    RevenueCat reads "No notifications received". Without it RC learns of
+    cancellations and billing failures only on its own polling schedule, so
+    `EXPIRATION` reaches the webhook late and access is revoked late.
+    - Easiest path: RevenueCat → Apps → the iOS app → **Apple Server to Server
+      notification settings** → **Apply in App Store Connect**. That fills
+      production *and* sandbox itself, using the App Store Connect API key added
+      on 2026-08-27 — which is the reason this button works now and did not
+      before.
+    - Manual equivalent: copy the URL from that same panel, then App Store
+      Connect → the app → **App Information → App Store Server Notifications**,
+      paste it into **both** the Production and Sandbox Server URL fields and
+      pick **Version 2**.
+    - Apple stores exactly **one** URL per environment. If anything else is
+      already listening there, point Apple at RevenueCat and use RC's
+      forwarding rather than trying to fan out from Apple.
 
 ### Google Play Console
 
@@ -205,10 +227,31 @@ grants (venues / partners). It has no store product and no paywall.
      ID is team-wide, not per-key. RevenueCat wants the file under its downloaded
      `AuthKey_XXXXXXXXXX.p8` name. **Do not revoke `DP56C6TV9V`** —
      `eas.json:67` submits with it.
-   - **Google: Play service account JSON — still empty.** Create the key in GCP,
-     then grant it Play API access **including "Manage orders and
-     subscriptions"**. Without that grant Google auto-refunds any purchase the
-     app fails to acknowledge, three days after the charge.
+   - **Google: Play service account JSON — still empty.** Do **not** create a
+     new service account: `fan-sphere-play-submitter@fan-sphere-prod.iam.gserviceaccount.com`
+     already exists, its key is at `fan-wave-app/play-store-key.json`
+     (gitignored, used by `eas submit`), and it authenticates fine. What it
+     lacks is permission — it can read the catalogue but not purchases. Three
+     steps:
+     1. **GCP project `fan-sphere-prod`** — enable **Google Play Android
+        Developer API** (already on, or the catalogue read would fail),
+        **Google Play Developer Reporting API**, and **Cloud Pub/Sub API**
+        (the last is what carries real-time developer notifications). Grant the
+        service account **Pub/Sub Editor** and **Monitoring Viewer**.
+     2. **Play Console → Users and permissions → the service-account email →
+        Account permissions.** Tick "View app information and download bulk
+        reports (read-only)", "View financial data, orders, and cancellation
+        survey responses", **"Manage orders and subscriptions"**, and "Manage
+        store presence". Missing the orders grant is not a soft failure: Google
+        auto-refunds any purchase the app never acknowledges, three days after
+        the charge.
+     3. **RevenueCat → Project Settings → Google Play App Settings → Service
+        account credentials** — upload `play-store-key.json` as-is.
+     Then re-run `node scripts/check-play-catalog.mjs`; the two permission
+     probes must stop returning 401. Google's grant propagation is slow —
+     RevenueCat's own docs allow **up to 36 hours**, with 503/521 from the
+     dashboard in the meantime — so a still-failing probe minutes later means
+     wait, not misconfigured.
 5. **Webhook** (Integrations, Webhooks) — **done and verified 2026-08-27**,
    named "Fan Sphere Prod — Supabase", subscribed to all events, Production and
    Sandbox both on. HMAC signing is enabled but the function does **not** verify
@@ -242,6 +285,26 @@ and the RevenueCat webhook's Edit button. Change one without the other and every
 purchase 401s silently. Check
 `docs/env-swap-runbook.md` if you rotate it — the same secret-vs-dashboard drift
 that produced the "ESPN sync 401" class of bug applies here.
+
+---
+
+## Auditing the Play catalogue
+
+```bash
+# from fan-wave-app/ — read-only, reads ./play-store-key.json
+node scripts/check-play-catalog.mjs
+```
+
+Exits non-zero with a list of problems. It checks the four base plans exist
+under the exact `monthly` / `annual` IDs RevenueCat addresses them by, that the
+US price matches what the paywall prints, that a tier promising a trial actually
+serves an **ACTIVE** offer, and that the service account can reach the two
+purchase endpoints RevenueCat validates receipts with.
+
+The offer check is the reason it exists. Play Console shows a base plan as a
+green **Active** while its free-trial offer sits in **Draft** one screen deeper,
+and a Draft offer is simply not served — the paywall keeps promising seven free
+days and Play charges immediately, with no error anywhere.
 
 ---
 
@@ -344,8 +407,12 @@ recurring check.
       `purchase_events` row — 2026-08-27
 - [x] Apple in-app-purchase key **and** App Store Connect API key both in
       RevenueCat — 2026-08-27
+- [x] Play base plans all **ACTIVE** at 4.99 / 34.99 / 14.99 / 99.99 USD, base
+      plan IDs `monthly` / `annual` as RevenueCat addresses them — 2026-08-27
+- [ ] Home Team trial offers **ACTIVE** on both base plans (monthly is DRAFT,
+      annual has none) — until then the paywall's trial promise is false on Android
 - [ ] Google Play service account JSON in RevenueCat, with **Manage orders and
-      subscriptions** granted
+      subscriptions** granted (`check-play-catalog.mjs` permission probes green)
 - [ ] App Store Server Notifications V2 URL set for production and sandbox
 - [ ] Paywall on a real device shows live prices, not `Unavailable`
 - [ ] Displayed price equals charged price on a sandbox purchase of each of the four
