@@ -40,8 +40,22 @@ Entitlement `home_team` holds all eight products (both tiers — MVP is additive
   live the whole time; it was deleted.
 - **Apple store credentials** — both RevenueCat slots filled. They take two
   *different* keys; see [FW-89 step 4](#fw-89--revenuecat-dashboard-configuration).
+- **The Home Team 7-day trial is live on Play.** `freetrial7` is ACTIVE on both
+  `home_team_monthly_499:monthly` and `home_team_annual_3499:annual` — one
+  P7D free phase across 173 regions, targeting `thisSubscription`, identical
+  on both plans. `check-play-catalog.mjs` reports 0 problems.
+- **Google Play service account credentials** — `play-store-key.json` uploaded
+  to RevenueCat, which reports **Valid credentials**. The grants were given at
+  **app** scope (Play Console → Users and permissions → the service account →
+  **App permissions** → Fan Sphere), not account scope: View app information,
+  View financial data, Manage orders and subscriptions, Manage store presence.
+  Both endpoints RevenueCat validates receipts through now answer
+  (`subscriptionsv2.get` 400 on a junk token, `voidedpurchases.list` 200).
 
 **Still blocking a sale**, and none of it is scriptable:
+
+0. *(Android is done — items 2 and 3 below cleared 2026-08-27; what remains is
+   iOS metadata and the two notification channels.)*
 
 1. **iOS products are Missing Metadata.** Each of the four needs a Review
    Information **screenshot**. Chicken-and-egg: no screenshot → not Ready to
@@ -50,25 +64,25 @@ Entitlement `home_team` holds all eight products (both tiers — MVP is additive
    submission. `play-store-screenshots/paywall_apple_review.png` predates the
    tiers and shows the old $9.99 sheet: good enough to unblock, must be replaced
    with real tier screenshots before FW-107.
-2. **The Home Team free trial is not live on Play.** Audited 2026-08-27 with
-   `scripts/check-play-catalog.mjs`: all four base plans are **ACTIVE** at
-   exactly 4.99 / 34.99 / 14.99 / 99.99 USD — that half is done — but
-   `home_team_monthly_499:monthly` carries offer `freetrial7` in **DRAFT** and
-   `home_team_annual_3499:annual` has **no offer at all**, while the paywall
-   renders "Start your 7-day free trial. We'll charge $X after the trial ends"
-   for both (`offersTrial: true`, `PremiumPaywall.tsx:51`). A Draft offer is not
-   served, so Play charges on day zero against copy promising seven free days.
-   Same family as the v9.4.5 defect: the store does not do what the sheet says.
-   Fix in Play, not in code — activate `freetrial7`, add the matching offer to
-   the annual base plan.
-3. **Google Play service account JSON** is still empty in RevenueCat, so Android
-   receipts validate nowhere and Google developer notifications stay blocked
-   behind it (FW-89 step 4). The key itself already exists —
-   `play-store-key.json`, the one `eas submit` uses — but its Play grants are
-   catalogue-only: `purchases.subscriptionsv2.get` and
-   `purchases.voidedpurchases.list` both return **401**, which is precisely
-   what receipt validation calls.
-4. **Apple Server Notifications V2** URL is unset in ASC (production *and*
+2. **Google Real-Time Developer Notifications are not connected.** RevenueCat's
+   Google developer notifications panel wants a Pub/Sub topic and its dropdown
+   is empty, because **two APIs are disabled** in GCP project `fan-sphere-prod`
+   (project number `1066537752604`) — probed 2026-08-27:
+
+   ```
+   Cloud Pub/Sub API             DISABLED
+   Play Developer Reporting API  DISABLED
+   Google Play Android Developer API   enabled
+   ```
+
+   That is also what the first "Google … must be enabled" error on saving the
+   credentials was about. Enable both, create a topic (e.g. `play-rtdn`), give
+   `google-play-developer-notifications@system.gserviceaccount.com` the
+   **Pub/Sub Publisher** role on it — that is the account Google itself
+   publishes as — then pick the topic in RevenueCat and **Connect to Google**.
+   Without RTDN, RevenueCat learns about Android cancellations and billing
+   failures on its polling schedule instead of immediately.
+3. **Apple Server Notifications V2** URL is unset in ASC (production *and*
    sandbox) — RevenueCat still reports "No notifications received".
 
 Until those, the client **fails closed**: a tier whose own SKU resolves to no
@@ -170,7 +184,9 @@ grants (venues / partners). It has no store product and no paywall.
    `Unavailable` with nothing logged. The *client* tolerates the suffix fine —
    `findPackageForTierPlan` and the webhook's `baseProductId` normalisation both
    split on `:` — but only if the RC row resolves in the first place.
-4. **Grace period 7 days**, account hold left enabled, on all four base plans.
+4. **Grace period**, account hold left enabled. As configured: **7 days** on
+   both monthly base plans, **14 days** on both annual ones (Google's own
+   recommendation for yearly). Longer grace is strictly more recovery time.
    The webhook holds access on `BILLING_ISSUE` and only revokes on `EXPIRATION`
    (`revenuecat-webhook/index.ts:107`), so the grace window is real recovery
    time, not free access.
@@ -409,10 +425,12 @@ recurring check.
       RevenueCat — 2026-08-27
 - [x] Play base plans all **ACTIVE** at 4.99 / 34.99 / 14.99 / 99.99 USD, base
       plan IDs `monthly` / `annual` as RevenueCat addresses them — 2026-08-27
-- [ ] Home Team trial offers **ACTIVE** on both base plans (monthly is DRAFT,
-      annual has none) — until then the paywall's trial promise is false on Android
-- [ ] Google Play service account JSON in RevenueCat, with **Manage orders and
-      subscriptions** granted (`check-play-catalog.mjs` permission probes green)
+- [x] Home Team trial offers **ACTIVE** on both base plans, one P7D free phase
+      across 173 regions, identical shape on monthly and annual — 2026-08-27
+- [x] Google Play service account JSON in RevenueCat, reporting **Valid
+      credentials**; `check-play-catalog.mjs` reports 0 problems — 2026-08-27
+- [ ] Cloud Pub/Sub + Play Developer Reporting APIs enabled in `fan-sphere-prod`
+      and the RTDN topic connected in RevenueCat
 - [ ] App Store Server Notifications V2 URL set for production and sandbox
 - [ ] Paywall on a real device shows live prices, not `Unavailable`
 - [ ] Displayed price equals charged price on a sandbox purchase of each of the four
