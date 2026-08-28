@@ -51,11 +51,15 @@ Entitlement `home_team` holds all eight products (both tiers — MVP is additive
   View financial data, Manage orders and subscriptions, Manage store presence.
   Both endpoints RevenueCat validates receipts through now answer
   (`subscriptionsv2.get` 400 on a junk token, `voidedpurchases.list` 200).
+- **Android real-time developer notifications are live** (2026-08-28). Topic
+  `projects/fan-sphere-prod/topics/play-rtdn`; RevenueCat created its own puller
+  `RevenueCat-Subscriber-app52bb277597` on it. A Play Console test notification
+  went end to end — see [Verifying RTDN](#verifying-rtdn-without-trusting-a-dashboard).
 
 **Still blocking a sale**, and none of it is scriptable:
 
-0. *(Android is done — items 2 and 3 below cleared 2026-08-27; what remains is
-   iOS metadata and the two notification channels.)*
+0. *(**Android is done end to end** as of 2026-08-28 — catalogue, trial,
+   receipt validation and notifications. Everything below is iOS.)*
 
 1. **iOS products are Missing Metadata.** Each of the four needs a Review
    Information **screenshot**. Chicken-and-egg: no screenshot → not Ready to
@@ -64,26 +68,8 @@ Entitlement `home_team` holds all eight products (both tiers — MVP is additive
    submission. `play-store-screenshots/paywall_apple_review.png` predates the
    tiers and shows the old $9.99 sheet: good enough to unblock, must be replaced
    with real tier screenshots before FW-107.
-2. **Google Real-Time Developer Notifications are not connected.** RevenueCat's
-   Google developer notifications panel wants a Pub/Sub topic and its dropdown
-   is empty, because **two APIs are disabled** in GCP project `fan-sphere-prod`
-   (project number `1066537752604`) — probed 2026-08-27:
-
-   ```
-   Cloud Pub/Sub API             DISABLED
-   Play Developer Reporting API  DISABLED
-   Google Play Android Developer API   enabled
-   ```
-
-   That is also what the first "Google … must be enabled" error on saving the
-   credentials was about. Enable both, create a topic (e.g. `play-rtdn`), give
-   `google-play-developer-notifications@system.gserviceaccount.com` the
-   **Pub/Sub Publisher** role on it — that is the account Google itself
-   publishes as — then pick the topic in RevenueCat and **Connect to Google**.
-   Without RTDN, RevenueCat learns about Android cancellations and billing
-   failures on its polling schedule instead of immediately.
-3. **Apple Server Notifications V2** URL is unset in ASC (production *and*
-   sandbox) — RevenueCat still reports "No notifications received".
+2. **Apple Server Notifications V2** URL is unset in ASC (production *and*
+   sandbox) — RevenueCat still reports "No notifications received" for iOS.
 
 Until those, the client **fails closed**: a tier whose own SKU resolves to no
 package renders `Unavailable` with a disabled CTA and no billing disclosure.
@@ -304,6 +290,58 @@ that produced the "ESPN sync 401" class of bug applies here.
 
 ---
 
+## Android RTDN setup
+
+Done 2026-08-28. Recorded because roughly none of it is guessable and every
+step failed in a way that looked like a different step's fault.
+
+1. **GCP project `fan-sphere-prod`** (number `1066537752604`) — enable **Cloud
+   Pub/Sub API** and **Play Developer Reporting API**. Both were off, which is
+   what the "Google … must be enabled" error on first saving the RevenueCat
+   credentials actually meant.
+2. **Create the topic** — `play-rtdn`, defaults fine. Full name
+   `projects/fan-sphere-prod/topics/play-rtdn`.
+3. **Two grants, at two different scopes**, and mixing them up produces the
+   same opaque 403 either way:
+   - On the **topic**: `google-play-developer-notifications@system.gserviceaccount.com`
+     as **Pub/Sub Publisher**. That is Google's own identity — it is what
+     publishes the notifications.
+   - On the **project** (IAM page, not the topic):
+     `fan-sphere-play-submitter@…` as **Pub/Sub Editor** + **Monitoring Viewer**,
+     so RevenueCat can enumerate topics and create its subscription.
+   - **Do not pick "Pub/Sub Lite Editor".** It sorts next to the right one in
+     the role picker, is a different and deprecated product, grants nothing on
+     regular Pub/Sub, and cost an hour here. The symptom is
+     `IAM_PERMISSION_DENIED` on `pubsub.topics.list` while the IAM page shows a
+     Pub/Sub-looking role sitting right there.
+4. **RevenueCat → Apps → Fan Sphere Android → Google developer notifications** —
+   pick the topic, **Connect to Google**. If the dropdown is empty, RevenueCat
+   cached its topic list from before the Editor grant existed: re-validate with
+   the refresh control beside "Valid credentials" and reload.
+5. **Play Console → Monetize → Monetization setup → Real-time developer
+   notifications** — tick Enable, paste the full topic name, content type
+   **Subscriptions and voided purchases only** (the one-time product
+   `wc_pass_2026` is retired, and that option covers voided one-time purchases
+   anyway), **Save**, then **Send test notification**. Save before testing: the
+   test publishes to the saved value.
+
+### Verifying RTDN without trusting a dashboard
+
+RevenueCat showing "Last received" is a claim. Cloud Monitoring is evidence, and
+the Monitoring Viewer grant from step 3 is what makes it readable:
+
+```
+pubsub.googleapis.com/topic/send_message_operation_count   topic_id=play-rtdn
+pubsub.googleapis.com/subscription/sent_message_count      subscription_id=RevenueCat-Subscriber-app52bb277597
+pubsub.googleapis.com/subscription/num_undelivered_messages
+```
+
+The 2026-08-28 test read 1 published, 1 delivered, 0 undelivered — published but
+not delivered would be RevenueCat's end; nothing published at all would be the
+Play Console test or the publisher grant. Metrics lag one to three minutes.
+
+---
+
 ## Auditing the Play catalogue
 
 ```bash
@@ -429,8 +467,9 @@ recurring check.
       across 173 regions, identical shape on monthly and annual — 2026-08-27
 - [x] Google Play service account JSON in RevenueCat, reporting **Valid
       credentials**; `check-play-catalog.mjs` reports 0 problems — 2026-08-27
-- [ ] Cloud Pub/Sub + Play Developer Reporting APIs enabled in `fan-sphere-prod`
-      and the RTDN topic connected in RevenueCat
+- [x] Cloud Pub/Sub + Play Developer Reporting APIs enabled in `fan-sphere-prod`,
+      RTDN topic connected, Play test notification observed published **and**
+      delivered in Cloud Monitoring — 2026-08-28
 - [ ] App Store Server Notifications V2 URL set for production and sandbox
 - [ ] Paywall on a real device shows live prices, not `Unavailable`
 - [ ] Displayed price equals charged price on a sandbox purchase of each of the four
