@@ -30,6 +30,7 @@ import {
   AddressSuggestion,
 } from '@/lib/venueSearchApi';
 import { cityFromAddress } from '@/lib/addressCity';
+import { PaywallGate } from '@/components/paywall/PaywallGate';
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mapGameToDisplay, type GameDisplay } from '@/lib/mappers';
@@ -1348,18 +1349,29 @@ export default function CreateWatchPartyScreen() {
             <Text style={styles.visibilityDesc}>Visible to all fans</Text>
           </View>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.visibilityOption, visibility === 'private' && styles.visibilityOptionActive]}
-          onPress={() => setVisibility('private')}
-        >
-          <Lock size={20} color={visibility === 'private' ? '#fff' : C.textSecondary} />
-          <View style={styles.visibilityTextWrap}>
-            <Text style={[styles.visibilityLabel, visibility === 'private' && styles.visibilityLabelActive]}>
-              Private
-            </Text>
-            <Text style={styles.visibilityDesc}>Invite only</Text>
-          </View>
-        </TouchableOpacity>
+        {/* v9.5: Private parties are the Home Team benefit — the guest list
+            is the thing a private host actually wants (who is coming, who is
+            a maybe, who dropped), and migration 089 returns the full roster
+            only for private parties. Creating a PUBLIC party stays open to
+            everyone: mig 070's rule was that the paywall must not block
+            creating a watch party, and it still doesn't. Only this one
+            toggle is gated, and it opens the sheet rather than dead-ending.
+            Server-side, watch_parties_insert enforces the same condition, so
+            a client that skips this still cannot write a private row. */}
+        <PaywallGate require="home_team">
+          <TouchableOpacity
+            style={[styles.visibilityOption, visibility === 'private' && styles.visibilityOptionActive]}
+            onPress={() => setVisibility('private')}
+          >
+            <Lock size={20} color={visibility === 'private' ? '#fff' : C.textSecondary} />
+            <View style={styles.visibilityTextWrap}>
+              <Text style={[styles.visibilityLabel, visibility === 'private' && styles.visibilityLabelActive]}>
+                Private
+              </Text>
+              <Text style={styles.visibilityDesc}>Invite only · see who's coming</Text>
+            </View>
+          </TouchableOpacity>
+        </PaywallGate>
       </View>
 
       {/* Invite Friends (shown when private) */}

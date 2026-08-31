@@ -422,6 +422,10 @@ export interface ClipDisplay {
   id: string;
   title: string;
   poster: string;
+  /** v9.5: poster's subscription tier, hydrated from get_public_profiles
+   *  (mig 089). Drives TierBadge on the card. Undefined until that batch
+   *  call lands, and TierBadge renders nothing for undefined/'free'. */
+  posterTier?: string;
   group: string;
   time: string;
   sport: string;

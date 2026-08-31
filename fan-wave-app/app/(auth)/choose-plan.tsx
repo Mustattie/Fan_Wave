@@ -16,11 +16,9 @@ const STORE_NAME = Platform.OS === 'ios' ? 'App Store' : 'Google Play';
 // so the pre-sheet preview matches what the purchase sheet displays.
 const PERKS = [
   'Unlimited clip posting',
-  'Unlimited fan groups',
-  'Public + private watch parties',
-  'Home Team badge on your profile',
-  'Priority search visibility',
-  'Ad-free experience',
+  'Private, invite-only watch parties',
+  "See who's coming, who's a maybe, who's out",
+  'Home Team badge fans can see',
 ];
 
 export default function ChoosePlanScreen() {

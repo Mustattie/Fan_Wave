@@ -288,6 +288,14 @@ export default function DiscoverScreen() {
           .select('*')
           .eq('visibility', 'public')
           .neq('group_type', 'worldcup')
+          // v9.5: "Featured placement in Discover" is the MVP benefit, and
+          // this is where it lands. owner_is_featured is a denormalised
+          // boolean on the room maintained by trigger (mig 089) — the client
+          // cannot read anyone's tier directly (users RLS is own-profile-only),
+          // and it should not need to. Ordering by it first keeps member_count
+          // as the tiebreaker, so a featured room with 2 members still ranks
+          // above an unfeatured one with 200. That is what "featured" means.
+          .order('owner_is_featured', { ascending: false })
           .order('member_count', { ascending: false })
           .limit(30);
 

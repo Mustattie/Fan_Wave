@@ -49,13 +49,16 @@ const TIER_CONFIG: Record<Tier, TierConfig> = {
     ctaSuccess: '✓ Welcome to Home Team',
     disclosurePrefix: 'Start your 7-day free trial.',
     offersTrial: true,
+    // v9.5: every bullet here is enforced somewhere real. The previous
+    // list sold four things the app did not do — unlimited fan groups and
+    // public+private parties are free for everyone (mig 070), priority
+    // search was never built, and there are no ads to remove. See
+    // docs/tier-promises-audit.md.
     features: [
       'Unlimited clip posting',
-      'Unlimited fan groups',
-      'Public + private watch parties',
-      'Home Team badge on your profile',
-      'Priority search visibility',
-      'Ad-free experience',
+      'Private, invite-only watch parties',
+      "See who's coming, who's a maybe, who's out",
+      'Home Team badge fans can see',
     ],
     prices: {
       monthly: { display: '$4.99/mo', period: 'month' },
@@ -69,12 +72,13 @@ const TIER_CONFIG: Record<Tier, TierConfig> = {
     ctaSuccess: '✓ Welcome, MVP',
     disclosurePrefix: '',
     offersTrial: false,
+    // 'Brand collaboration inbox' dropped in v9.5 — no table, no screen,
+    // no route. It is a real feature worth building; it is not one we have.
     features: [
       'Everything in Home Team',
       'Advanced audience analytics',
       'Verified creator badge',
       'Featured placement in Discover',
-      'Brand collaboration inbox',
     ],
     prices: {
       monthly: { display: '$14.99/mo', period: 'month' },

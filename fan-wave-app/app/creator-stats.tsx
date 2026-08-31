@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Eye, Heart, Share2, Users } from 'lucide-react-native';
+import { ArrowLeft, Eye, Heart, Share2, TrendingUp, Users } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
+import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
+import { useHasTierOrHigher } from '@/lib/entitlements';
 import { supabase } from '@/lib/supabase';
 
 type TimePeriod = '7d' | '30d' | 'all';
@@ -34,14 +36,22 @@ interface ClipStat {
 
 export default function CreatorStatsScreen() {
   const router = useRouter();
+  const isMvp = useHasTierOrHigher('mvp');
+  const [showPaywall, setShowPaywall] = useState(false);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<TimePeriod>('30d');
   const [stats, setStats] = useState({ views: 0, likes: 0, shares: 0, followers: 0 });
   const [topClips, setTopClips] = useState<ClipStat[]>([]);
 
   useEffect(() => {
+    // No point paying for the RPC when the gate below will render the
+    // upsell instead of any of these numbers.
+    if (!isMvp) {
+      setLoading(false);
+      return;
+    }
     loadStats();
-  }, [period]);
+  }, [period, isMvp]);
 
   const loadStats = async () => {
     setLoading(true);
@@ -113,6 +123,51 @@ export default function CreatorStatsScreen() {
     { key: '30d', label: '30 Days' },
     { key: 'all', label: 'All Time' },
   ];
+
+  // v9.5: "Advanced audience analytics" is the MVP tier's headline benefit,
+  // and until now this screen was reachable by everyone from Profile — the
+  // benefit was sold and never gated (docs/tier-promises-audit.md). Gating
+  // happens HERE rather than on the Profile row so every entry point is
+  // covered, deep links included.
+  //
+  // This is a view gate on the user's own data, not a creation gate: mig 070
+  // stays intact, and nothing here blocks posting a clip. Enforcement is
+  // client-side for the same reason the clip quota is (mig 083) — bypassing
+  // it reveals only your own numbers to yourself.
+  if (!isMvp) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <ArrowLeft size={24} color={Colors.dark.text} />
+          </TouchableOpacity>
+          <Text style={styles.title}>My Stats</Text>
+          <View style={{ width: 32 }} />
+        </View>
+
+        <View style={styles.upsell}>
+          <TrendingUp size={40} color={Colors.dark.accent} />
+          <Text style={styles.upsellTitle}>Audience analytics is an MVP feature</Text>
+          <Text style={styles.upsellBody}>
+            See which clips are landing, where your views come from, and how your
+            following is growing over time.
+          </Text>
+          <TouchableOpacity
+            style={styles.upsellCta}
+            onPress={() => setShowPaywall(true)}
+          >
+            <Text style={styles.upsellCtaText}>See MVP</Text>
+          </TouchableOpacity>
+        </View>
+
+        <PremiumPaywall
+          visible={showPaywall}
+          tier="mvp"
+          onClose={() => setShowPaywall(false)}
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -238,4 +293,19 @@ const styles = StyleSheet.create({
   clipInfo: { flex: 1 },
   clipTitle: { fontSize: 14, fontWeight: '600', color: Colors.dark.text },
   clipMeta: { fontSize: 12, color: Colors.dark.textSecondary, marginTop: 2 },
+
+  upsell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 12 },
+  upsellTitle: {
+    fontSize: 20, fontWeight: '700', color: Colors.dark.text,
+    textAlign: 'center', marginTop: 4,
+  },
+  upsellBody: {
+    fontSize: 14, color: Colors.dark.textSecondary,
+    textAlign: 'center', lineHeight: 20,
+  },
+  upsellCta: {
+    marginTop: 12, backgroundColor: Colors.dark.accent,
+    paddingHorizontal: 32, paddingVertical: 14, borderRadius: 12,
+  },
+  upsellCtaText: { fontSize: 16, fontWeight: '700', color: '#fff' },
 });
