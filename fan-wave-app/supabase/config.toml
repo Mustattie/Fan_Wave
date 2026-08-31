@@ -345,6 +345,17 @@ verify_jwt = false
 [functions.sync-game-schedules]
 verify_jwt = false
 
+# trigger-notifications is the same story, found 2026-08-31. Its cron entry
+# had never fired at all (migration 088 — it built the URL from GUCs that do
+# not exist on hosted Supabase), and once that was fixed the call 401'd at the
+# gateway with UNAUTHORIZED_INVALID_JWT_FORMAT: the vault secret is not in JWT
+# form, so platform validation rejects it before the function body runs. The
+# function already authenticates for itself — it compares the Authorization
+# bearer against SUPABASE_SERVICE_ROLE_KEY (index.ts:44-51) — so gateway
+# validation adds nothing here except a failure mode.
+[functions.trigger-notifications]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
