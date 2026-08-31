@@ -96,8 +96,42 @@ interface SportsDataProvider {
 // ---------------------------------------------------------------------------
 // ESPN Adapter
 // ---------------------------------------------------------------------------
+// ESPN's edge (Akamai) allowlists User-Agent strings. Deno's default
+// `Deno/x.y.z` is NOT on the list: site.api.espn.com answers it with a hard
+// 403 "Access Denied" while serving the identical request from curl or
+// okhttp. Verified 2026-08-31 from one machine, changing nothing but this
+// header:
+//
+//     curl/8.16.0            200
+//     python-requests/2.31.0 200
+//     okhttp/4.12.0          200
+//     Deno/1.45.5            403
+//     Deno/2.0               403
+//     FanSphere/1.0 (...)    403   <- a custom string is not a way out
+//     Mozilla/5.0 (...)      403   <- nor is claiming to be a browser
+//
+// So we send okhttp's. It is on the allowlist, it is honest about being a
+// mobile HTTP client, and unlike a browser string it does not pretend to be
+// something whose TLS fingerprint we do not have.
+//
+// This is a rented fix. ESPN can change the allowlist whenever it likes,
+// which is exactly why the failure path below is now loud.
+const ESPN_HEADERS = { "User-Agent": "okhttp/4.12.0" };
+
 class ESPNAdapter implements SportsDataProvider {
   private baseUrl = "https://site.api.espn.com/apis/site/v2/sports";
+
+  // Fetch-level failures (403, 5xx, network throws) that would otherwise be
+  // invisible: they are not upsert errors, and a sport whose every request
+  // failed simply returns zero games, which used to be indistinguishable
+  // from "no games scheduled". Drained by the handler after each sport.
+  private fetchFailures: string[] = [];
+
+  takeFetchFailures(): string[] {
+    const out = this.fetchFailures;
+    this.fetchFailures = [];
+    return out;
+  }
 
   private parseEvents(events: any[], sport: string): ParsedGame[] {
     const results: ParsedGame[] = [];
@@ -245,9 +279,10 @@ class ESPNAdapter implements SportsDataProvider {
       const yyyymmdd = cursor.toISOString().slice(0, 10).replace(/-/g, "");
       const url = `${this.baseUrl}/${mapping.sport}/${mapping.league}/scoreboard?dates=${yyyymmdd}`;
       try {
-        const res = await fetch(url);
+        const res = await fetch(url, { headers: ESPN_HEADERS });
         if (!res.ok) {
           console.warn(`ESPN fetch failed for ${sport} @ ${yyyymmdd}: ${res.status}`);
+          this.fetchFailures.push(`fetch ${yyyymmdd}: HTTP ${res.status}`);
         } else {
           const data = await res.json();
           for (const game of this.parseEvents(data.events ?? [], sport)) {
@@ -256,6 +291,9 @@ class ESPNAdapter implements SportsDataProvider {
         }
       } catch (e) {
         console.warn(`ESPN fetch threw for ${sport} @ ${yyyymmdd}:`, e);
+        this.fetchFailures.push(
+          `fetch ${yyyymmdd}: ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
@@ -269,9 +307,10 @@ class ESPNAdapter implements SportsDataProvider {
 
     const url = `${this.baseUrl}/${mapping.sport}/${mapping.league}/scoreboard`;
 
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: ESPN_HEADERS });
     if (!res.ok) {
       console.warn(`ESPN live fetch failed for ${sport}: ${res.status}`);
+      this.fetchFailures.push(`live fetch: HTTP ${res.status}`);
       return [];
     }
 
@@ -347,6 +386,10 @@ Deno.serve(async (req: Request) => {
     for (const sport of sports) {
       const games = await provider.getUpcomingGames(sport, daysParam);
       const result = { upserted: 0, unmatched_teams: [] as string[], errors: [] as string[] };
+      // Drain before the early return: a sport that fetched nothing BECAUSE
+      // every request 403'd is the case worth reporting, and it is the one
+      // that used to exit here silently.
+      result.errors.push(...provider.takeFetchFailures());
       if (games.length === 0) {
         syncResults[sport] = result;
         continue;
@@ -532,14 +575,28 @@ Deno.serve(async (req: Request) => {
       totalSynced += result.upserted;
     }
 
+    // On 2026-08-27 ESPN began 403ing this function and nobody noticed for
+    // four days: pg_cron logged "succeeded", pg_net logged HTTP 200, the body
+    // said success:true, and the only symptom was "No games on deck today" in
+    // an app whose games table had simply stopped advancing. A sync that
+    // reached nothing must not report success.
+    const sportsWithFetchErrors = Object.values(syncResults)
+      .filter((r) => r.errors.some((e) => e.startsWith("fetch ") || e.startsWith("live fetch")))
+      .length;
+    const totalFetchFailure = sportsWithFetchErrors === sports.length && totalSynced === 0;
+
     return new Response(
       JSON.stringify({
-        success: true,
+        success: !totalFetchFailure,
         totalSynced,
+        sportsWithFetchErrors,
+        ...(totalFetchFailure
+          ? { error: "every ESPN request failed — upstream block or outage, not an empty schedule" }
+          : {}),
         breakdown: syncResults,
       }),
       {
-        status: 200,
+        status: totalFetchFailure ? 502 : 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       },
     );
