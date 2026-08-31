@@ -348,6 +348,51 @@ Play Console test or the publisher grant. Metrics lag one to three minutes.
 
 ---
 
+## The iOS catalogue, and what "Missing Metadata" actually meant
+
+All four products reached **READY_TO_SUBMIT** on 2026-08-31. The review
+screenshot was one of *four* missing things, and the technique that found the
+rest is worth more than the list: **diff a stuck product against a working
+one.** `premium_monthly_999` was READY_TO_SUBMIT the whole time, so every
+difference between it and `home_team_monthly_499` was a candidate.
+
+1. **Review screenshot** — uploaded via
+   `POST /v1/subscriptionAppStoreReviewScreenshots` → PUT each uploadOperation
+   → PATCH `uploaded:true` with the file's md5 as `sourceFileChecksum`.
+2. **`reviewNote` was null.** Apple wants notes *and* a screenshot. The notes
+   now describe what each tier unlocks and the exact path to each paywall.
+3. **The subscription group had no localization.** The new "Fan Sphere" group
+   (22335867) had zero `subscriptionGroupLocalizations`. A group with no
+   display name holds *every product inside it* at Missing Metadata — the
+   products themselves look complete while the container is not.
+4. **The annual products had no `subscriptionAvailability` at all** — HTTP
+   **404**, not an empty list. This is why the monthlies cleared first and the
+   annuals did not. Created against the same 175 territories.
+
+### Introductory offers are per-territory
+
+The 7-day Home Team trial exists on iOS as of 2026-08-31: **175 offers per
+product**, one per available territory, because that is how Apple models them —
+`premium_monthly_999` carries 175 rows too, not one global offer. Creating a
+single USA offer leaves the trial undefined everywhere else, which reads as
+"trial configured" in a spot check and charges day zero for most of the world.
+
+```
+POST /v1/subscriptionIntroductoryOffers
+  attributes:    { duration: ONE_WEEK, offerMode: FREE_TRIAL, numberOfPeriods: 1 }
+  relationships: { subscription, territory }
+```
+
+`mvp_*` deliberately has **zero** offers: `offersTrial: false` for that tier, and
+an offer there would make the paywall's "Subscribe" copy false in the other
+direction.
+
+**ASC JWTs expire at 20 minutes, maximum.** A token minted with `exp: now+1800`
+is rejected with a 401 that reads like a bad key — the error says "properly
+configured and signed", not "expired too far out". Use 900–1140 seconds.
+
+---
+
 ## Verifying ASSN with Apple's own test notification
 
 App Store Connect has no "send test" button, so the usual way to discover a
@@ -516,6 +561,8 @@ recurring check.
 - [ ] Production ASSN re-tested after the app's first App Store release
       (production endpoint 401s for never-released apps)
 - [ ] Paywall on a real device shows live prices, not `Unavailable`
+- [x] iOS 7-day trial configured on both `home_team_*` products across all 175
+      territories; `mvp_*` correctly has none — 2026-08-31
 - [ ] Displayed price equals charged price on a sandbox purchase of each of the four
 - [ ] Home Team to MVP upgrade lands `subscription_tier = 'mvp'` in prod `users`
 - [ ] **Android**: after that upgrade, Play shows exactly **one** active
