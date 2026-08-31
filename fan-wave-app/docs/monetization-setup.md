@@ -51,6 +51,12 @@ Entitlement `home_team` holds all eight products (both tiers — MVP is additive
   View financial data, Manage orders and subscriptions, Manage store presence.
   Both endpoints RevenueCat validates receipts through now answer
   (`subscriptionsv2.get` 400 on a junk token, `voidedpurchases.list` 200).
+- **Apple Server Notifications V2 are live for sandbox** (2026-08-30). Both ASC
+  URL fields carry the RevenueCat endpoint; Apple's own test notification
+  reported `sendAttemptResult=SUCCESS`, `notificationType=TEST`,
+  `environment=Sandbox`. Sandbox is the environment UAT purchases run in, so
+  this is the half that matters before a build. Production could not be tested —
+  see [Verifying ASSN](#verifying-assn-with-apples-own-test-notification).
 - **Android real-time developer notifications are live** (2026-08-28). Topic
   `projects/fan-sphere-prod/topics/play-rtdn`; RevenueCat created its own puller
   `RevenueCat-Subscriber-app52bb277597` on it. A Play Console test notification
@@ -68,8 +74,8 @@ Entitlement `home_team` holds all eight products (both tiers — MVP is additive
    submission. `play-store-screenshots/paywall_apple_review.png` predates the
    tiers and shows the old $9.99 sheet: good enough to unblock, must be replaced
    with real tier screenshots before FW-107.
-2. **Apple Server Notifications V2** URL is unset in ASC (production *and*
-   sandbox) — RevenueCat still reports "No notifications received" for iOS.
+2. *(Apple Server Notifications V2 — **done 2026-08-30**, sandbox verified by
+   Apple; see [Verifying ASSN](#verifying-assn-with-apples-own-test-notification).)*
 
 Until those, the client **fails closed**: a tier whose own SKU resolves to no
 package renders `Unavailable` with a disabled CTA and no billing disclosure.
@@ -138,10 +144,10 @@ grants (venues / partners). It has no store product and no paywall.
    bypassed on both client and server, so it can never exercise a real purchase.
 9. **Attach the subscriptions to the build** in the version's In-App Purchases
    section before submitting, or review rejects the metadata.
-10. **App Store Server Notifications V2** — still unset as of 2026-08-27;
-    RevenueCat reads "No notifications received". Without it RC learns of
-    cancellations and billing failures only on its own polling schedule, so
-    `EXPIRATION` reaches the webhook late and access is revoked late.
+10. **App Store Server Notifications V2** — done 2026-08-30. Without it RC
+    learns of cancellations and billing failures only on its own polling
+    schedule, so `EXPIRATION` reaches the webhook late and access is revoked
+    late.
     - Easiest path: RevenueCat → Apps → the iOS app → **Apple Server to Server
       notification settings** → **Apply in App Store Connect**. That fills
       production *and* sandbox itself, using the App Store Connect API key added
@@ -342,6 +348,41 @@ Play Console test or the publisher grant. Metrics lag one to three minutes.
 
 ---
 
+## Verifying ASSN with Apple's own test notification
+
+App Store Connect has no "send test" button, so the usual way to discover a
+broken notification URL is a sandbox purchase that never lands. The App Store
+Server API will do it on demand instead:
+
+```
+POST /inApps/v1/notifications/test           -> { testNotificationToken }
+GET  /inApps/v1/notifications/test/{token}   -> Apple's delivery result
+```
+
+`scripts/` has no wrapper for this yet; the working script lived in the
+scratchpad for the 2026-08-30 check. What matters is the auth, which is easy to
+get wrong: it needs the **In-App Purchase key** (`SubscriptionKey_A4TF99P3RW.p8`,
+key ID `A4TF99P3RW`) — *not* the App Store Connect API key `AuthKey_DP56C6TV9V.p8`
+that `eas submit` uses. ES256, `aud: appstoreconnect-v1`, `bid: org.fansphere.app`,
+issuer `e60d3fc7-a3e5-4eb4-8fcf-1e2c155ff7a4`, and the signature must be raw
+`r||s` (`dsaEncoding: 'ieee-p1363'`), not DER.
+
+Hosts: `api.storekit-sandbox.itunes.apple.com` and `api.storekit.itunes.apple.com`.
+
+Reading the results:
+
+- `404 errorCode 4040007` — **no URL configured for that environment**. This is
+  an app-level answer, not an auth failure, and it is how the missing *sandbox*
+  URL was caught on 2026-08-30 after RevenueCat's "Apply in App Store Connect"
+  appeared to have filled both. Do not trust the dashboard here; ask Apple.
+- `sendAttemptResult=SUCCESS` — Apple delivered and the endpoint accepted it.
+- `401` on **production only**, while sandbox authenticates with the same JWT —
+  most likely because the app has never been released to the App Store (only
+  TestFlight; build 11 was rejected). Re-test after the first release. It does
+  not block UAT: sandbox is where test purchases live.
+
+---
+
 ## Auditing the Play catalogue
 
 ```bash
@@ -470,7 +511,10 @@ recurring check.
 - [x] Cloud Pub/Sub + Play Developer Reporting APIs enabled in `fan-sphere-prod`,
       RTDN topic connected, Play test notification observed published **and**
       delivered in Cloud Monitoring — 2026-08-28
-- [ ] App Store Server Notifications V2 URL set for production and sandbox
+- [x] App Store Server Notifications V2 URL set for production and sandbox;
+      Apple's test notification returned SUCCESS for sandbox — 2026-08-30
+- [ ] Production ASSN re-tested after the app's first App Store release
+      (production endpoint 401s for never-released apps)
 - [ ] Paywall on a real device shows live prices, not `Unavailable`
 - [ ] Displayed price equals charged price on a sandbox purchase of each of the four
 - [ ] Home Team to MVP upgrade lands `subscription_tier = 'mvp'` in prod `users`
