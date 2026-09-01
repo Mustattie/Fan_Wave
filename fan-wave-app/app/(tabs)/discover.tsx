@@ -288,6 +288,14 @@ export default function DiscoverScreen() {
           .select('*')
           .eq('visibility', 'public')
           .neq('group_type', 'worldcup')
+          // v9.5.3: game_chat rooms are auto-created by get_or_create_game_chat
+          // the first time anyone opens live chat on a game, and they are
+          // public, so they were listing here as fan groups -- "Detroit Tigers
+          // vs Kansas City Royals" sitting alongside "Mckinney Football Fanz".
+          // 15 of prod's 57 rooms were these. They also grow with usage, so
+          // the pollution gets worse the more the app is used. Migration 085
+          // fixed the same confusion in the affinity RPC; the list was missed.
+          .neq('group_type', 'game_chat')
           // v9.5: "Featured placement in Discover" is the MVP benefit, and
           // this is where it lands. owner_is_featured is a denormalised
           // boolean on the room maintained by trigger (mig 089) — the client
