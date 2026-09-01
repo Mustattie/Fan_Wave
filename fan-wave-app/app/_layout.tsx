@@ -316,7 +316,27 @@ export default function RootLayout() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        setSession(session);
+        // v9.5.5: do NOT mirror a null session unless the user actually
+        // signed out.
+        //
+        // This is the "posting a clip logs me out and straight back in" bug.
+        // NavigationGuard redirects to /(auth)/sign-in whenever `session` is
+        // null, so any momentary null here becomes a visible logout followed
+        // by a visible login when the real session arrives a beat later.
+        //
+        // Events legitimately arrive with a null session that do NOT mean the
+        // user is signed out -- INITIAL_SESSION before AsyncStorage has been
+        // read, and a TOKEN_REFRESHED that lost its race. Both get much more
+        // likely while the JS thread is busy, which is precisely what
+        // uploading a video does.
+        //
+        // SIGNED_OUT is the only event that means signed out, so it is the
+        // only one allowed to clear the session.
+        if (event === 'SIGNED_OUT') {
+          setSession(null);
+        } else if (session) {
+          setSession(session);
+        }
         if (event === 'SIGNED_IN' && session) {
           setUserContext({ id: session.user.id, email: session.user.email });
           registerForPushNotifications();
