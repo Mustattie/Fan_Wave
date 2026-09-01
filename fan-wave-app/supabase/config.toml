@@ -356,6 +356,13 @@ verify_jwt = false
 [functions.trigger-notifications]
 verify_jwt = false
 
+# process-notification-queue is the second half of the notification chain and
+# is invoked by pg_cron the same way (migration 091). Same reasoning as above:
+# the vault secret is not JWT-shaped, so platform validation would reject it
+# before the function body, and the function does its own bearer check.
+[functions.process-notification-queue]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
