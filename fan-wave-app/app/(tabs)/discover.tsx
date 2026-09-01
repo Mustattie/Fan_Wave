@@ -564,7 +564,7 @@ export default function DiscoverScreen() {
       if (selectedSport && selectedSport !== 'all') {
         const sportNameMap: Record<string, string> = {
           nfl: 'NFL', nba: 'NBA', mlb: 'MLB', mls: 'MLS', nhl: 'NHL',
-          soccer: 'Soccer', cfb: 'College Football', cbb: 'College Basketball', ufc: 'UFC',
+          soccer: 'Soccer', cfb: 'College Football', cbb: 'College Basketball',
         };
         const sportName = sportNameMap[selectedSport];
         if (sportName) {

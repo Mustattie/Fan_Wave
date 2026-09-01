@@ -32,7 +32,7 @@ interface Team {
 // Sport name → sport key mapping for filtering
 const SPORT_NAME_TO_KEY: Record<string, string> = {
   'NFL': 'nfl', 'NBA': 'nba', 'MLB': 'mlb', 'Soccer': 'soccer', 'MLS': 'mls',
-  'NHL': 'nhl', 'College Football': 'cfb', 'College Basketball': 'cbb', 'UFC': 'ufc',
+  'NHL': 'nhl', 'College Football': 'cfb', 'College Basketball': 'cbb',
 };
 
 export default function OnboardingTeamsScreen() {
