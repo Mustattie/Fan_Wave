@@ -25,9 +25,23 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader || authHeader !== `Bearer ${serviceKey}`) {
+    // ---- Auth: accept either CRON_SHARED_SECRET or the auto-injected
+    // SUPABASE_SERVICE_ROLE_KEY, matching sync-game-schedules and
+    // trigger-notifications.
+    //
+    // Checking only the service role key is what kept trigger-notifications
+    // 401ing after its cron was repaired (migration 088): the vault secret
+    // `fan_wave_service_role_key` actually holds the CRON shared secret. This
+    // function is about to be scheduled for the first time, so it would have
+    // hit the identical wall — and, having never run, would have looked like
+    // "the queue is empty" rather than "the worker is rejected".
+    const cronSecret = Deno.env.get("CRON_SHARED_SECRET") ?? "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const authHeader = req.headers.get("authorization") ?? "";
+    const authorised =
+      (cronSecret.length > 0 && authHeader === `Bearer ${cronSecret}`) ||
+      (serviceKey.length > 0 && authHeader === `Bearer ${serviceKey}`);
+    if (!authorised) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

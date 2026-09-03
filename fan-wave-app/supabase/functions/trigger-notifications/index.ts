@@ -40,10 +40,23 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // Auth check
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader || authHeader !== `Bearer ${serviceKey}`) {
+    // ---- Auth: accept either CRON_SHARED_SECRET or the auto-injected
+    // SUPABASE_SERVICE_ROLE_KEY, matching sync-game-schedules.
+    //
+    // Checking only the service role key is why this function still 401'd
+    // after migration 088 repointed its cron entry at a vault-backed
+    // invoker: the vault secret `fan_wave_service_role_key` holds the CRON
+    // shared secret, not the service role key. sync-game-schedules accepts
+    // both, which is the only reason the identical bearer worked there and
+    // failed here — and it hid the mismatch for as long as this function
+    // was never successfully called at all.
+    const cronSecret = Deno.env.get("CRON_SHARED_SECRET") ?? "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const authHeader = req.headers.get("authorization") ?? "";
+    const authorised =
+      (cronSecret.length > 0 && authHeader === `Bearer ${cronSecret}`) ||
+      (serviceKey.length > 0 && authHeader === `Bearer ${serviceKey}`);
+    if (!authorised) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

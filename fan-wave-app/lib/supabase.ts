@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Alert, Platform } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import { reportError } from '@/lib/errorReporting';
 
@@ -50,6 +50,37 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+// v9.5.5: bridge AppState into the auth auto-refresh timer.
+//
+// This is a documented requirement for supabase-js on React Native and it was
+// never wired up. autoRefreshToken schedules a JS timer, and Android suspends
+// JS timers while the app is backgrounded -- so the refresh that should have
+// happened at minute 55 simply does not, and the access token can be expired
+// by the time the user comes back.
+//
+// Posting a clip is exactly the flow that backgrounds the app: the camera or
+// the media picker is a separate activity, and a user can easily spend minutes
+// there. On return, the first authed call races a refresh against an already
+// expired token.
+//
+// startAutoRefresh() on foreground makes the client refresh immediately on
+// resume instead of waiting for a timer that never fired; stopAutoRefresh()
+// on background stops it burning cycles and attempting refreshes that cannot
+// complete.
+if (Platform.OS !== 'web') {
+  AppState.addEventListener('change', (state) => {
+    if (state === 'active') {
+      supabase.auth.startAutoRefresh();
+    } else {
+      supabase.auth.stopAutoRefresh();
+    }
+  });
+  // The listener only fires on CHANGES, so prime it for the current state.
+  if (AppState.currentState === 'active') {
+    supabase.auth.startAutoRefresh();
+  }
+}
 
 /**
  * Handle deep link auth callbacks (email confirmation, password reset).

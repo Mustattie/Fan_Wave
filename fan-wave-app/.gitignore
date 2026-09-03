@@ -49,3 +49,9 @@ qa/maestro/output/
 # Play Store service account key (used by eas submit). Sensitive credentials —
 # never commit.
 play-store-key.json
+
+# iOS signing material — private key, cert, profile. Never commit.
+credentials/
+
+# Holds the .p12 password in clear text.
+credentials.json

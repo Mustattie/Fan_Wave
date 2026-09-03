@@ -288,6 +288,22 @@ export default function DiscoverScreen() {
           .select('*')
           .eq('visibility', 'public')
           .neq('group_type', 'worldcup')
+          // v9.5.3: game_chat rooms are auto-created by get_or_create_game_chat
+          // the first time anyone opens live chat on a game, and they are
+          // public, so they were listing here as fan groups -- "Detroit Tigers
+          // vs Kansas City Royals" sitting alongside "Mckinney Football Fanz".
+          // 15 of prod's 57 rooms were these. They also grow with usage, so
+          // the pollution gets worse the more the app is used. Migration 085
+          // fixed the same confusion in the affinity RPC; the list was missed.
+          .neq('group_type', 'game_chat')
+          // v9.5: "Featured placement in Discover" is the MVP benefit, and
+          // this is where it lands. owner_is_featured is a denormalised
+          // boolean on the room maintained by trigger (mig 089) — the client
+          // cannot read anyone's tier directly (users RLS is own-profile-only),
+          // and it should not need to. Ordering by it first keeps member_count
+          // as the tiebreaker, so a featured room with 2 members still ranks
+          // above an unfeatured one with 200. That is what "featured" means.
+          .order('owner_is_featured', { ascending: false })
           .order('member_count', { ascending: false })
           .limit(30);
 
@@ -556,7 +572,7 @@ export default function DiscoverScreen() {
       if (selectedSport && selectedSport !== 'all') {
         const sportNameMap: Record<string, string> = {
           nfl: 'NFL', nba: 'NBA', mlb: 'MLB', mls: 'MLS', nhl: 'NHL',
-          soccer: 'Soccer', cfb: 'College Football', cbb: 'College Basketball', ufc: 'UFC',
+          soccer: 'Soccer', cfb: 'College Football', cbb: 'College Basketball',
         };
         const sportName = sportNameMap[selectedSport];
         if (sportName) {

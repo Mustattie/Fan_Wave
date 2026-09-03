@@ -26,6 +26,7 @@ import {
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { TierBadge } from '@/components/TierBadge';
 import { subscribeToRsvpCounts } from '@/lib/realtime';
 import { getSportEmoji, getSportColor, formatFullDate } from '@/lib/mappers';
 import { reportError } from '@/lib/errorReporting';
@@ -41,6 +42,10 @@ interface Attendee {
   initial: string;
   avatarBg: string;
   status: 'going' | 'interested' | 'cant_go';
+  /** v9.5: hydrated from get_public_profiles so paid tiers carry their
+   *  badge into the guest list. Undefined renders nothing. */
+  tier?: string;
+  userId?: string;
 }
 
 // v9.4.0 UAT Round 3 (#6, #9): totals used to render the "N going · N
@@ -262,13 +267,41 @@ export default function WatchPartyDetailScreen() {
         setAttendees([]);
         setAttendeeTotals({ going: 0, maybe: 0, cantGo: 0 });
       } else {
-        setAttendees(data.map((r: any, i: number) => ({
+        const mappedAttendees: Attendee[] = data.map((r: any, i: number) => ({
           id: r.id,
           name: r.display_name,
           initial: r.display_name.charAt(0).toUpperCase(),
           avatarBg: AVATAR_COLORS[i % AVATAR_COLORS.length],
           status: r.status as 'going' | 'interested' | 'cant_go',
-        })));
+          userId: r.user_id,
+        }));
+
+        // v9.5: badges in the guest list. The attendees RPC returns only
+        // what a viewer may see, so tiers come from the same batch accessor
+        // the clips feed uses (mig 089). Silent-fail leaves the list
+        // unbadged rather than missing.
+        try {
+          const ids = Array.from(
+            new Set(mappedAttendees.map((a) => a.userId).filter(Boolean)),
+          );
+          if (ids.length > 0) {
+            const { data: profiles } = await supabase.rpc('get_public_profiles', {
+              p_user_ids: ids,
+            });
+            const tierById = new Map<string, string>(
+              (profiles ?? [])
+                .filter((r: any) => r.subscription_tier)
+                .map((r: any) => [r.user_id as string, r.subscription_tier as string]),
+            );
+            for (const a of mappedAttendees) {
+              if (a.userId && tierById.has(a.userId)) a.tier = tierById.get(a.userId);
+            }
+          }
+        } catch {
+          // the badge is decoration; the guest list is the feature
+        }
+
+        setAttendees(mappedAttendees);
         setAttendeeTotals({
           going: data[0].total_going ?? 0,
           maybe: data[0].total_maybe ?? 0,
@@ -713,6 +746,7 @@ export default function WatchPartyDetailScreen() {
                         <Text style={styles.avatarText}>{attendee.initial}</Text>
                       </View>
                       <Text style={styles.attendeeName}>{attendee.name}</Text>
+                      <TierBadge tier={attendee.tier} compact />
                     </View>
                   ))}
                 </View>
@@ -727,6 +761,7 @@ export default function WatchPartyDetailScreen() {
                     <Text style={styles.avatarText}>{attendee.initial}</Text>
                   </View>
                   <Text style={styles.attendeeName}>{attendee.name}</Text>
+                  <TierBadge tier={attendee.tier} compact />
                   <View style={[styles.statusBadge, { backgroundColor: Colors.dark.accent + '22' }]}>
                     <Text style={[styles.statusBadgeText, { color: Colors.dark.accent }]}>
                       Going

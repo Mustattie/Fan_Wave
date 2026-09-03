@@ -13,8 +13,15 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://azkmymxdjylmkytrvyfn.supabase.co';
-const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF6a215bXhkanlsbWt5dHJ2eWZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzNDYwMTAsImV4cCI6MjA5MDkyMjAxMH0.9PwIvZFTVPkU97kdRBxhTEIij3HfGyJrZ7GQ1b5K5gc';
+// Defaults point at PRODUCTION (`fwlfiejvxmslkpoojggs`), matching the preview and
+// production env blocks in eas.json. They used to point at the legacy dev project
+// `azkmymxdjylmkytrvyfn`, which has been retired since 2026-06-09 — every check
+// below would have been passing or failing against a database no build talks to.
+// Override via env to aim at a branch DB.
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL
+  || 'https://fwlfiejvxmslkpoojggs.supabase.co';
+const ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
+  || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3bGZpZWp2eG1zbGtwb29qZ2dzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5OTgzNDAsImV4cCI6MjA5NjU3NDM0MH0.v4QaXnDnE0pJYcpSZXQPFlkNroEeAfhSbqozuLXbr_M';
 const FAKE_UID = '00000000-0000-0000-0000-000000000000';
 
 const supabase = createClient(SUPABASE_URL, ANON_KEY);
@@ -25,6 +32,10 @@ const log = (ok, name, detail) => {
 };
 
 async function main() {
+  // Say out loud which DB these results describe. A green run against the wrong
+  // project is worse than a red one.
+  console.log(`target: ${SUPABASE_URL}\n`);
+
   // ─── 1. has_premium_access / has_wc_access — fake uid returns false ──
   {
     const { data, error } = await supabase.rpc('has_premium_access', { uid: FAKE_UID });
@@ -70,6 +81,12 @@ async function main() {
       .select('subscription_status, premium_active_until, wc_pass_active_until')
       .limit(1);
     log(!error, 'users.subscription_status + premium_active_until + wc_pass_active_until columns exist', error?.message);
+  }
+
+  // ─── 4b. v9.3 tier column exists (migration 082) ─────────────────────
+  {
+    const { error } = await supabase.from('users').select('subscription_tier').limit(1);
+    log(!error, 'users.subscription_tier column exists (mig 082)', error?.message);
   }
 
   // ─── 5. games.sport_id exists (migration 031) ────────────────────────

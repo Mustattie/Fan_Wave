@@ -12,7 +12,13 @@ export const SPORTS = [
   { id: 'cfb', name: 'College FB', icon: '🏈', color: '#8b4513' },
   { id: 'cbb', name: 'College BB', icon: '🏀', color: '#800080' },
   { id: 'mls', name: 'MLS', icon: '⚽', color: '#006400' },
-  { id: 'ufc', name: 'UFC/Boxing', icon: '🥊', color: '#b22222' },
+  // v9.5.3: UFC/Boxing removed. It was offered as a filter but the sync's
+  // SPORT_LEAGUE_MAP has no UFC entry, so no game could ever be written with
+  // sport_id='ufc' -- the pill was structurally guaranteed to render an empty
+  // state. Nothing referenced it in prod (0 groups, 0 parties, 0 games, 0
+  // teams), so this removes an advertised sport we do not carry rather than
+  // taking anything away. Re-add alongside a SPORT_LEAGUE_MAP entry, not
+  // before.
 ] as const;
 
 export const SPORT_BY_ID = Object.fromEntries(SPORTS.map(s => [s.id, s]));

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Modal,
   View,
@@ -20,7 +20,7 @@ const STORE_NAME = Platform.OS === 'ios' ? 'App Store' : 'Google Play';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, X } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { purchaseTier, restorePurchases } from '@/lib/entitlements';
+import { purchaseTier, restorePurchases, getTierPrice } from '@/lib/entitlements';
 import { reportError } from '@/lib/errorReporting';
 
 type Plan = 'monthly' | 'annual';
@@ -49,13 +49,16 @@ const TIER_CONFIG: Record<Tier, TierConfig> = {
     ctaSuccess: '✓ Welcome to Home Team',
     disclosurePrefix: 'Start your 7-day free trial.',
     offersTrial: true,
+    // v9.5: every bullet here is enforced somewhere real. The previous
+    // list sold four things the app did not do — unlimited fan groups and
+    // public+private parties are free for everyone (mig 070), priority
+    // search was never built, and there are no ads to remove. See
+    // docs/tier-promises-audit.md.
     features: [
       'Unlimited clip posting',
-      'Unlimited fan groups',
-      'Public + private watch parties',
-      'Home Team badge on your profile',
-      'Priority search visibility',
-      'Ad-free experience',
+      'Private, invite-only watch parties',
+      "See who's coming, who's a maybe, who's out",
+      'Home Team badge fans can see',
     ],
     prices: {
       monthly: { display: '$4.99/mo', period: 'month' },
@@ -69,12 +72,13 @@ const TIER_CONFIG: Record<Tier, TierConfig> = {
     ctaSuccess: '✓ Welcome, MVP',
     disclosurePrefix: '',
     offersTrial: false,
+    // 'Brand collaboration inbox' dropped in v9.5 — no table, no screen,
+    // no route. It is a real feature worth building; it is not one we have.
     features: [
       'Everything in Home Team',
       'Advanced audience analytics',
       'Verified creator badge',
       'Featured placement in Discover',
-      'Brand collaboration inbox',
     ],
     prices: {
       monthly: { display: '$14.99/mo', period: 'month' },
@@ -103,7 +107,45 @@ export function PremiumPaywall({
   const [state, setState] = useState<State>('idle');
 
   const config = TIER_CONFIG[tier];
-  const priceDisplay = config.prices[plan].display;
+
+  // v9.4.5: prices come from the RevenueCat package we are actually going to
+  // charge, not from TIER_CONFIG. The hardcoded strings below are now only a
+  // pre-load skeleton -- they are never shown as a purchasable price.
+  //
+  // This sheet used to render '$4.99/mo' while the purchase resolved to the
+  // legacy $9.99 SKU (see the note in entitlements.findPackageForTierPlan).
+  // Displayed price and charged price are now the same fact read once.
+  const [livePrices, setLivePrices] = useState<Record<Plan, string | null>>({
+    monthly: null,
+    annual: null,
+  });
+  const [pricesLoaded, setPricesLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    setPricesLoaded(false);
+    (async () => {
+      const [m, a] = await Promise.all([
+        getTierPrice(tier, 'monthly'),
+        getTierPrice(tier, 'annual'),
+      ]);
+      if (cancelled) return;
+      setLivePrices({
+        monthly: m.available ? m.priceString : null,
+        annual: a.available ? a.priceString : null,
+      });
+      setPricesLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, tier]);
+
+  // A plan with no package is not purchasable. Fail closed: no price, no CTA.
+  const planAvailable = livePrices[plan] !== null;
+  const anyPlanAvailable = livePrices.monthly !== null || livePrices.annual !== null;
+  const priceDisplay = livePrices[plan] ?? config.prices[plan].display;
 
   const handlePurchase = async () => {
     setState('purchasing');
@@ -183,14 +225,19 @@ export function PremiumPaywall({
                     onPress={() => setPlan(p)}
                     activeOpacity={0.7}
                   >
-                    {('savingsBadge' in price) && (price as any).savingsBadge && (
+                    {('savingsBadge' in price) && (price as any).savingsBadge &&
+                      livePrices.monthly !== null && livePrices.annual !== null && (
                       <View style={styles.savingsBadge}>
                         <Text style={styles.savingsText}>{(price as any).savingsBadge}</Text>
                       </View>
                     )}
                     <Text style={styles.planLabel}>{p === 'monthly' ? 'Monthly' : 'Annual'}</Text>
-                    <Text style={[styles.planPrice, active && styles.planPriceActive]}>{price.display}</Text>
-                    <Text style={styles.planPeriod}>per {price.period}</Text>
+                    <Text style={[styles.planPrice, active && styles.planPriceActive]}>
+                      {!pricesLoaded ? '—' : (livePrices[p] ?? 'Unavailable')}
+                    </Text>
+                    <Text style={styles.planPeriod}>
+                      {livePrices[p] ? `per ${price.period}` : ''}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
@@ -205,11 +252,21 @@ export function PremiumPaywall({
               ))}
             </View>
 
-            <Text style={styles.disclosureCopy}>
+            {planAvailable ? (
+              <Text style={styles.disclosureCopy}>
               {config.offersTrial
                 ? `${config.disclosurePrefix} We'll charge ${priceDisplay} after the trial ends. Subscriptions auto-renew unless cancelled. Manage or cancel anytime in your ${STORE_NAME} account settings.`
                 : `You'll be charged ${priceDisplay}. Subscriptions auto-renew unless cancelled. Manage or cancel anytime in your ${STORE_NAME} account settings.`}
             </Text>
+            ) : (
+              // v9.4.5: no package => no price => no billing claim.
+              // Stating "you'll be charged $4.99" when we cannot
+              // charge $4.99 is the exact defect this release fixes.
+              <Text style={styles.disclosureCopy}>
+                Plans are temporarily unavailable. Nothing will be charged.
+                Please try again shortly.
+              </Text>
+            )}
 
             <View style={styles.linkRow}>
               <TouchableOpacity
@@ -231,15 +288,26 @@ export function PremiumPaywall({
           </ScrollView>
 
           <TouchableOpacity
-            style={[styles.ctaBtn, state !== 'idle' && styles.ctaBtnDisabled]}
+            style={[
+              styles.ctaBtn,
+              (state !== 'idle' || !planAvailable) && styles.ctaBtnDisabled,
+            ]}
             onPress={handlePurchase}
-            disabled={state !== 'idle'}
+            // Fail closed: without a package for this tier+plan, purchaseTier
+            // would error anyway -- better to never arm the button.
+            disabled={state !== 'idle' || !planAvailable}
             activeOpacity={0.8}
           >
             {state === 'purchasing' ? (
               <ActivityIndicator color="#fff" />
             ) : state === 'success' ? (
               <Text style={styles.ctaText}>{config.ctaSuccess}</Text>
+            ) : !pricesLoaded ? (
+              <Text style={styles.ctaText}>Loading plans…</Text>
+            ) : !planAvailable ? (
+              <Text style={styles.ctaText}>
+                {anyPlanAvailable ? 'Plan unavailable' : 'Plans unavailable'}
+              </Text>
             ) : (
               <Text style={styles.ctaText}>{config.ctaIdle}</Text>
             )}

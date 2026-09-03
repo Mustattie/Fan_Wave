@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Check } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
+import { getTierPrice } from '@/lib/entitlements';
 
 type Plan = 'monthly' | 'annual';
 
@@ -15,16 +16,41 @@ const STORE_NAME = Platform.OS === 'ios' ? 'App Store' : 'Google Play';
 // so the pre-sheet preview matches what the purchase sheet displays.
 const PERKS = [
   'Unlimited clip posting',
-  'Unlimited fan groups',
-  'Public + private watch parties',
-  'Home Team badge on your profile',
-  'Priority search visibility',
-  'Ad-free experience',
+  'Private, invite-only watch parties',
+  "See who's coming, who's a maybe, who's out",
+  'Home Team badge fans can see',
 ];
 
 export default function ChoosePlanScreen() {
   const router = useRouter();
   const [pendingPlan, setPendingPlan] = useState<Plan | null>(null);
+
+  // v9.4.5: these cards used to hardcode $34.99 / $4.99. They are the first
+  // price a user ever sees, and they were stating a number the store would
+  // not necessarily charge -- the same defect fixed in PremiumPaywall. Read
+  // the live package price instead, and say nothing when there is no package.
+  const [prices, setPrices] = useState<Record<Plan, string | null>>({
+    monthly: null,
+    annual: null,
+  });
+  const [pricesLoaded, setPricesLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [m, a] = await Promise.all([
+        getTierPrice('home_team', 'monthly'),
+        getTierPrice('home_team', 'annual'),
+      ]);
+      if (cancelled) return;
+      setPrices({
+        monthly: m.available ? m.priceString : null,
+        annual: a.available ? a.priceString : null,
+      });
+      setPricesLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleSelectPlan = (plan: Plan) => setPendingPlan(plan);
 
@@ -61,12 +87,19 @@ export default function ChoosePlanScreen() {
             onPress={() => handleSelectPlan('annual')}
             activeOpacity={0.7}
           >
-            <View style={styles.savingsBadge}>
-              <Text style={styles.savingsBadgeText}>SAVE 42%</Text>
-            </View>
+            {prices.annual && prices.monthly && (
+              <View style={styles.savingsBadge}>
+                <Text style={styles.savingsBadgeText}>SAVE 42%</Text>
+              </View>
+            )}
             <Text style={styles.planLabel}>Annual</Text>
-            <Text style={styles.planPrice}>$34.99<Text style={styles.planPricePeriod}> / year</Text></Text>
-            <Text style={styles.planEffective}>$2.92/month equivalent</Text>
+            <Text style={styles.planPrice}>
+              {!pricesLoaded ? '—' : (prices.annual ?? 'Unavailable')}
+              {prices.annual ? <Text style={styles.planPricePeriod}> / year</Text> : null}
+            </Text>
+            <Text style={styles.planEffective}>
+              {prices.annual ? 'billed yearly after trial' : ''}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -75,8 +108,13 @@ export default function ChoosePlanScreen() {
             activeOpacity={0.7}
           >
             <Text style={styles.planLabel}>Monthly</Text>
-            <Text style={styles.planPrice}>$4.99<Text style={styles.planPricePeriod}> / month</Text></Text>
-            <Text style={styles.planEffective}>billed monthly after trial</Text>
+            <Text style={styles.planPrice}>
+              {!pricesLoaded ? '—' : (prices.monthly ?? 'Unavailable')}
+              {prices.monthly ? <Text style={styles.planPricePeriod}> / month</Text> : null}
+            </Text>
+            <Text style={styles.planEffective}>
+              {prices.monthly ? 'billed monthly after trial' : ''}
+            </Text>
           </TouchableOpacity>
         </View>
 

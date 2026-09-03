@@ -21,6 +21,7 @@ import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import { SportPillRow } from '@/components/SportPill';
 import { supabase } from '@/lib/supabase';
+import { TierBadge } from '@/components/TierBadge';
 import { deleteClipAssets } from '@/lib/storage';
 import { subscribeToClips } from '@/lib/realtime';
 import { mapClipToDisplay, type ClipDisplay } from '@/lib/mappers';
@@ -297,6 +298,7 @@ const ClipCard = React.memo(function ClipCard({
           <Text style={styles.clipMeta}>
             {clip.poster} · {clip.group} · {clip.time}
           </Text>
+          <TierBadge tier={clip.posterTier} compact />
           {/* v9.4.0 UAT Round 3 (#20): card used to render a Follow
               chip only when NOT following, so users had to leave the
               feed and go to the creator's profile to unfollow. Now
@@ -547,10 +549,20 @@ export default function ClipsScreen() {
           .filter((r) => r.display_name)
           .map((r) => [r.user_id as string, r.display_name as string])
       );
-      if (names.size === 0) return mapped;
-      return mapped.map((c) =>
-        names.has(c.userId) ? { ...c, poster: `@${names.get(c.userId)}` } : c
+      // v9.5: same batch now carries the poster's tier (mig 089) so the
+      // card can show a badge other fans actually see. Kept in its own map
+      // because a poster can have a tier without a display_name.
+      const tiers = new Map<string, string>(
+        (data as any[])
+          .filter((r) => r.subscription_tier)
+          .map((r) => [r.user_id as string, r.subscription_tier as string])
       );
+      if (names.size === 0 && tiers.size === 0) return mapped;
+      return mapped.map((c) => ({
+        ...c,
+        ...(names.has(c.userId) ? { poster: `@${names.get(c.userId)}` } : {}),
+        ...(tiers.has(c.userId) ? { posterTier: tiers.get(c.userId) } : {}),
+      }));
     } catch {
       return mapped;
     }
