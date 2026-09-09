@@ -18,9 +18,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import { uploadClip, deleteClipAssets } from './storage';
 import { reportError } from './errorReporting';
+import { withTimeout } from './withTimeout';
 
 const PENDING_KEY = 'clipUploads.pending.v1';
 const MAX_CONCURRENT = 2;
+
+// The Storage upload is already bounded (UPLOAD_TIMEOUT_MS in storage.ts).
+// The row insert that follows it was not, and a PostgREST call that never
+// settles would have parked the job in 'inserting' with no terminal state
+// and no way for the feed to offer a retry -- one of the two ways a card
+// could sit on "Posting..." forever (iOS UAT 2026-09-09, BUG-4). 30s is
+// generous for a single-row insert; past that the connection is gone.
+const INSERT_TIMEOUT_MS = 30_000;
 
 export type UploadStatus = 'queued' | 'uploading' | 'inserting' | 'failed';
 
@@ -197,21 +206,24 @@ async function tryRun(): Promise<void> {
       thumbnailUrl,
     });
 
-    const { data: row, error } = await supabase
-      .from('media_clips')
-      .insert({
-        user_id: next.userId,
-        title: next.title,
-        description: next.description,
-        media_url: publicUrl,
-        thumbnail_url: thumbnailUrl,
-        media_type: 'video',
-        duration_seconds: next.durationSeconds,
-        sport_id: next.sportId,
-        moment_type: next.momentType,
-      })
-      .select('*')
-      .single();
+    const { data: row, error } = await withTimeout(
+      () => supabase
+        .from('media_clips')
+        .insert({
+          user_id: next.userId,
+          title: next.title,
+          description: next.description,
+          media_url: publicUrl,
+          thumbnail_url: thumbnailUrl,
+          media_type: 'video',
+          duration_seconds: next.durationSeconds,
+          sport_id: next.sportId,
+          moment_type: next.momentType,
+        })
+        .select('*')
+        .single(),
+      INSERT_TIMEOUT_MS,
+    );
     if (error) {
       // v9.4.4: the blob is already in the bucket at this point. Before
       // this, a failed insert left it there forever AND a retry uploaded a
@@ -234,10 +246,17 @@ async function tryRun(): Promise<void> {
     await persistPending();
   } catch (e: any) {
     reportError(e, { source: 'clipUploads.run', tempId: next.tempId });
+    // This string is now user-facing -- the feed renders it under
+    // "Upload failed" on the card (BUG-4). Translate the two internal
+    // shapes a host cannot act on into something they can.
+    const raw = e?.message || '';
+    const friendly = raw.startsWith('Timeout after')
+      ? 'The connection dropped before this finished. Tap Retry when you have signal.'
+      : raw || 'Upload failed.';
     emit({
       ...(jobs.get(next.tempId) || next),
       status: 'failed',
-      error: e?.message || 'Upload failed',
+      error: friendly,
     });
   } finally {
     inFlight--;

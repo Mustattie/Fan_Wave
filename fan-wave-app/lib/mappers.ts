@@ -449,6 +449,9 @@ export interface ClipDisplay {
   // from the DB; uploading/failed are only set by the clip upload queue
   // when a placeholder is shown in the feed before the row exists server-side.
   status?: 'uploading' | 'failed' | 'live';
+  /** v9.5.6: the queue's error message, surfaced on the failed card so the
+   *  host is told why rather than left watching a spinner. */
+  uploadError?: string;
   progress?: number;          // 0–100, only meaningful when status === 'uploading'
   localUri?: string;          // file:// for the upload preview
   tempId?: string;            // local id for optimistic rows (stable; matches queue's tempId)

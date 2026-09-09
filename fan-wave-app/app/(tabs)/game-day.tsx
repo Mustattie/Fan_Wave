@@ -111,26 +111,57 @@ export default function GameDayScreen() {
     return filtered.length > 0 ? filtered : mergedGames;
   }, [mergedGames, interestSports, activeSport]);
 
-  // useGames already server-side-scopes to
+  // useGames server-side-scopes to
   // (status='in') ∪ (status='scheduled' within ~4h forward) ∪ (status='post'
-  // within last 24h). That's a superset of "today," so we treat the hook
-  // output as authoritative for today-ness in v9.0. Grouping by status is
-  // the only cut needed.
+  // within last 24h). The finished leg of that union is a rolling 24h
+  // window, NOT a calendar day — so at 9:42 AM it still carries
+  // yesterday's 1:10 PM games, and "Final today" listed them as today's
+  // results (iOS UAT 2026-09-09, BUG-1).
   //
-  // TODO(v9.1): expose scheduled_at on GameDisplay so we can enforce a
-  // strict local-day window and the "next 12h" cut for Upcoming instead
-  // of relying on the server's forward grace period.
+  // GameDisplay has carried `scheduledAt` since v9.4.0 (added for Home's
+  // Today/Yesterday toggle), so the strict local-day cut the original
+  // TODO deferred is available here now. Same boundary maths as
+  // app/(tabs)/index.tsx: midnight-to-midnight in the device's timezone,
+  // keyed off kickoff time.
+  const startOfLocalDay = useMemo(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    // Recomputed whenever the games list changes, which covers the
+    // pull-to-refresh and realtime paths. A screen left open across
+    // midnight re-cuts on the next update rather than at the stroke of
+    // 12 — acceptable; the alternative is a timer nobody watches.
+  }, [interestFiltered]);
+
+  const startedToday = useCallback(
+    (g: GameDisplay) => {
+      if (!g.scheduledAt) return false;
+      const t = new Date(g.scheduledAt).getTime();
+      if (!Number.isFinite(t)) return false;
+      return t >= startOfLocalDay && t < startOfLocalDay + 24 * 60 * 60 * 1000;
+    },
+    [startOfLocalDay],
+  );
+
+  // Live is exempt from the day cut on purpose: a game that tipped at
+  // 11:40 PM and is still running at 12:10 AM is live *now*, and burying
+  // it because the calendar rolled over would be the more surprising bug.
   const liveGames = useMemo(
     () => interestFiltered.filter((g) => g.status === 'live'),
     [interestFiltered],
   );
+  // Upcoming keeps the server's forward grace period so a 12:30 AM kickoff
+  // is still reachable from the 11 PM slate — "what's next" is the
+  // question this section answers, not "what shares my date".
   const upcomingGames = useMemo(
     () => interestFiltered.filter((g) => g.status === 'scheduled'),
     [interestFiltered],
   );
+  // Final is the section that claims a date, so it is the one that has to
+  // honour it. Games with no kickoff timestamp are excluded rather than
+  // assumed-today: an undated final is exactly the row we cannot vouch for.
   const finalGames = useMemo(
-    () => interestFiltered.filter((g) => g.status === 'final'),
-    [interestFiltered],
+    () => interestFiltered.filter((g) => g.status === 'final' && startedToday(g)),
+    [interestFiltered, startedToday],
   );
 
   // Sport-pill options: "All" plus every sport that has a game today.

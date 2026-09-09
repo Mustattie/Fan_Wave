@@ -33,7 +33,11 @@ interface Venue {
   address: string;
   lat: number;
   lon: number;
-  type: 'bar' | 'pub' | 'restaurant' | 'cafe';
+  // 'venue' is the honest bucket for an establishment we can't place in
+  // one of the four food-and-drink categories (a stadium, a bowling alley,
+  // a brewery Google tags only as 'tourist_attraction'). It exists so that
+  // nothing has to be *guessed* into 'bar' -- see classify().
+  type: 'bar' | 'pub' | 'restaurant' | 'cafe' | 'venue';
   distanceMeters: number;
   placeId?: string;
 }
@@ -75,18 +79,85 @@ function haversineMeters(
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// Google Places types that describe a PLACE ON A MAP rather than somewhere
+// you can walk into. Text Search happily answers "Prosper Tx" with the town
+// of Prosper, and the town is not a venue.
+//
+// iOS UAT 2026-09-09, BUG-2: searching "Prosper Tx" returned exactly one
+// result -- "Prosper — Prosper, TX, USA — Bar — 1.0 mi away". The city
+// itself, wearing a Bar badge, selectable, and it went on to be written to
+// watch_parties as the venue (BUG-3). Two independent defects lined up:
+// nothing filtered geographic results, and classify() defaulted the
+// unrecognised type to 'bar'.
+const GEOGRAPHIC_TYPES = new Set([
+  'locality',
+  'sublocality',
+  'sublocality_level_1',
+  'sublocality_level_2',
+  'sublocality_level_3',
+  'sublocality_level_4',
+  'sublocality_level_5',
+  'neighborhood',
+  'political',
+  'administrative_area_level_1',
+  'administrative_area_level_2',
+  'administrative_area_level_3',
+  'administrative_area_level_4',
+  'administrative_area_level_5',
+  'country',
+  'continent',
+  'archipelago',
+  'colloquial_area',
+  'postal_code',
+  'postal_code_prefix',
+  'postal_code_suffix',
+  'postal_town',
+  'plus_code',
+  'geocode',
+  'route',
+  'street_address',
+  'street_number',
+  'intersection',
+  'premise',
+  'subpremise',
+  'floor',
+  'room',
+  'natural_feature',
+  'land_parcel',
+]);
+
+/**
+ * True when a Places result is somewhere a person can meet up, rather than
+ * a region, road, or coordinate.
+ *
+ * The rule is deliberately two-sided. Requiring `establishment` alone would
+ * be enough today, but Places has shipped result shapes with a thin `types`
+ * array before, and a single missing tag would quietly reopen BUG-2. So we
+ * reject anything carrying a geographic type AND require positive evidence
+ * of an establishment.
+ */
+function isEstablishment(primaryType: string | undefined, types: string[]): boolean {
+  const all = new Set([primaryType, ...types].filter(Boolean) as string[]);
+  for (const t of all) {
+    if (GEOGRAPHIC_TYPES.has(t)) return false;
+  }
+  return all.has('establishment') || all.has('point_of_interest') || all.has('food');
+}
+
 // Map Google Places `primaryType` / `types[]` to Fan Sphere's narrower set.
-// Anything we don't recognise defaults to 'bar' so the UI still renders
-// instead of dropping the row — Places Text Search is queried specifically
-// for venues, not arbitrary POIs.
+//
+// Unrecognised establishments now land in 'venue' rather than being called
+// a bar. A generic badge is a small loss of colour; a wrong badge is the
+// app asserting something it does not know, and that is what put a Bar
+// label on a municipality.
 function classify(primaryType: string | undefined, types: string[]): Venue['type'] {
   const all = new Set([primaryType, ...types].filter(Boolean) as string[]);
-  if (all.has('bar') || all.has('night_club')) return 'bar';
+  if (all.has('bar') || all.has('night_club') || all.has('sports_bar')) return 'bar';
   if (all.has('pub')) return 'pub';
   if (all.has('cafe') || all.has('coffee_shop')) return 'cafe';
   if (all.has('restaurant') || all.has('meal_takeaway') || all.has('food'))
     return 'restaurant';
-  return 'bar';
+  return 'venue';
 }
 
 Deno.serve(async (req: Request) => {
@@ -168,96 +239,138 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const placesBody = {
-    textQuery: query,
-    locationBias: {
-      circle: {
-        center: { latitude: lat, longitude: lon },
-        radius,
+  // One Places Text Search round-trip, normalised into our Venue shape.
+  // Returns a discriminated result so the caller can decide whether a zero-
+  // hit answer is worth a second, differently-phrased attempt.
+  type SearchOutcome =
+    | { ok: true; venues: Venue[] }
+    | { ok: false; httpStatus: number; errorMessage: string };
+
+  const runTextSearch = async (textQuery: string): Promise<SearchOutcome> => {
+    const placesBody = {
+      textQuery,
+      locationBias: {
+        circle: {
+          center: { latitude: lat, longitude: lon },
+          radius,
+        },
       },
-    },
-    pageSize: 20,
-    // No language/region restriction so chain names match in any locale.
+      pageSize: 20,
+      // No language/region restriction so chain names match in any locale.
+    };
+
+    let placesResp: Response;
+    try {
+      placesResp = await fetch(
+        'https://places.googleapis.com/v1/places:searchText',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask': FIELD_MASK,
+          },
+          body: JSON.stringify(placesBody),
+        },
+      );
+    } catch (e: any) {
+      return {
+        ok: false,
+        httpStatus: 502,
+        errorMessage: `Places fetch threw: ${e?.message ?? 'unknown'}`,
+      };
+    }
+
+    if (!placesResp.ok) {
+      const detail = await placesResp.text().catch(() => '');
+      return {
+        ok: false,
+        httpStatus: 502,
+        errorMessage: `Places HTTP ${placesResp.status}: ${detail.slice(0, 240)}`,
+      };
+    }
+
+    let payload: any;
+    try {
+      payload = await placesResp.json();
+    } catch (e: any) {
+      return {
+        ok: false,
+        httpStatus: 502,
+        errorMessage: `Places JSON parse: ${e?.message ?? 'unknown'}`,
+      };
+    }
+
+    const places: any[] = Array.isArray(payload?.places) ? payload.places : [];
+    const venues: Venue[] = places
+      .map((p): Venue | null => {
+        const pLat = Number(p?.location?.latitude);
+        const pLon = Number(p?.location?.longitude);
+        if (!Number.isFinite(pLat) || !Number.isFinite(pLon)) return null;
+
+        const primaryType =
+          typeof p?.primaryType === 'string' ? p.primaryType : undefined;
+        const types: string[] = Array.isArray(p?.types) ? p.types : [];
+
+        // BUG-2 gate: drop towns, counties, ZIPs, roads and bare
+        // coordinates before they can be dressed up as somewhere to watch
+        // a game.
+        if (!isEstablishment(primaryType, types)) return null;
+
+        return {
+          name:
+            (typeof p?.displayName?.text === 'string'
+              ? p.displayName.text.trim()
+              : '') || 'Unknown venue',
+          address:
+            typeof p?.formattedAddress === 'string'
+              ? p.formattedAddress
+              : 'Address not available',
+          lat: pLat,
+          lon: pLon,
+          type: classify(primaryType, types),
+          distanceMeters: haversineMeters(distanceFromLat, distanceFromLon, pLat, pLon),
+          placeId: typeof p?.id === 'string' ? p.id : undefined,
+        };
+      })
+      .filter((v): v is Venue => v !== null)
+      .sort((a, b) => a.distanceMeters - b.distanceMeters);
+
+    return { ok: true, venues };
   };
 
-  let placesResp: Response;
-  try {
-    placesResp = await fetch(
-      'https://places.googleapis.com/v1/places:searchText',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask': FIELD_MASK,
-        },
-        body: JSON.stringify(placesBody),
-      },
-    );
-  } catch (e: any) {
+  const primary = await runTextSearch(query);
+  if (!primary.ok) {
     return new Response(
       JSON.stringify({
         venues: [],
         status: 'api_error',
-        errorMessage: `Places fetch threw: ${e?.message ?? 'unknown'}`,
+        errorMessage: primary.errorMessage,
       }),
-      { status: 502, headers: JSON_HEADERS },
+      { status: primary.httpStatus, headers: JSON_HEADERS },
     );
   }
 
-  if (!placesResp.ok) {
-    const detail = await placesResp.text().catch(() => '');
-    return new Response(
-      JSON.stringify({
-        venues: [],
-        status: 'api_error',
-        errorMessage: `Places HTTP ${placesResp.status}: ${detail.slice(0, 240)}`,
-      }),
-      { status: 502, headers: JSON_HEADERS },
-    );
-  }
+  let venues = primary.venues;
 
-  let payload: any;
-  try {
-    payload = await placesResp.json();
-  } catch (e: any) {
-    return new Response(
-      JSON.stringify({
-        venues: [],
-        status: 'api_error',
-        errorMessage: `Places JSON parse: ${e?.message ?? 'unknown'}`,
-      }),
-      { status: 502, headers: JSON_HEADERS },
-    );
+  // Place-name fallback.
+  //
+  // The search box is labelled "Search venue name or location...", so hosts
+  // type "Prosper Tx" and mean "show me somewhere in Prosper". Text Search
+  // reads that as a request for the town, returns the town, and now that the
+  // establishment gate drops it the honest answer would be "no venues" --
+  // which is worse than what the tester saw, not better.
+  //
+  // So when a query yields nothing walk-into-able, ask the question the host
+  // actually meant. The second call only fires on an otherwise-empty result,
+  // so the common case still costs exactly one Places request.
+  if (venues.length === 0) {
+    const fallback = await runTextSearch(`sports bars and restaurants in ${query}`);
+    if (fallback.ok) venues = fallback.venues;
+    // A failed fallback is not worth surfacing: the primary search
+    // succeeded and legitimately found nothing. Report that, not a
+    // secondary network error the user never asked for.
   }
-
-  const places: any[] = Array.isArray(payload?.places) ? payload.places : [];
-  const venues: Venue[] = places
-    .map((p): Venue | null => {
-      const pLat = Number(p?.location?.latitude);
-      const pLon = Number(p?.location?.longitude);
-      if (!Number.isFinite(pLat) || !Number.isFinite(pLon)) return null;
-      return {
-        name:
-          (typeof p?.displayName?.text === 'string'
-            ? p.displayName.text.trim()
-            : '') || 'Unknown venue',
-        address:
-          typeof p?.formattedAddress === 'string'
-            ? p.formattedAddress
-            : 'Address not available',
-        lat: pLat,
-        lon: pLon,
-        type: classify(
-          typeof p?.primaryType === 'string' ? p.primaryType : undefined,
-          Array.isArray(p?.types) ? p.types : [],
-        ),
-        distanceMeters: haversineMeters(distanceFromLat, distanceFromLon, pLat, pLon),
-        placeId: typeof p?.id === 'string' ? p.id : undefined,
-      };
-    })
-    .filter((v): v is Venue => v !== null)
-    .sort((a, b) => a.distanceMeters - b.distanceMeters);
 
   return new Response(
     JSON.stringify({ venues, status: 'ok' }),

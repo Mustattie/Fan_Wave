@@ -564,7 +564,20 @@ export default function WatchPartyDetailScreen() {
           </View>
 
           <Text style={styles.partyTitle}>{party.title}</Text>
-          <Text style={styles.infoRow}>🍺 {party.venue_name} · {party.venue_area}</Text>
+          {/* v9.5.6 (iOS UAT BUG-3): this line used to concatenate
+              unconditionally and rendered "🍺 Prosper · Prosper" for a
+              party whose venue had been set to its own city. Migration 096
+              corrects the rows that already exist and the venue-search
+              filter stops new ones, but the line itself should never
+              stutter -- if the venue and the area are the same place, say
+              it once. */}
+          <Text style={styles.infoRow}>
+            🍺 {party.venue_area &&
+              party.venue_area.trim().toLowerCase() !==
+                party.venue_name.trim().toLowerCase()
+              ? `${party.venue_name} · ${party.venue_area}`
+              : party.venue_name}
+          </Text>
           <Text style={styles.infoRow}>📅 {party.date} · {party.time}</Text>
 
           <View style={styles.atmospherePill}>
