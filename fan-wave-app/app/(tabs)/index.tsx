@@ -272,9 +272,16 @@ export default function HomeScreen() {
           </Text>
           <Text style={styles.subtitle}>
             📍 {city} ·{' '}
+            {/* UX-24: this said "Change" and delivered a tab switch. It now
+                opens Discover's city sheet directly. */}
             <Text
               style={styles.changeLink}
-              onPress={() => router.push('/(tabs)/discover')}
+              onPress={() =>
+                router.push({
+                  pathname: '/(tabs)/discover',
+                  params: { pickCity: '1' },
+                } as any)
+              }
             >
               Change
             </Text>

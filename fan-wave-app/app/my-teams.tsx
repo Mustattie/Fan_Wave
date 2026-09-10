@@ -149,11 +149,16 @@ export default function MyTeamsScreen() {
     []
   );
 
+  // v9.5.8 (iOS UAT UX-28): this rendered as a bare "1 👥" in the header
+  // with nothing to say what it counted. It is the follow-tier breakdown
+  // (Lite / Social / All in, chosen per team when following) -- the emoji
+  // alone only means something to someone who already knows the tiers.
+  // Name them.
   const dist = getTierDistribution(teams);
   const distParts: string[] = [];
-  if (dist.lite > 0) distParts.push(`${dist.lite} 📊`);
-  if (dist.social > 0) distParts.push(`${dist.social} 👥`);
-  if (dist.all_in > 0) distParts.push(`${dist.all_in} 🔥`);
+  if (dist.lite > 0) distParts.push(`${dist.lite} 📊 Lite`);
+  if (dist.social > 0) distParts.push(`${dist.social} 👥 Social`);
+  if (dist.all_in > 0) distParts.push(`${dist.all_in} 🔥 All in`);
 
   const renderTeam = ({ item }: { item: UserTeamFollow }) => {
     const tierDef = TIER_BY_ID[item.tier];

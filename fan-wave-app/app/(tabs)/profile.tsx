@@ -27,7 +27,7 @@ import {
   Trophy,
   Shield,
   ScrollText,
-  Slash,
+  UserX,
   Trash2,
   Crown,
   Stethoscope,
@@ -253,7 +253,10 @@ export default function ProfileScreen() {
     { icon: BarChart3, label: 'My Stats', color: Colors.dark.text, badge: null },
     { icon: Bell, label: 'Notifications', color: Colors.dark.text, badge: null },
     { icon: Share2, label: 'Invite Friends', color: Colors.dark.accent, badge: null },
-    { icon: Slash, label: 'Blocked Users', color: Colors.dark.text, badge: null },
+    // UX-28: `Slash` is a bare diagonal line, which next to a column of
+    // outlined glyphs reads as a failed icon rather than an intentional
+    // one. UserX is the same idea drawn as a recognisable object.
+    { icon: UserX, label: 'Blocked Users', color: Colors.dark.text, badge: null },
     { icon: Shield, label: 'Privacy Policy', color: Colors.dark.text, badge: null },
     { icon: ScrollText, label: 'Terms of Service', color: Colors.dark.text, badge: null },
     { icon: LogOut, label: 'Sign Out', color: Colors.dark.error, badge: null },

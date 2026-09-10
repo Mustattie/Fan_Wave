@@ -15,22 +15,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Colors } from '@/constants/Colors';
+import { POPULAR_CITIES } from '@/constants/Cities';
 import { supabase } from '@/lib/supabase';
 
-const POPULAR_CITIES = [
-  'Atlanta',
-  'Boston',
-  'Chicago',
-  'Dallas',
-  'Denver',
-  'Houston',
-  'Los Angeles',
-  'Miami',
-  'New York',
-  'Philadelphia',
-  'Phoenix',
-  'Seattle',
-];
+// UX-24: shared with Discover's city sheet -- see constants/Cities.ts.
 
 interface NominatimResult {
   display_name: string;

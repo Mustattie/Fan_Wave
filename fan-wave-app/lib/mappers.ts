@@ -230,6 +230,50 @@ export function mapGameToDisplay(row: any): GameDisplay {
   };
 }
 
+/**
+ * Live-score fields only, taken from a raw `games` row.
+ *
+ * v9.5.8 (iOS UAT UX-21). Supabase postgres_changes delivers `payload.new`
+ * as the FLAT table row -- there is no PostgREST embed, so `home_team` and
+ * `away_team` are simply absent. Running that row through
+ * mapGameToDisplay therefore produces a perfectly valid-looking
+ * GameDisplay whose teams are the "Home"/"Away" fallback and whose league
+ * and logos are empty. Game Day patched exactly that object over its
+ * real one, so every game ESPN touched turned into "Home vs Away" with a
+ * generic sport emoji -- most visibly under a sport filter, where the
+ * handful of games left are the ones being actively updated.
+ *
+ * This returns only what the raw row can actually answer for. Teams,
+ * league and sport are deliberately excluded: they don't change during a
+ * game, and the realtime payload has nothing to say about them.
+ */
+export function mapGameRealtimePatch(row: any): Partial<GameDisplay> {
+  const meta = row?.metadata || {};
+  const rawStatus = row?.status;
+  const patch: Partial<GameDisplay> = {
+    homeScore: row?.home_score,
+    awayScore: row?.away_score,
+    period: typeof meta.period === 'number' ? meta.period : null,
+    displayClock: typeof meta.display_clock === 'string' ? meta.display_clock : null,
+    detail: typeof meta.detail === 'string' ? meta.detail : null,
+    homeLinescore: Array.isArray(meta.home_linescore) ? meta.home_linescore : null,
+    awayLinescore: Array.isArray(meta.away_linescore) ? meta.away_linescore : null,
+  };
+  if (rawStatus) {
+    patch.status =
+      rawStatus === 'in' ? 'live'
+      : rawStatus === 'post' ? 'final'
+      : rawStatus;
+  }
+  // A postponed or re-scheduled game does move; keep both representations
+  // in step when the row carries a new kickoff.
+  if (row?.scheduled_at) {
+    patch.scheduledAt = row.scheduled_at;
+    patch.time = formatGameTime(row.scheduled_at);
+  }
+  return patch;
+}
+
 // ─── Watch Party Mapper ──────────────────────────────────────
 
 export interface WatchPartyDisplay {

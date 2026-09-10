@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { ArrowLeft, Play, X, Eye, Heart, MessageCircle, Share2, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
+import { EmptyState } from '@/components/EmptyState';
 import { supabase } from '@/lib/supabase';
 import { deleteClipAssets } from '@/lib/storage';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -218,14 +219,20 @@ export default function MyClipsScreen() {
           keyExtractor={() => 'empty'}
           contentContainerStyle={styles.emptyContent}
           ListEmptyComponent={
-            <View style={styles.centered}>
-              <Text style={styles.emptyText}>
-                {loadError
-                  ? `Couldn't load clips: ${loadError}`
-                  : 'Your highlights reel is empty — capture the moment!'}
-              </Text>
-              <Text style={styles.emptyHint}>Pull down to refresh.</Text>
-            </View>
+            /* UX-29: shared EmptyState, so this reads like the Clips feed
+               instead of a bare sentence with a "Pull down to refresh"
+               hint no other empty state offered. */
+            <EmptyState
+              icon={loadError ? '⚠️' : '🎬'}
+              title={loadError ? "Couldn't load your clips" : 'Your highlights reel is empty'}
+              subtitle={
+                loadError
+                  ? `${loadError}
+
+Pull down to try again.`
+                  : 'Capture a moment and it will show up here.'
+              }
+            />
           }
           refreshControl={
             <RefreshControl

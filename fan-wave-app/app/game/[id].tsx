@@ -219,8 +219,16 @@ export default function GameDetailScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={24} color={Colors.dark.text} />
         </TouchableOpacity>
+        {/* v9.5.8 (iOS UAT UX-26): the title was the league name, which is
+            derived from the team->league join and is empty for most of our
+            synced rows -- so the header on a Tigers/Twins game just said
+            "Game". The matchup is the one thing we always have and the one
+            thing the user came here for. */}
         <Text style={styles.headerTitle} numberOfLines={1}>
-          {game.league || 'Game'}
+          {game.league
+            || (game.awayTeam?.name && game.homeTeam?.name
+              ? `${game.awayTeam.name} @ ${game.homeTeam.name}`
+              : (game.sport ? game.sport.toUpperCase() : 'Game'))}
         </Text>
         <View style={styles.backBtn} />
       </View>
@@ -236,7 +244,19 @@ export default function GameDetailScreen() {
           />
         }
       >
-        <View style={[styles.hero, { borderColor: sportColor + '55' }]}>
+        {/* UX-26: this border was always tinted with the sport colour, so
+            an MLB game that had not started sat behind a red hairline that
+            reads as an error -- or as "live". A coloured edge on a card is
+            a status signal; give it a status to signal. Neutral until the
+            game is actually live. */}
+        <View
+          style={[
+            styles.hero,
+            game.status === 'live'
+              ? { borderColor: sportColor + '99', borderWidth: 1.5 }
+              : { borderColor: Colors.dark.border },
+          ]}
+        >
           <View style={styles.sportPill}>
             <Text style={styles.sportPillText}>
               {sportEmoji} {(game.sport || 'sport').toUpperCase()}
@@ -310,14 +330,20 @@ export default function GameDetailScreen() {
             )}
             <Text style={[styles.ctaText, styles.ctaTextActive]}>Live chat</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.cta}
-            onPress={() => setMvpOpen(true)}
-            activeOpacity={0.7}
-          >
-            <Trophy size={18} color={Colors.dark.accent} />
-            <Text style={[styles.ctaText, styles.ctaTextActive]}>MVP vote</Text>
-          </TouchableOpacity>
+          {/* UX-26: offered at 1:54 AM for a 12:10 PM game. Nobody can
+              name a most-valuable player in a match that has not been
+              played, and a vote cast then is noise in the tally. The CTA
+              appears once the game is under way. */}
+          {game.status === 'live' || game.status === 'final' ? (
+            <TouchableOpacity
+              style={styles.cta}
+              onPress={() => setMvpOpen(true)}
+              activeOpacity={0.7}
+            >
+              <Trophy size={18} color={Colors.dark.accent} />
+              <Text style={[styles.ctaText, styles.ctaTextActive]}>MVP vote</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View style={styles.section}>

@@ -21,6 +21,7 @@ import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import { reportError } from '@/lib/errorReporting';
 import { SportPillRow } from '@/components/SportPill';
+import { EmptyState } from '@/components/EmptyState';
 import { supabase } from '@/lib/supabase';
 import { TierBadge } from '@/components/TierBadge';
 import { deleteClipAssets } from '@/lib/storage';
@@ -365,7 +366,14 @@ const ClipCard = React.memo(function ClipCard({
             (310ms delay made users think nothing happened). This is the
             redundant always-works path. Only shown on the ACTIVE card
             because inactive cards have no playback state of their own. */}
-        {!isPending && !playerFailed && isActive && isReady && (
+        {/* v9.5.8 (iOS UAT UX-23): this corner control and the big centre
+            overlay were both visible whenever the active card was paused,
+            so a stopped clip showed two play buttons. The corner button
+            exists as the redundant always-works PAUSE affordance (v8.5:
+            the single-tap gesture was unreliable) -- which only matters
+            while something is playing. When paused, the centre overlay is
+            already the play control, so the corner one is noise. */}
+        {!isPending && !playerFailed && isActive && isReady && isPlaying && (
           <TouchableOpacity
             style={styles.pauseButton}
             onPress={(e) => {
@@ -374,12 +382,10 @@ const ClipCard = React.memo(function ClipCard({
             }}
             hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Pause"
           >
-            {isPlaying ? (
-              <Pause size={16} color="#fff" fill="#fff" />
-            ) : (
-              <Play size={16} color="#fff" fill="#fff" />
-            )}
+            <Pause size={16} color="#fff" fill="#fff" />
           </TouchableOpacity>
         )}
 
@@ -442,13 +448,18 @@ const ClipCard = React.memo(function ClipCard({
               </TouchableOpacity>
             )
           )}
+          {/* UX-23: a bare red circle-slash with no label, sitting next to
+              Follow, reading as an unexplained destructive action. It is
+              Block. Saying so costs four characters. */}
           {!isOwner && clip.userId && (
             <TouchableOpacity
               style={styles.blockChip}
               onPress={() => onBlock(clip)}
+              accessibilityRole="button"
               accessibilityLabel="Block this user"
             >
               <Slash size={12} color={Colors.dark.error} />
+              <Text style={styles.blockChipText}>Block</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -1341,12 +1352,17 @@ export default function ClipsScreen() {
 
   const renderEmpty = useCallback(() => {
     if (loading) return null;
+    // v9.5.8 (iOS UAT UX-29): Clips, My Clips and Blocked Users each drew
+    // their own empty state in a different shape -- emoji + headline +
+    // subline here, a bare sentence there, a headline + paragraph
+    // elsewhere. components/EmptyState.tsx already existed for exactly
+    // this and was used by nothing. Now it is.
     return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyEmoji}>🎬</Text>
-        <Text style={styles.emptyTitle}>No highlights yet — drop the first one!</Text>
-        <Text style={styles.emptySubtext}>Be the first to share a highlight!</Text>
-      </View>
+      <EmptyState
+        icon="🎬"
+        title="No highlights yet"
+        subtitle="Be the first to share a highlight from your communities."
+      />
     );
   }, [loading]);
 
@@ -1712,12 +1728,20 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
   },
   blockChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.dark.error,
     marginLeft: 6,
+  },
+  blockChipText: {
+    color: Colors.dark.error,
+    fontSize: 11,
+    fontWeight: '600',
   },
   clipActions: {
     flexDirection: 'row',

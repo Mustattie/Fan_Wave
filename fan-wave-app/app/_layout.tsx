@@ -433,7 +433,21 @@ export default function RootLayout() {
         <GamesRealtimeBridge />
         <AppStateFocusBridge />
         <NavigationGuard session={session} onboardingComplete={onboardingComplete} hasSeenWelcome={hasSeenWelcome} />
-        <Stack>
+        {/* v9.5.8 (iOS UAT UX-22): My Sports and the Notifications inbox
+            rendered an unstyled native stack header reading "< (tabs)
+            my-sports" and "< (tabs) notifications" ABOVE the app's own
+            header -- two back buttons and a file-system route name shown
+            to users. Neither route had a <Stack.Screen> entry, so both
+            fell through to the navigator default of headerShown: true;
+            every screen that looked right had been opted out one line at
+            a time, and three (my-sports, notifications, delete-account)
+            had been missed.
+            
+            Every screen in this app draws its own header, so the default
+            is now off for the whole navigator. The per-screen entries
+            below stay because they still carry presentation modes, and a
+            route added tomorrow can no longer leak its filename. */}
+        <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(auth)" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="(admin)" options={{ headerShown: false }} />

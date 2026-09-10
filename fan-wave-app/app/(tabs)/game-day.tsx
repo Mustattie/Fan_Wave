@@ -16,7 +16,7 @@ import { Colors } from '@/constants/Colors';
 import { GameCard } from '@/components/GameCard';
 import { SportPillRow } from '@/components/SportPill';
 import { subscribeToGames } from '@/lib/realtime';
-import { mapGameToDisplay, type GameDisplay } from '@/lib/mappers';
+import { mapGameRealtimePatch, type GameDisplay } from '@/lib/mappers';
 import { useGames } from '@/hooks/useData';
 import { queryClient } from '@/hooks/useQueryClient';
 import { supabase } from '@/lib/supabase';
@@ -83,11 +83,18 @@ export default function GameDayScreen() {
   // Realtime patch buffer — subscribeToGames delivers the raw DB row.
   // We patch by id into local overrides and merge over the react-query
   // cache to avoid a full-list invalidation flicker.
-  const [liveOverrides, setLiveOverrides] = useState<Record<string, GameDisplay>>({});
+  //
+  // v9.5.8 (iOS UAT UX-21): these are PARTIAL patches now. They used to be
+  // whole GameDisplay objects rebuilt from the realtime row, which has no
+  // embedded teams — so every patched game lost its team names, logos and
+  // league and rendered as "Home vs Away". See mapGameRealtimePatch.
+  const [liveOverrides, setLiveOverrides] = useState<Record<string, Partial<GameDisplay>>>({});
 
-  // Merge overrides over the react-query snapshot in one pass.
+  // Merge overrides over the react-query snapshot in one pass. Spread, not
+  // replace: the query result stays the source of truth for everything the
+  // realtime row can't speak to.
   const mergedGames = useMemo(
-    () => games.map((g) => liveOverrides[g.id] || g),
+    () => games.map((g) => (liveOverrides[g.id] ? { ...g, ...liveOverrides[g.id] } : g)),
     [games, liveOverrides],
   );
 
@@ -214,8 +221,12 @@ export default function GameDayScreen() {
     useCallback(() => {
       const unsub = subscribeToGames((updatedRow) => {
         try {
-          const mapped = mapGameToDisplay(updatedRow);
-          setLiveOverrides((prev) => ({ ...prev, [mapped.id]: mapped }));
+          if (!updatedRow?.id) return;
+          const patch = mapGameRealtimePatch(updatedRow);
+          setLiveOverrides((prev) => ({
+            ...prev,
+            [updatedRow.id]: { ...prev[updatedRow.id], ...patch },
+          }));
         } catch {
           // Bad payload — invalidate the whole list as a safety net.
           queryClient.invalidateQueries({ queryKey: ['games'] });
