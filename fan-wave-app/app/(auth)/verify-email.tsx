@@ -52,8 +52,21 @@ export default function VerifyEmailScreen() {
     }
   };
 
+  // v9.5.10 (Android UAT #2). The button below used to read "I've
+  // verified — sign me in", which is a promise this screen cannot keep:
+  // it signs nobody in, it navigates to the sign-in form. The tester
+  // called it redundant and they are right about the label.
+  //
+  // Removing it outright would strand the desktop-confirmer, though --
+  // they tap the link on a laptop, the phone never hears about it, and
+  // this screen would then have no way forward at all. So: keep one way
+  // forward, name it after what it does, and carry the email over so the
+  // form is half-filled when they arrive.
   const handleGoToSignIn = () => {
-    router.replace('/(auth)/sign-in');
+    router.replace({
+      pathname: '/(auth)/sign-in',
+      params: email ? { email: String(email) } : {},
+    } as any);
   };
 
   return (
@@ -83,8 +96,8 @@ export default function VerifyEmailScreen() {
             <Text style={styles.emailText}>{email || 'your email'}</Text>.
           </Text>
           <Text style={styles.body}>
-            Tap the link in your email to activate your account. Once verified,
-            come back here to sign in.
+            Tap the link in your email to activate your account, then sign in
+            with the email and password you just chose.
           </Text>
         </View>
 
@@ -93,9 +106,7 @@ export default function VerifyEmailScreen() {
             style={styles.primaryButton}
             onPress={handleGoToSignIn}
           >
-            <Text style={styles.primaryButtonText}>
-              I've verified — sign me in
-            </Text>
+            <Text style={styles.primaryButtonText}>Continue to sign in</Text>
           </TouchableOpacity>
 
           <View style={styles.resendRow}>

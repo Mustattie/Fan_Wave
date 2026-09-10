@@ -8,7 +8,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
@@ -17,7 +17,10 @@ import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 
 export default function SignInScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  // v9.5.10 (#2): verify-email and auth-callback hand the address over so
+  // someone who has just confirmed only has to type a password.
+  const { email: emailParam } = useLocalSearchParams<{ email?: string }>();
+  const [email, setEmail] = useState(emailParam ? String(emailParam) : '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);

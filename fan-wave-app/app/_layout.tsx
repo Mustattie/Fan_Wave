@@ -237,16 +237,44 @@ export default function RootLayout() {
     // server profile. Hoisted into a reusable helper called from BOTH
     // mount AND onAuthStateChange so SIGNED_IN / INITIAL_SESSION both
     // refresh the flag.
+    //
+    // v9.5.10 (Android UAT #3, "signing in took me straight to the home
+    // page and not the sports selection"): this only ever set the flag
+    // TRUE. Nothing set it false, so the ONLY source of a false was the
+    // AsyncStorage read at mount -- and AsyncStorage belongs to the
+    // DEVICE, not the account.
+    //
+    // The failure is exactly what a tester does: sign in as an onboarded
+    // account (flag becomes true), sign out, sign UP a brand-new account
+    // in the same app session. SIGNED_IN fires, this runs, the new user
+    // has no onboarded_at... and the function returns without touching
+    // anything. React state is still true from the previous account, so
+    // NavigationGuard routes the new user straight to /(tabs) -- no
+    // sports, no teams, no city. That is why their Home showed an empty
+    // location pin and "No games on deck today".
+    //
+    // The server row is the authority in BOTH directions now. The one
+    // thing we must not do is flip to false on a network error, which is
+    // why the error case returns without deciding rather than falling
+    // through to `!data`.
     const refreshOnboardedFromServer = async (userId: string) => {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('users')
           .select('onboarded_at')
           .eq('auth_id', userId)
           .maybeSingle();
-        if (data?.onboarded_at) {
-          setOnboardingComplete(true);
+        // Could not ask the server: leave whatever we already believe.
+        if (error) return;
+        // A missing row is a real answer, not a failure -- a user who has
+        // just signed up has no profile row until onboarding-city writes
+        // one, and they are precisely the person who must not skip it.
+        const done = !!data?.onboarded_at;
+        setOnboardingComplete(done);
+        if (done) {
           AsyncStorage.setItem('onboarding_complete', 'true').catch(() => {});
+        } else {
+          AsyncStorage.removeItem('onboarding_complete').catch(() => {});
         }
       } catch {
         // Network failure — AsyncStorage path still owns the decision.
@@ -373,6 +401,19 @@ export default function RootLayout() {
           clearUserContext();
           clearPushToken();
           setAnalyticsUser(null);
+          // v9.5.10 (#3): these keys describe an ACCOUNT but live on the
+          // DEVICE, so leaving them behind hands the next person to sign
+          // in the last person's onboarding state. Profile's Sign Out
+          // button cleared two of them; every other route to a signed-out
+          // state (session revoked, account deleted, token invalidated)
+          // cleared none. Do it where the event actually arrives.
+          setOnboardingComplete(false);
+          AsyncStorage.multiRemove([
+            'onboarding_complete',
+            'user_city',
+            'user_state',
+            'selected_sports',
+          ]).catch(() => {});
         } else if (event === 'PASSWORD_RECOVERY') {
           // Fired by supabase-js after the reset-password deep link
           // completes setSession(). Route the user to the new-password
