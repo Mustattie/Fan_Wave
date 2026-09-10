@@ -29,10 +29,26 @@ interface Team {
   icon: string;
 }
 
-// Sport name → sport key mapping for filtering
+// Sport name (as stored in public.sports.name) -> sport key.
+//
+// v9.5.9 (Android UAT #2, "WNBA teams are not populating"): this map was a
+// hand-maintained literal and had no 'WNBA' entry, so all 17 WNBA teams on
+// prod fell to the `|| 'other'` default below. The screen then filters
+// teams to the sports picked on the previous step -- and 'other' is never
+// among them -- so every WNBA team was silently dropped. The teams were in
+// the database the whole time; nothing was missing except a line here.
+//
+// Deriving it from constants/Sports.ts is what stops it happening again:
+// that file is already the single source of truth for the sport pills, so
+// a sport added there can no longer arrive here unmapped. Discover made
+// the same move for its filter pills in v9.0.
 const SPORT_NAME_TO_KEY: Record<string, string> = {
-  'NFL': 'nfl', 'NBA': 'nba', 'MLB': 'mlb', 'Soccer': 'soccer', 'MLS': 'mls',
-  'NHL': 'nhl', 'College Football': 'cfb', 'College Basketball': 'cbb',
+  ...Object.fromEntries(SPORTS.map((s) => [s.name, s.id as string])),
+  // Legacy DB sport names with no pill of their own. 'Soccer' is the 62
+  // national teams seeded for the World Cup; lib/mappers.ts already
+  // coalesces soccer -> mls everywhere else, so match that rather than
+  // leaving them unreachable.
+  'Soccer': 'mls',
 };
 
 export default function OnboardingTeamsScreen() {
