@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Mail, Lock, User, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
@@ -23,18 +24,51 @@ export default function SignUpScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  // v9.5.7 (iOS UAT BUG-8): validation used to speak ONLY through
+  // Alert.alert. The tester tapped Create Account three times in 60
+  // seconds and got nothing -- no spinner, no alert, no navigation --
+  // while iOS AutoFill's strong-password overlay was presented over both
+  // password fields.
+  //
+  // That is the explanation: presenting a UIAlertController while the
+  // AutoFill overlay owns the presentation context silently fails on iOS.
+  // Every early return in this handler raises an Alert, so a suppressed
+  // Alert looks exactly like a dead button. The handler almost certainly
+  // ran and told the user nothing.
+  //
+  // Two changes make a silent tap impossible: dismiss the keyboard (and
+  // with it the AutoFill overlay) before validating, and render the error
+  // inline on the screen as well as in the Alert. Inline text cannot be
+  // swallowed by a presentation conflict.
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const fail = (title: string, message: string) => {
+    setFormError(message);
+    Alert.alert(title, message);
+  };
 
   const handleSignUp = async () => {
+    // Releases the AutoFill overlay so an Alert has a clear context.
+    Keyboard.dismiss();
+    setFormError(null);
+
     if (!displayName.trim() || !email.trim() || !password.trim()) {
-      Alert.alert('Missing fields', 'Please fill in all fields.');
+      fail('Missing fields', 'Please fill in all fields.');
+      return;
+    }
+    if (!confirmPassword.trim()) {
+      // Called out separately because AutoFill can fill the first field
+      // and leave this one empty, which previously fell into the generic
+      // "Passwords do not match".
+      fail('Confirm your password', 'Please re-enter your password in the Confirm Password field.');
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert('Password mismatch', 'Passwords do not match.');
+      fail('Password mismatch', 'Passwords do not match.');
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      Alert.alert('Invalid email', 'Please enter a valid email address.');
+      fail('Invalid email', 'Please enter a valid email address.');
       return;
     }
     // v9.2.5 UAT 2026-07-28: prior validator only checked length, but the
@@ -44,11 +78,11 @@ export default function SignUpScreen() {
     // with a message that didn't actually explain the rule. Mirror the
     // server rule here so feedback is immediate and specific.
     if (password.length < 8) {
-      Alert.alert('Weak password', 'Password must be at least 8 characters.');
+      fail('Weak password', 'Password must be at least 8 characters.');
       return;
     }
     if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
-      Alert.alert(
+      fail(
         'Weak password',
         'Password needs a mix of lowercase letters, uppercase letters, and a number.',
       );
@@ -160,6 +194,8 @@ export default function SignUpScreen() {
               value={displayName}
               onChangeText={setDisplayName}
               autoCapitalize="words"
+              textContentType="name"
+              autoComplete="name"
             />
           </View>
 
@@ -174,6 +210,8 @@ export default function SignUpScreen() {
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              textContentType="emailAddress"
+              autoComplete="email"
             />
           </View>
 
@@ -186,6 +224,18 @@ export default function SignUpScreen() {
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
+              // BUG-8: both password fields had no content type, so iOS
+              // AutoFill guessed. Declaring newPassword on both is what
+              // makes it fill the pair together instead of painting the
+              // strong-password overlay on one and leaving Confirm empty.
+              textContentType="newPassword"
+              autoComplete="new-password"
+              // Generate a suggestion that already satisfies the server's
+              // rule (mirrored in handleSignUp), so an accepted AutoFill
+              // password can never bounce off our own validator.
+              passwordRules="minlength: 8; required: lower; required: upper; required: digit;"
+              autoCapitalize="none"
+              autoCorrect={false}
             />
             <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
               {showPassword ? (
@@ -205,13 +255,30 @@ export default function SignUpScreen() {
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry={!showPassword}
+              textContentType="newPassword"
+              autoComplete="new-password"
+              passwordRules="minlength: 8; required: lower; required: upper; required: digit;"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="go"
+              onSubmitEditing={handleSignUp}
             />
           </View>
+
+          {/* BUG-8: the visible, un-suppressable half of the feedback. */}
+          {formError ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{formError}</Text>
+            </View>
+          ) : null}
 
           <TouchableOpacity
             style={[styles.signUpButton, loading && styles.buttonDisabled]}
             onPress={handleSignUp}
             disabled={loading}
+            accessibilityRole="button"
+            accessibilityLabel="Create Account"
+            accessibilityState={{ disabled: loading, busy: loading }}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
@@ -292,6 +359,20 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: Colors.dark.text,
+  },
+  errorBox: {
+    backgroundColor: 'rgba(255, 82, 82, 0.12)',
+    borderWidth: 1,
+    borderColor: Colors.dark.error,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  errorText: {
+    color: Colors.dark.error,
+    fontSize: 13,
+    lineHeight: 18,
   },
   signUpButton: {
     backgroundColor: Colors.dark.accent,

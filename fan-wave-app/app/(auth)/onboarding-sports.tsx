@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -60,7 +60,30 @@ export default function OnboardingSportsScreen() {
     });
   };
 
-  const renderItem = ({ item }: { item: SportItem }) => {
+  // v9.5.7 (iOS UAT BUG-19): the tiles are `flex: 1, aspectRatio: 1` in a
+  // 3-column FlatList. With 8 sports the last row holds 2, and flex: 1
+  // splits the row between them -- each tile becomes half the row wide
+  // instead of a third, and aspectRatio: 1 then makes it half a row TALL.
+  // College BB and MLS rendered as two giant tiles under six normal ones.
+  //
+  // Padding the data to a multiple of the column count keeps every row
+  // three-across, so the flex maths produces the same tile everywhere.
+  // The fillers are inert: no press target, no label, invisible.
+  const COLUMNS = 3;
+  const gridData = useMemo<{ id: string; filler?: true }[]>(() => {
+    const base = [...SPORTS] as { id: string; filler?: true }[];
+    const remainder = base.length % COLUMNS;
+    if (remainder === 0) return base;
+    for (let i = 0; i < COLUMNS - remainder; i++) {
+      base.push({ id: `__filler_${i}`, filler: true });
+    }
+    return base;
+  }, []);
+
+  const renderItem = ({ item }: { item: any }) => {
+    if (item.filler) {
+      return <View style={[styles.card, styles.cardFiller]} pointerEvents="none" />;
+    }
     const isSelected = selected.has(item.id);
     return (
       <TouchableOpacity
@@ -102,10 +125,10 @@ export default function OnboardingSportsScreen() {
       </View>
 
       <FlatList
-        data={SPORTS}
+        data={gridData}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
-        numColumns={3}
+        numColumns={COLUMNS}
         contentContainerStyle={styles.grid}
         columnWrapperStyle={styles.row}
         showsVerticalScrollIndicator={false}
@@ -174,6 +197,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 4,
+  },
+  cardFiller: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
   },
   cardSelected: {
     backgroundColor: 'rgba(108, 92, 231, 0.2)',

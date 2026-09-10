@@ -203,9 +203,15 @@ export default function CreateWatchPartyScreen() {
   const [customTime, setCustomTime] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  // v9.5.7 (iOS UAT BUG-16): the picker opened on "Sep 16, 2026" -- a week
+  // out -- because the draft was seeded at now + 7 days. Nothing about the
+  // custom path implies "a week from now"; it exists for any date the five
+  // presets don't cover, and the nearest of those is tomorrow. Seeding at
+  // tomorrow 7 PM means the most common custom choices are a scroll or two
+  // away instead of a week of back-scrolling.
   const [customPickerDraft, setCustomPickerDraft] = useState<Date>(() => {
     const d = new Date();
-    d.setDate(d.getDate() + 7);
+    d.setDate(d.getDate() + 1);
     d.setHours(19, 0, 0, 0);
     return d;
   });
@@ -791,6 +797,39 @@ export default function CreateWatchPartyScreen() {
   const handleCreate = async () => {
     setCreating(true);
 
+    // v9.5.7 (iOS UAT BUG-13): a manual venue whose address was TYPED but
+    // whose autocomplete suggestion was never TAPPED had selectedManualCoords
+    // === null, and the insert below fell back to DEFAULT_LAT/DEFAULT_LON --
+    // the Chicago constants at the top of this file. The tester created
+    // "QA Test Bar, 2500 Victory Ave, Dallas" and it was written at
+    // 41.8781/-87.6298, downtown Chicago, with venue_city 'Dallas'. The
+    // detail screen looked perfect; every distance-ranked surface put the
+    // party 800 miles away.
+    //
+    // A default coordinate is the wrong shape of answer here. Geocode what
+    // the host actually typed, and if that cannot be resolved, say so
+    // instead of inventing a location.
+    let resolvedManualCoords = selectedManualCoords;
+    if (manualEntry && !resolvedManualCoords && manualAddress.trim().length >= 3) {
+      try {
+        const hits = await searchAddress(manualAddress.trim(), searchLat, searchLon);
+        if (hits.length > 0) {
+          resolvedManualCoords = { lat: hits[0].lat, lon: hits[0].lon };
+          if (!selectedManualCity && hits[0].city) setSelectedManualCity(hits[0].city);
+        }
+      } catch {
+        // Fall through to the guard below.
+      }
+    }
+    if (manualEntry && !resolvedManualCoords) {
+      setCreating(false);
+      Alert.alert(
+        'We need the venue location',
+        "We couldn't find that address on the map, so people wouldn't be able to see how far away your party is. Pick one of the address suggestions as you type, or try a fuller address.",
+      );
+      return;
+    }
+
     const venueName = manualEntry ? manualName.trim() : selectedVenue?.name ?? '';
     const venueAddress = manualEntry
       ? manualAddress.trim()
@@ -819,8 +858,12 @@ export default function CreateWatchPartyScreen() {
       // 087). Keeps a McKinney venue discoverable by Dallas fans now that
       // venue_city names the venue's own city.
       venue_metro: userCity ? userCity.split(',')[0]!.trim() : null,
-      venue_lat: manualEntry ? (selectedManualCoords?.lat ?? DEFAULT_LAT) : (selectedVenue?.lat ?? DEFAULT_LAT),
-      venue_lon: manualEntry ? (selectedManualCoords?.lon ?? DEFAULT_LON) : (selectedVenue?.lon ?? DEFAULT_LON),
+      // BUG-13: no Chicago fallback on the manual path -- handleCreate
+      // returns early above rather than guessing. A Places-selected venue
+      // always carries real coordinates, so its ?? is unreachable in
+      // practice and stays only as a type guard.
+      venue_lat: manualEntry ? resolvedManualCoords!.lat : (selectedVenue?.lat ?? DEFAULT_LAT),
+      venue_lon: manualEntry ? resolvedManualCoords!.lon : (selectedVenue?.lon ?? DEFAULT_LON),
       game_id: selectedGame?.id ?? null,
       atmosphere,
       capacity,
@@ -1364,6 +1407,13 @@ export default function CreateWatchPartyScreen() {
               onPress={() => {
                 setSelectedTime(t.value);
                 setCustomTime(null);
+                // BUG-16: the iOS pickers render INLINE (a compact
+                // "Sep 16, 2026" button), and tapping a preset left
+                // showDatePicker true -- so the picker stayed on screen
+                // under the chips and read as a second active value.
+                // Choosing a preset is a decision to not use the picker.
+                setShowDatePicker(false);
+                setShowTimePicker(false);
               }}
             >
               <Text
@@ -1418,36 +1468,87 @@ export default function CreateWatchPartyScreen() {
           })}
         </Text>
       </Text>
-      {showDatePicker && (
-        <DateTimePicker
-          value={customPickerDraft}
-          mode="date"
-          minimumDate={new Date()}
-          maximumDate={new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)}
-          onChange={(e: DateTimePickerEvent, d?: Date) => {
-            setShowDatePicker(false);
-            if (e.type === 'dismissed' || !d) return;
-            const merged = new Date(customPickerDraft);
-            merged.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
-            setCustomPickerDraft(merged);
-            setShowTimePicker(true);
-          }}
-        />
-      )}
-      {showTimePicker && (
-        <DateTimePicker
-          value={customPickerDraft}
-          mode="time"
-          onChange={(e: DateTimePickerEvent, d?: Date) => {
-            setShowTimePicker(false);
-            if (e.type === 'dismissed' || !d) return;
-            const merged = new Date(customPickerDraft);
-            merged.setHours(d.getHours(), d.getMinutes(), 0, 0);
-            setCustomPickerDraft(merged);
-            setCustomTime(merged.toISOString());
-          }}
-        />
-      )}
+      {/* BUG-16, second half: "the picker exposes only a date control;
+          there is no visible way to set the time."
+
+          True on iOS. The two-step flow (date picker -> onChange ->
+          time picker) only reaches step two once the DATE picker has
+          fired a change, and iOS renders these inline as bare compact
+          buttons with no label, no framing and no confirm -- so a
+          half-finished custom time looked like a stray pill sitting under
+          the preset chips rather than a control mid-use.
+
+          iOS has a single `datetime` mode that puts both wheels in one
+          control; use it, inside a framed panel with an explicit Done, so
+          the whole choice is visible and dismissible in one place. Android
+          has no datetime mode, so it keeps the sequential date-then-time
+          flow its users already expect from the platform pickers. */}
+      {Platform.OS === 'ios'
+        ? showDatePicker && (
+            <View style={styles.pickerPanel}>
+              <View style={styles.pickerPanelHeader}>
+                <Text style={styles.pickerPanelTitle}>Pick a date and time</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setCustomTime(customPickerDraft.toISOString());
+                    setShowDatePicker(false);
+                  }}
+                  hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                >
+                  <Text style={styles.pickerPanelDone}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={customPickerDraft}
+                mode="datetime"
+                display="spinner"
+                themeVariant="dark"
+                minimumDate={new Date()}
+                maximumDate={new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)}
+                onChange={(_e: DateTimePickerEvent, d?: Date) => {
+                  if (!d) return;
+                  setCustomPickerDraft(d);
+                  // Reflect the scroll immediately in the summary line so
+                  // the value in play is never ambiguous.
+                  setCustomTime(d.toISOString());
+                }}
+              />
+            </View>
+          )
+        : (
+          <>
+            {showDatePicker && (
+              <DateTimePicker
+                value={customPickerDraft}
+                mode="date"
+                minimumDate={new Date()}
+                maximumDate={new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)}
+                onChange={(e: DateTimePickerEvent, d?: Date) => {
+                  setShowDatePicker(false);
+                  if (e.type === 'dismissed' || !d) return;
+                  const merged = new Date(customPickerDraft);
+                  merged.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
+                  setCustomPickerDraft(merged);
+                  setShowTimePicker(true);
+                }}
+              />
+            )}
+            {showTimePicker && (
+              <DateTimePicker
+                value={customPickerDraft}
+                mode="time"
+                onChange={(e: DateTimePickerEvent, d?: Date) => {
+                  setShowTimePicker(false);
+                  if (e.type === 'dismissed' || !d) return;
+                  const merged = new Date(customPickerDraft);
+                  merged.setHours(d.getHours(), d.getMinutes(), 0, 0);
+                  setCustomPickerDraft(merged);
+                  setCustomTime(merged.toISOString());
+                }}
+              />
+            )}
+          </>
+        )}
 
       {/* Visibility */}
       <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Visibility</Text>
@@ -1975,6 +2076,33 @@ const styles = StyleSheet.create({
   },
 
   // Inputs
+  pickerPanel: {
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.surface,
+    overflow: 'hidden',
+  },
+  pickerPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  pickerPanelTitle: {
+    color: C.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  pickerPanelDone: {
+    color: C.accent,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   customTimeRow: {
     flexDirection: 'row',
     alignItems: 'center',

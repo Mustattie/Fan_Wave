@@ -33,6 +33,7 @@ import { reportError } from '@/lib/errorReporting';
 import { blockUser } from '@/lib/blocks';
 import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
 import { WC_EVENT_ID } from '@/constants/WorldCupIds';
+import { queryClient } from '@/hooks/useQueryClient';
 
 type RsvpStatus = 'going' | 'interested' | 'cant_go' | null;
 
@@ -267,7 +268,11 @@ export default function WatchPartyDetailScreen() {
         setAttendees([]);
         setAttendeeTotals({ going: 0, maybe: 0, cantGo: 0 });
       } else {
-        const mappedAttendees: Attendee[] = data.map((r: any, i: number) => ({
+        // v9.5.7 (iOS UAT BUG-14 / migration 097): the RPC now always
+        // returns at least one row so the totals can't vanish with the
+        // roster. A row with a NULL id carries counts and no attendee.
+        const attendeeRows = data.filter((r: any) => r.id);
+        const mappedAttendees: Attendee[] = attendeeRows.map((r: any, i: number) => ({
           id: r.id,
           name: r.display_name,
           initial: r.display_name.charAt(0).toUpperCase(),
@@ -416,6 +421,23 @@ export default function WatchPartyDetailScreen() {
       // authoritative watch_party_rsvps state (was drifting on race
       // between optimistic UI and slow server acks — v9.4.2 UAT).
       loadAttendees();
+      // v9.5.7 (iOS UAT BUG-14): loadAttendees only refreshed THIS screen.
+      // Home and Discover render WatchPartyCard off the shared ['myRsvps']
+      // cache and the parties lists, and nothing here invalidated either --
+      // so after switching Going -> Maybe on detail, Home still showed the
+      // stale "Going" it had cached, and its party row still carried the
+      // pre-change rsvp_count. That is two of the four disagreeing answers
+      // in the report. WatchPartyCard already invalidates myRsvps when IT
+      // mutates; detail simply never did.
+      // Prefix matching: ['watchParties'] covers ['watchParties', city,
+      // limit] (Home) and ['watchPartiesInfinite'] covers Discover's
+      // paginated list.
+      queryClient.invalidateQueries({ queryKey: ['myRsvps'] });
+      queryClient.invalidateQueries({ queryKey: ['watchParties'] });
+      queryClient.invalidateQueries({ queryKey: ['watchPartiesInfinite'] });
+      // The progress bar reads party.rsvp_count, which the server has just
+      // recomputed. Pull the row again so the bar agrees with the totals.
+      loadParty();
     } catch (e) {
       // v9.4.2: was silently swallowing everything, which meant the RSVP
       // RPC being missing on prod (PGRST202) looked like a successful
@@ -520,7 +542,19 @@ export default function WatchPartyDetailScreen() {
     );
   }
 
-  const capacityPct = Math.min(party.rsvp_count / party.capacity, 1);
+  // v9.5.7 (iOS UAT BUG-14): the bar read the denormalized
+  // watch_parties.rsvp_count, which is refreshed by loadParty and NOT by
+  // the RSVP mutation -- so after tapping Maybe the bar still showed
+  // "1/50 going" while the summary line directly beneath it, fed by the
+  // attendees RPC, said "0 going". Two numbers for one fact, six pixels
+  // apart.
+  //
+  // attendeeTotals.going is the same number from the same source the
+  // summary uses, refetched on every RSVP, so the two cannot disagree.
+  // party.rsvp_count remains the fallback for the first paint, before
+  // loadAttendees resolves.
+  const goingCount = attendeeTotals.going || party.rsvp_count;
+  const capacityPct = Math.min(goingCount / party.capacity, 1);
   const isPrivate = party.visibility === 'private';
 
   return (
@@ -602,7 +636,7 @@ export default function WatchPartyDetailScreen() {
               />
             </View>
             <Text style={styles.capacityText}>
-              {party.rsvp_count}/{party.capacity} going
+              {goingCount}/{party.capacity} going
             </Text>
           </View>
         </View>

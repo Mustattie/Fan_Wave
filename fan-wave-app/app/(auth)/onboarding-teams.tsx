@@ -180,7 +180,9 @@ export default function OnboardingTeamsScreen() {
     if (dist.lite > 0) parts.push(`${dist.lite} 📊`);
     if (dist.social > 0) parts.push(`${dist.social} 👥`);
     if (dist.all_in > 0) parts.push(`${dist.all_in} 🔥`);
-    return `${followedTeams.size} teams (${parts.join(' · ')})`;
+    // BUG-18: read "1 teams (1 👥)" after following a single team.
+    const n = followedTeams.size;
+    return `${n} ${n === 1 ? 'team' : 'teams'} (${parts.join(' · ')})`;
   }, [followedTeams]);
 
   const renderTeam = ({ item }: { item: Team }) => {

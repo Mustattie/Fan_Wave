@@ -236,7 +236,16 @@ export default function ProfileScreen() {
   const menuItems = [
     { icon: Edit3, label: 'Edit Profile', color: Colors.dark.text, badge: null as string | null },
     { icon: Crown, label: 'Subscription', color: Colors.dark.accent, badge: subBadge },
-    { icon: Stethoscope, label: 'IAP Diagnostics', color: Colors.dark.warning, badge: null },
+    // v9.5.7 (iOS UAT BUG-15): this shipped unconditionally, so a
+    // brand-new free account saw a yellow "IAP Diagnostics" row wedged
+    // between Subscription and My Sports and could open the internal
+    // receipt/entitlement dump at app/iap-debug.tsx. It is a developer
+    // tool; __DEV__ is false in every store build, so this removes it
+    // from TestFlight and production while keeping it one tap away in
+    // local development.
+    ...(__DEV__
+      ? [{ icon: Stethoscope, label: 'IAP Diagnostics', color: Colors.dark.warning, badge: null as string | null }]
+      : []),
     { icon: Trophy, label: 'My Sports', color: Colors.dark.text, badge: null },
     { icon: Star, label: 'My Teams', color: Colors.dark.text, badge: null },
     { icon: Ticket, label: 'RSVP History', color: Colors.dark.text, badge: null },

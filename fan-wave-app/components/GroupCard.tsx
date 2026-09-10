@@ -117,8 +117,9 @@ export function GroupCard({
             {group.name}
           </Text>
           <Text style={styles.members}>
-            {(group.memberCount ?? 0).toLocaleString()} members
-            {(group.onlineCount ?? 0) > 0 && ` · ${group.onlineCount ?? 0} online`}
+            {(group.memberCount ?? 0).toLocaleString()}{' '}
+            {(group.memberCount ?? 0) === 1 ? 'member' : 'members'}
+            {(group.onlineCount ?? 0) > 0 ? ` · ${group.onlineCount ?? 0} online` : ''}
           </Text>
         </View>
         {!joinable && showUnread && (
@@ -133,7 +134,21 @@ export function GroupCard({
         )}
       </View>
 
+      {/* v9.5.7 (iOS UAT BUG-20): tapping Join opened the group chat.
+          handleJoin called e.stopPropagation(), which does nothing here --
+          React Native Touchables use the responder system, not DOM-style
+          bubbling, so the card's own onPress still fired and navigated. The
+          screen then unmounted mid-insert and the membership never landed:
+          the tester's account had zero rows in chat_room_members afterwards
+          while sitting inside the group's chat.
+
+          A View that claims the responder for anything starting inside it
+          stops the card ever seeing the touch. */}
       {joinable && (
+        <View
+          onStartShouldSetResponder={() => true}
+          onResponderRelease={(e) => e.stopPropagation?.()}
+        >
         <TouchableOpacity
           style={[styles.joinBtn, styles.joinBtnFullWidth, showJoinedState && styles.joinedBtn]}
           onPress={handleJoin}
@@ -148,6 +163,7 @@ export function GroupCard({
             </Text>
           )}
         </TouchableOpacity>
+        </View>
       )}
 
       {group.lastMessage ? (

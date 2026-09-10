@@ -164,14 +164,34 @@ export default function GameDayScreen() {
     [interestFiltered, startedToday],
   );
 
-  // Sport-pill options: "All" plus every sport that has a game today.
-  // Preload from constants/Sports.ts for canonical labels/order.
+  // Sport-pill options.
+  //
+  // v9.5.7 (iOS UAT BUG-10): these were built from whatever sports had a
+  // game in the server window, while the cards below them were filtered
+  // by the user's interests. The two disagreed in both directions -- the
+  // tester onboarded with MLS, MLB and College FB and got pills for
+  // "All, NFL, MLB, MLS": NFL they had never picked, College FB missing
+  // because no CFB game happened to be in the window. Tapping NFL then
+  // showed games from a sport they had explicitly not chosen, under a
+  // header that reads "every sport you follow".
+  //
+  // The pills now describe what the user follows, which is what the
+  // subtitle promises and what makes the filter row stable day to day: a
+  // followed sport does not vanish from the row because it is between
+  // fixtures. A sport with nothing on today shows its own empty state,
+  // which is a true answer to "what's on in MLS today".
   const sportPills = useMemo(() => {
     const present = new Set<string>();
-    mergedGames.forEach((g) => {
-      const s = (g.sport || '').toLowerCase();
-      if (s) present.add(s);
-    });
+    if (interestSports && interestSports.size > 0) {
+      interestSports.forEach((s) => present.add(s));
+    } else {
+      // No interest signals yet (onboarding skipped, offline first run):
+      // fall back to the old behaviour so the row is never empty.
+      mergedGames.forEach((g) => {
+        const s = (g.sport || '').toLowerCase();
+        if (s) present.add(s);
+      });
+    }
     // Also let currently-active sport survive an interim empty state.
     if (activeSport !== 'all') present.add(activeSport);
     const inOrder: { id: string; label: string }[] = SPORTS
@@ -187,7 +207,7 @@ export default function GameDayScreen() {
       }
     });
     return [{ id: 'all', label: 'All' }, ...inOrder];
-  }, [mergedGames, activeSport]);
+  }, [mergedGames, activeSport, interestSports]);
 
   // Realtime: patch specific games as ESPN sync fires UPDATEs.
   useFocusEffect(

@@ -19,6 +19,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
+import { reportError } from '@/lib/errorReporting';
 import { SportPillRow } from '@/components/SportPill';
 import { supabase } from '@/lib/supabase';
 import { TierBadge } from '@/components/TierBadge';
@@ -74,6 +75,8 @@ const ClipCard = React.memo(function ClipCard({
   onBlock,
   onRetryUpload,
   onCancelUpload,
+  playerFailed,
+  onReloadPlayer,
   isActive,
   isFollowingPoster,
   isOwner,
@@ -93,6 +96,9 @@ const ClipCard = React.memo(function ClipCard({
   onBlock: (clip: ClipDisplay) => void;
   onRetryUpload: (tempId: string) => void;
   onCancelUpload: (tempId: string) => void;
+  /** True when the shared player errored or stalled on THIS card's source. */
+  playerFailed: boolean;
+  onReloadPlayer: () => void;
   // v8.6 P0: was `isVisible`. Now strictly the SINGLE active card. Only
   // the active card mounts <VideoView> attached to the shared player —
   // see ClipsScreen for the architectural rewrite.
@@ -226,20 +232,27 @@ const ClipCard = React.memo(function ClipCard({
             ClipsScreen; when activeClipId changes the parent calls
             sharedPlayer.replace() to swap source without re-allocating
             the codec. */}
-        {isActive && sharedPlayer ? (
-          <VideoView
-            player={sharedPlayer}
-            style={styles.video}
-            nativeControls={false}
-            contentFit="cover"
-          />
-        ) : clip.thumbnailUrl || clip.localUri ? (
-          // v9.4.4: inactive cards show the real still frame instead of a
-          // flat colour. Generated at post time by expo-video-thumbnails
-          // (create-clip) and uploaded next to the video. This is the big
-          // egress win: scrolling the feed now costs a ~40 KB JPEG per
-          // card instead of pulling down a 12 MB video to see what it is.
-          // Still ZERO MediaCodec slots -- an <Image> is not a player.
+        {/* v9.5.7 (iOS UAT BUG-11).
+            ----------------------------------------------------------------
+            The thumbnail used to be the ELSE branch of "is this the active
+            card", so the active card never rendered it -- <VideoView> took
+            its place, and the "still preparing" overlay on top of that was
+            painted with an OPAQUE colour. Three things then had to go right
+            for the card to ever show anything, and when the player failed
+            to reach readyToPlay none of them did: the tester got a flat
+            blue rectangle with a spinner, for the whole session, on a clip
+            whose media_url AND thumbnail_url both return HTTP 200.
+
+            The still frame is now an underlay that is ALWAYS rendered when
+            we have one, with the video layered over it. Whatever happens to
+            the player, there is a real frame behind it. */}
+        {clip.thumbnailUrl || clip.localUri ? (
+          // v9.4.4: real still frame instead of a flat colour. Generated at
+          // post time by expo-video-thumbnails (create-clip) and uploaded
+          // next to the video. This is the big egress win: scrolling the
+          // feed costs a ~40 KB JPEG per card instead of pulling a 12 MB
+          // video to see what it is. ZERO MediaCodec slots -- an <Image>
+          // is not a player.
           <Image
             source={{ uri: clip.thumbnailUrl || clip.localUri! }}
             style={styles.video}
@@ -254,15 +267,40 @@ const ClipCard = React.memo(function ClipCard({
             // placeholder + title overlay still give the card identity.
           />
         )}
-        {/* Loading placeholder — masks the solid-black first paint that
-            expo-video shows before the source is decoded. Only relevant
-            when this card is active and the codec is preparing. */}
-        {isActive && !isReady && (
-          <View style={[styles.videoLoadingOverlay, { backgroundColor: clip.bgColors[0] }]}>
+        {isActive && sharedPlayer && !playerFailed ? (
+          <VideoView
+            player={sharedPlayer}
+            style={StyleSheet.absoluteFill}
+            nativeControls={false}
+            contentFit="cover"
+          />
+        ) : null}
+        {/* Preparing indicator. Translucent, so the still frame stays
+            visible underneath instead of being masked by it, and bounded
+            — see `stalled` in ClipsScreen. */}
+        {isActive && !isReady && !playerFailed && (
+          <View style={styles.videoLoadingOverlay}>
             <ActivityIndicator size="small" color="#fff" />
           </View>
         )}
-        {!isPending && isActive && isReady && !isPlaying && (
+        {/* The player gave up, or took long enough that we stopped
+            pretending. The poster is already behind this, so all that is
+            needed is an honest control. */}
+        {isActive && playerFailed && (
+          <View style={styles.playbackFailedOverlay}>
+            <Text style={styles.playbackFailedText}>Couldn't load this video</Text>
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                onReloadPlayer();
+              }}
+              style={styles.playbackRetryBtn}
+            >
+              <Text style={styles.playbackRetryText}>Try again</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {!isPending && !playerFailed && isActive && isReady && !isPlaying && (
           <View style={styles.playOverlay}>
             <Text style={styles.playIcon}>▶</Text>
           </View>
@@ -327,7 +365,7 @@ const ClipCard = React.memo(function ClipCard({
             (310ms delay made users think nothing happened). This is the
             redundant always-works path. Only shown on the ACTIVE card
             because inactive cards have no playback state of their own. */}
-        {!isPending && isActive && isReady && (
+        {!isPending && !playerFailed && isActive && isReady && (
           <TouchableOpacity
             style={styles.pauseButton}
             onPress={(e) => {
@@ -501,6 +539,18 @@ export default function ClipsScreen() {
   });
   const [isSharedPlaying, setIsSharedPlaying] = useState(false);
   const [isSharedReady, setIsSharedReady] = useState(false);
+  // v9.5.7 (iOS UAT BUG-11): the id of the clip whose playback we have
+  // given up on -- either expo-video reported status 'error', or the
+  // source never reached readyToPlay inside PLAYER_STALL_MS. Before this
+  // there was no terminal state at all: a source that failed to load left
+  // isSharedReady false forever and the card showed a spinner until the
+  // user backgrounded the app. Nothing logged it, either.
+  const [playerFailedFor, setPlayerFailedFor] = useState<string | null>(null);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeClipIdRef = useRef<string | null>(null);
+  // Generous: a 10 MB clip on a slow connection is not a failure. This
+  // exists to bound the unbounded case, not to police slow networks.
+  const PLAYER_STALL_MS = 15_000;
   // v8.7+ P0: user explicitly requested "stop clips auto-playing unless
   // user clicks play". Active-card detection still drives codec slot
   // allocation (no change to the MediaCodec exhaustion fix), but the
@@ -546,6 +596,15 @@ export default function ClipsScreen() {
       return;
     }
     setIsSharedReady(false);
+    // New source: clear any previous verdict and start the clock again.
+    setPlayerFailedFor(null);
+    activeClipIdRef.current = activeClipId;
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+    stallTimerRef.current = setTimeout(() => {
+      // Still not ready. Stop claiming we're loading and hand the user a
+      // control; the poster is already on screen behind the overlay.
+      setPlayerFailedFor(activeClipIdRef.current);
+    }, PLAYER_STALL_MS);
     try {
       sharedPlayer.replace({ uri: clip.videoUrl });
       // v8.7+ P0: only auto-play once the user has opted into playback for
@@ -598,13 +657,60 @@ export default function ClipsScreen() {
   // listener churn anymore.
   useEffect(() => {
     if (!sharedPlayer) return;
-    const sub = sharedPlayer.addListener('statusChange', ({ status }) => {
-      setIsSharedReady(status === 'readyToPlay');
+    const sub = sharedPlayer.addListener('statusChange', (payload: any) => {
+      const status = payload?.status;
+      const ready = status === 'readyToPlay';
+      setIsSharedReady(ready);
+      if (ready) {
+        // Made it. Cancel the stall verdict.
+        if (stallTimerRef.current) {
+          clearTimeout(stallTimerRef.current);
+          stallTimerRef.current = null;
+        }
+        setPlayerFailedFor(null);
+        return;
+      }
+      if (status === 'error') {
+        // v9.5.7 (BUG-11): expo-video was already reporting this and we
+        // were throwing it away, which is why an undecodable source
+        // looked identical to a slow one -- forever.
+        if (stallTimerRef.current) {
+          clearTimeout(stallTimerRef.current);
+          stallTimerRef.current = null;
+        }
+        reportError(
+          new Error(payload?.error?.message ?? 'expo-video status=error'),
+          { source: 'clips:playerStatus', clipId: activeClipIdRef.current },
+        );
+        setPlayerFailedFor(activeClipIdRef.current);
+      }
     });
     return () => {
       try { sub.remove(); } catch { /* ignore */ }
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = null;
+      }
     };
   }, [sharedPlayer]);
+
+  // Re-arm the same source on demand from the card's "Try again".
+  const handleReloadPlayer = useCallback(() => {
+    if (!sharedPlayer) return;
+    const clip = clips.find((c) => c.id === activeClipIdRef.current);
+    if (!clip?.videoUrl) return;
+    setPlayerFailedFor(null);
+    setIsSharedReady(false);
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+    stallTimerRef.current = setTimeout(() => {
+      setPlayerFailedFor(activeClipIdRef.current);
+    }, PLAYER_STALL_MS);
+    try {
+      sharedPlayer.replace({ uri: clip.videoUrl });
+    } catch {
+      setPlayerFailedFor(activeClipIdRef.current);
+    }
+  }, [sharedPlayer, clips]);
 
   const toggleSharedPlay = useCallback(() => {
     if (!sharedPlayer) return;
@@ -1206,6 +1312,8 @@ export default function ClipsScreen() {
           onBlock={handleBlock}
           onRetryUpload={handleRetryUpload}
           onCancelUpload={handleCancelUpload}
+          playerFailed={isActive && playerFailedFor === item.id}
+          onReloadPlayer={handleReloadPlayer}
           isActive={isActive}
           isFollowingPoster={followedUserIds.has(item.userId)}
           isOwner={!!currentUserId && item.userId === currentUserId}
@@ -1219,7 +1327,7 @@ export default function ClipsScreen() {
         />
       );
     },
-    [likedClipIds, handleLike, handleShare, handleComment, activeClipId, handleDelete, handleBlock, currentUserId, handleExport, handleFollow, followedUserIds, sharedPlayer, isSharedPlaying, isSharedReady, toggleSharedPlay, handleRetryUpload, handleCancelUpload]
+    [likedClipIds, handleLike, handleShare, handleComment, activeClipId, handleDelete, handleBlock, currentUserId, handleExport, handleFollow, followedUserIds, sharedPlayer, isSharedPlaying, isSharedReady, toggleSharedPlay, handleRetryUpload, handleCancelUpload, playerFailedFor, handleReloadPlayer]
   );
 
   const renderFooter = useCallback(() => {
@@ -1484,6 +1592,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+    // BUG-11: this used to be painted with the card's solid colour, which
+    // masked the still frame behind it. A light scrim keeps the spinner
+    // legible over any poster without hiding it.
+    backgroundColor: 'rgba(0,0,0,0.25)',
   },
   playOverlay: {
     position: 'absolute',
@@ -1614,6 +1726,30 @@ const styles = StyleSheet.create({
   },
   clipActionsPending: {
     opacity: 0.35,
+  },
+  playbackFailedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  playbackFailedText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  playbackRetryBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
+  },
+  playbackRetryText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   // BUG-4 upload overlay. Sits over the whole media area of a placeholder
   // card so the state of the upload is the most legible thing on it.
