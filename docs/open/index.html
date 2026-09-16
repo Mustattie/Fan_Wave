@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open in Fan Sphere</title>
+    <meta name="description" content="Someone shared this with you on Fan Sphere — the social home for sports fans. Public &amp; private watch parties, live chat, clips, and team-by-team coverage across NBA, NFL, MLB, soccer, World Cup and more.">
+    <meta property="og:title" content="Shared with you on Fan Sphere">
+    <meta property="og:description" content="Your crew, any city, every game. Watch parties, live chat, clips, and the community that loves the game as much as you do.">
+    <meta property="og:type" content="website">
+    <link rel="canonical" href="https://fansphere.org/open/">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a0b2e 0%, #2d1b4e 40%, #6c5ce7 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 24px;
+            line-height: 1.6;
+        }
+        .card { max-width: 540px; width: 100%; text-align: center; }
+        .mark { font-size: 46px; line-height: 1; margin-bottom: 18px; }
+        h1 {
+            font-size: clamp(28px, 4.6vw, 40px);
+            font-weight: 900;
+            letter-spacing: -1px;
+            line-height: 1.15;
+            margin-bottom: 14px;
+        }
+        .lede { font-size: 17px; opacity: 0.94; }
+        .cta-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            margin-top: 32px;
+        }
+        .open-app {
+            display: none;
+            background: #fff;
+            color: #2d1b4e;
+            text-decoration: none;
+            padding: 14px 32px;
+            border-radius: 999px;
+            font-weight: 800;
+            font-size: 16px;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .open-app:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.22); }
+        .badge-row { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
+        .store-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: #fff;
+            color: #2d1b4e;
+            text-decoration: none;
+            padding: 12px 22px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 15px;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            min-width: 200px;
+            justify-content: center;
+        }
+        .store-badge.secondary {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.4);
+        }
+        .store-badge:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.22); }
+        .store-badge .label-small { display: block; font-size: 11px; font-weight: 500; opacity: 0.7; letter-spacing: 0.4px; text-transform: uppercase; }
+        .store-badge .label-big { display: block; font-size: 16px; font-weight: 800; }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-top: 34px;
+            text-align: left;
+        }
+        .feature {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.16);
+            border-radius: 12px;
+            padding: 14px 16px;
+        }
+        .feature .icon { font-size: 20px; margin-bottom: 4px; }
+        .feature h3 { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+        .feature p { font-size: 13px; opacity: 0.8; line-height: 1.45; }
+        .footer-links {
+            margin-top: 34px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            font-size: 13px;
+            opacity: 0.62;
+        }
+        .footer-links a { color: #fff; text-decoration: none; }
+        .footer-links a:hover { text-decoration: underline; }
+        .copy { margin-top: 14px; font-size: 12px; opacity: 0.45; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="mark" id="mark">🏟️</div>
+        <h1 id="headline">Shared with you on Fan Sphere</h1>
+        <p class="lede" id="lede">Get the app to open it.</p>
+
+        <div class="cta-stack">
+            <a class="open-app" id="open-app" href="#">Open in Fan Sphere</a>
+            <div class="badge-row">
+                <a class="store-badge" id="play-store-link" href="https://play.google.com/store/apps/details?id=org.fansphere.app">
+                    <span>
+                        <span class="label-small">Get it on</span>
+                        <span class="label-big">Google Play</span>
+                    </span>
+                </a>
+                <a class="store-badge secondary" href="https://apps.apple.com/app/fan-sphere/id6747320180">
+                    <span>
+                        <span class="label-small">Download on the</span>
+                        <span class="label-big">App Store</span>
+                    </span>
+                </a>
+            </div>
+        </div>
+
+        <div class="features">
+            <div class="feature">
+                <div class="icon">📺</div>
+                <h3>Watch Parties</h3>
+                <p>Public and private, with live chat.</p>
+            </div>
+            <div class="feature">
+                <div class="icon">🎬</div>
+                <h3>Clips</h3>
+                <p>Capture and share game-day moments.</p>
+            </div>
+            <div class="feature">
+                <div class="icon">🏆</div>
+                <h3>Every Sport</h3>
+                <p>NBA, NFL, MLB, soccer, and more.</p>
+            </div>
+        </div>
+
+        <div class="footer-links">
+            <a href="/">Home</a>
+            <a href="/privacy.html">Privacy</a>
+            <a href="/terms.html">Terms</a>
+            <a href="mailto:support@thabtech.com">Support</a>
+        </div>
+        <div class="copy">&copy; 2026 Thabtech LLC. Fan Sphere is a Thabtech LLC product.</div>
+    </div>
+
+    <script>
+    /*
+     * Landing page for shared content links.
+     *
+     * Reached two ways, both via docs/404.html, which preserves the original
+     * path as ?p= because GitHub Pages cannot resolve dynamic segments:
+     *   /party/<uuid>  /group/<uuid>  /clip/<uuid>  /moment/<uuid>
+     *
+     * Who actually sees this page differs by type, and that is the whole
+     * design:
+     *
+     *   /party/ and /group/ ARE verified App Links (see
+     *   docs/.well-known/), so a phone WITH the app installed never gets
+     *   here -- the OS hands the URL to the app first. Anyone who does
+     *   reach this page is on a desktop or has no app, so the store
+     *   badges are exactly right, and the custom-scheme button is a
+     *   fallback for the case where verification has not propagated yet.
+     *
+     *   /clip/ and /moment/ are NOT verified, because the app has no
+     *   detail screen for either -- verifying a path with no destination
+     *   would open the app into +not-found, which is worse than a web
+     *   page. So everyone lands here, and there is deliberately no
+     *   open-in-app button: fansphere://clip/<id> has no route either and
+     *   would fail the same way.
+     *
+     * Before this page existed, all four redirected to the marketing
+     * homepage, which dropped the shared thing on the floor entirely.
+     *
+     * No database reads. Showing a real preview (party title, clip
+     * thumbnail) would mean anonymous SELECT on those tables, and watch
+     * parties have a private visibility mode -- that is an RLS decision,
+     * not a landing-page decision.
+     */
+    (function () {
+        // Types whose paths resolve to a real app route. Keep in sync with
+        // docs/.well-known/ and app.json intentFilters -- adding a type here
+        // without a route is how you get a button that opens +not-found.
+        var ROUTED = { party: true, group: true };
+
+        var COPY = {
+            party:  { mark: '📺', headline: 'You’re invited to a watch party',
+                      lede: 'Open it in Fan Sphere to see the details and RSVP.' },
+            group:  { mark: '👥', headline: 'You’ve been invited to a fan group',
+                      lede: 'Open it in Fan Sphere to join the conversation.' },
+            clip:   { mark: '🎬', headline: 'A clip was shared with you',
+                      lede: 'Get Fan Sphere to watch it and see more from this fan.' },
+            moment: { mark: '⚡', headline: 'A game moment was shared with you',
+                      lede: 'Get Fan Sphere to see it and follow the game live.' }
+        };
+
+        function sanitize(raw) {
+            if (!raw) return '';
+            return String(raw).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+        }
+
+        var type = '', id = '';
+        try {
+            var qs = new URLSearchParams(window.location.search);
+            // 404.html hands us the original path; a direct link may pass
+            // ?type=&id= instead.
+            var origPath = qs.get('p') || '';
+            var m = /^\/(party|group|clip|moment)\/([^\/?#]+)/i.exec(origPath);
+            if (m) { type = m[1].toLowerCase(); id = sanitize(m[2]); }
+            if (!type) {
+                type = sanitize(qs.get('type') || '').toLowerCase();
+                id = sanitize(qs.get('id') || '');
+            }
+        } catch (_) { /* old browser -- generic copy below still renders */ }
+
+        var copy = COPY[type];
+        if (copy) {
+            document.getElementById('mark').textContent = copy.mark;
+            document.getElementById('headline').textContent = copy.headline;
+            document.getElementById('lede').textContent = copy.lede;
+        }
+
+        if (type && id && ROUTED[type]) {
+            var btn = document.getElementById('open-app');
+            btn.href = 'fansphere://' + type + '/' + encodeURIComponent(id);
+            btn.style.display = 'inline-block';
+        }
+
+        // Attribute the install so the invite loop is measurable. Play
+        // accepts ?referrer=; the App Store ignores unknown params harmlessly.
+        if (type && id) {
+            var play = document.getElementById('play-store-link');
+            if (play) {
+                play.href += (play.href.indexOf('?') >= 0 ? '&' : '?') +
+                    'referrer=' + encodeURIComponent('share_' + type + '_' + id);
+            }
+        }
+    })();
+    </script>
+</body>
+</html>

@@ -19,14 +19,21 @@ goes in `docs/`.
 
 ## What ships where
 
-| Path | Serves | Verified app link? |
-|---|---|---|
-| `/party/<uuid>` | `app/party/[id].tsx` → `/watch-party/[id]` | **Yes** |
-| `/group/<uuid>` | `app/group/[id].tsx` → `/fan-group/[id]` | **Yes** |
-| `/invite/<code>` | `docs/invite/index.html` | No — deliberate |
-| `/auth/` | `docs/auth/index.html` | No — **must never be** |
-| `/clip/<uuid>` | nothing yet | No — no destination exists |
-| `/moment/<uuid>` | nothing yet | No — no destination exists |
+| Path | In-app | On the web (no app installed) | Verified app link? |
+|---|---|---|---|
+| `/party/<uuid>` | `app/party/[id].tsx` → `/watch-party/[id]` | `docs/open/` | **Yes** |
+| `/group/<uuid>` | `app/group/[id].tsx` → `/fan-group/[id]` | `docs/open/` | **Yes** |
+| `/clip/<uuid>` | *none — no detail screen* | `docs/open/` | No |
+| `/moment/<uuid>` | *none — no detail screen* | `docs/open/` | No |
+| `/invite/<code>` | — | `docs/invite/` | No — deliberate |
+| `/auth/` | — | `docs/auth/` | No — **must never be** |
+
+GitHub Pages cannot resolve dynamic segments, so every one of these 404s and
+`docs/404.html` re-dispatches it with the original path preserved as `?p=`.
+That table is the routing table — `docs/404.html` and `docs/open/index.html`
+both have to agree with it, and `ROUTED` in `open/index.html` must list only
+types that have an app route, or the page renders an "Open in Fan Sphere"
+button that lands in `+not-found`.
 
 ### Why `/auth/` is excluded, and must stay excluded
 
@@ -53,8 +60,44 @@ Sphere" link for the minority who do.
 `lib/sharing.ts` generates both, but **no in-app destination exists** — there
 is no clip detail screen and no moment detail screen. Verifying those paths
 would make a tapped share link open the app into `+not-found`, which is worse
-than today's fallback of opening a browser. They stay unverified until a
-viewer screen exists. Adding one is a product change, not a linking change.
+than the web page it replaced. They stay unverified until a viewer screen
+exists, and `docs/open/` carries them in the meantime with real copy and store
+CTAs instead of the marketing homepage they used to land on.
+
+Building that screen is not a small job and should not ride along in a linking
+change. `ClipCard` lives inside `app/(tabs)/clips.tsx`, takes 20 props, and is
+bound to ClipsScreen's *shared* video-player architecture — `sharedPlayer`,
+`isActive`, `isPlaying`, `onTogglePlay`, where exactly one card may hold a
+`<VideoView>`. That design is the fix for a v8.6 P0 and a UAT flicker bug, both
+documented in comments at the top of the file. A standalone clip screen means
+either extracting `ClipCard` (refactoring a performance-sensitive file) or
+re-implementing the player lifecycle (duplicating the logic that produced those
+two bugs). Either belongs in its own change with its own UAT round.
+
+## Deploying: `docs/` publishes from `main`, not from the release branch
+
+```
+gh api repos/Mustattie/Fan_Wave/pages --jq '.source'
+# {"branch":"main","path":"/docs"}
+```
+
+Everything under `docs/` is inert until it reaches **main**. Work committed on
+`v9.5` changes nothing about what fansphere.org serves, and `curl` will keep
+returning 404 for it — which is exactly what
+`https://fansphere.org/.well-known/assetlinks.json` and `/auth/` do as of this
+commit.
+
+Two consequences worth stating plainly:
+
+1. **The site must be live before a build depends on it.** A build that
+   redirects auth emails to `/auth/`, or claims App Links, will fail in the
+   field if the pages have not merged to main first. Merge, `curl` to confirm,
+   then build.
+2. **`site_url` on prod Supabase already points at `/auth/`**, which is still a
+   404. Nothing reaches it today — every send in the app passes an explicit
+   allow-listed `redirectTo`, and no mailer template embeds `{{ .SiteURL }}`
+   (all use `{{ .ConfirmationURL }}`) — so the fallback is unreachable rather
+   than safe. It stops being a latent trap the moment `docs/` is on main.
 
 ## The iOS blocker
 
