@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { Mail, Lock, User, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { AUTH_REDIRECT_URL } from '@/lib/authRedirect';
 import { parseAuthError } from '@/lib/authErrors';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 
@@ -98,7 +99,7 @@ export default function SignUpScreen() {
         email: trimmedEmail,
         password,
         options: {
-          emailRedirectTo: 'fansphere://auth-callback',
+          emailRedirectTo: AUTH_REDIRECT_URL,
           data: {
             display_name: displayName.trim(),
           },

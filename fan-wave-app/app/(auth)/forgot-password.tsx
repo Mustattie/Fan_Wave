@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { Mail, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { AUTH_REDIRECT_URL } from '@/lib/authRedirect';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 
 export default function ForgotPasswordScreen() {
@@ -28,12 +29,13 @@ export default function ForgotPasswordScreen() {
 
     setLoading(true);
     // Explicit redirectTo so the reset link works even if Supabase Site
-    // URL is changed later. The deep-link handler in lib/supabase.ts
-    // parses the recovery tokens from the fragment and calls setSession,
-    // which fires PASSWORD_RECOVERY → app/_layout.tsx routes to
-    // /(auth)/reset-password.
+    // URL is changed later. It points at the https bridge page, which
+    // forwards to fansphere://auth-callback on a phone; the deep-link
+    // handler in lib/supabase.ts then parses the recovery tokens from the
+    // fragment and calls setSession, which fires PASSWORD_RECOVERY →
+    // app/_layout.tsx routes to /(auth)/reset-password.
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: 'fansphere://auth-callback',
+      redirectTo: AUTH_REDIRECT_URL,
     });
     setLoading(false);
 

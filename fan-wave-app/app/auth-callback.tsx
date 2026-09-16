@@ -13,7 +13,7 @@ import { reportError } from '@/lib/errorReporting';
  *
  * v9.5.10 (Android UAT #1). Every auth email we send — signup confirmation
  * (sign-up.tsx), resend (verify-email.tsx), password reset
- * (forgot-password.tsx) — sets `emailRedirectTo: 'fansphere://auth-callback'`.
+ * (forgot-password.tsx) — redirected to `fansphere://auth-callback`.
  * No route of that name existed. So on a phone the link opened the app
  * straight into +not-found, and the tokens Supabase put in the URL were
  * never exchanged for a session.
@@ -26,9 +26,13 @@ import { reportError } from '@/lib/errorReporting';
  * verification.
  *
  * This route closes the phone half: it consumes whatever Supabase handed
- * back, and says plainly what happened either way. The desktop half needs
- * an https landing page, which lives outside this repo — see the
- * verification notes in the v9.5.10 commit.
+ * back, and says plainly what happened either way.
+ *
+ * The desktop half is now closed too, one layer earlier. Emails redirect to
+ * https://fansphere.org/auth/ (docs/auth/index.html, GitHub Pages) instead of
+ * straight to the scheme — see lib/authRedirect.ts. That page forwards the
+ * tokens here on a phone, so everything below still runs unchanged; the only
+ * difference is that a browser now has something it can actually render.
  */
 export default function AuthCallbackScreen() {
   const router = useRouter();

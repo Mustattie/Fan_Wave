@@ -182,8 +182,13 @@ them; handle them out-of-band:
 - **SMTP provider** — Dashboard → Project Settings → Auth → SMTP Settings.
   Required for confirm-email to actually deliver. Sign up for Resend /
   Postmark / SendGrid out-of-band.
-- **Site URL + redirect URLs** — `fansphere://auth-callback` is in
-  `supabase/config.toml`; mirror that in Dashboard → Auth → URL Configuration.
+- **Site URL + redirect URLs** — the authoritative list is in
+  `supabase/config.toml`; mirror it in Dashboard → Auth → URL Configuration.
+  Site URL must be `https://fansphere.org/auth/` and the allow-list must
+  contain it. An unlisted redirect does not error — Supabase quietly
+  substitutes Site URL, so a missing entry looks like a broken confirmation
+  link rather than a config mistake. A custom scheme as Site URL renders a
+  blank page in any desktop browser; see `lib/authRedirect.ts`.
 - **Provider toggles** (Apple, Google, etc.) — copy from dev as needed.
 - **Realtime** — `users` (mig 034) and `games` (mig 043) get added to the
   `supabase_realtime` publication by SQL. No extra Dashboard toggle.

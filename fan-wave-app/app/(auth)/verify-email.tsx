@@ -13,6 +13,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Mail, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { AUTH_REDIRECT_URL } from '@/lib/authRedirect';
 import { parseAuthError } from '@/lib/authErrors';
 
 export default function VerifyEmailScreen() {
@@ -36,7 +37,7 @@ export default function VerifyEmailScreen() {
         type: 'signup',
         email,
         options: {
-          emailRedirectTo: 'fansphere://auth-callback',
+          emailRedirectTo: AUTH_REDIRECT_URL,
         },
       });
       if (error) throw error;
