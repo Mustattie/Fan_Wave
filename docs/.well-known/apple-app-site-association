@@ -1,0 +1,29 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["D887TLA6L9.org.fansphere.app"],
+        "components": [
+          {
+            "/": "/auth/*",
+            "exclude": true,
+            "comment": "MUST stay excluded. /auth/ is the email-confirmation bridge page and it only works as a WEB page -- it reads the tokens Supabase put in the fragment and forwards them to fansphere://auth-callback itself. Capturing it as a Universal Link would open the app at a route named /auth, which does not exist, so confirmation would land in +not-found and the tokens would never be exchanged. That is the exact bug v9.5.11 fixed."
+          },
+          {
+            "/": "/invite/*",
+            "exclude": true,
+            "comment": "Deliberately web-only. An invite link's audience is people who do NOT have the app -- the page shows the invite code and the store badges, and offers its own Open in Fan Sphere link for the minority who do."
+          },
+          {
+            "/": "/party/*",
+            "comment": "Watch party invites -> app/party/[id].tsx"
+          },
+          {
+            "/": "/group/*",
+            "comment": "Fan group invites -> app/group/[id].tsx"
+          }
+        ]
+      }
+    ]
+  }
+}

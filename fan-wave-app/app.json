@@ -52,6 +52,11 @@
               "scheme": "https",
               "host": "fansphere.org",
               "pathPrefix": "/party/"
+            },
+            {
+              "scheme": "https",
+              "host": "fansphere.org",
+              "pathPrefix": "/group/"
             }
           ],
           "category": [
