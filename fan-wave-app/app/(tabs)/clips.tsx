@@ -19,7 +19,9 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
+import { reportError } from '@/lib/errorReporting';
 import { SportPillRow } from '@/components/SportPill';
+import { EmptyState } from '@/components/EmptyState';
 import { supabase } from '@/lib/supabase';
 import { TierBadge } from '@/components/TierBadge';
 import { deleteClipAssets } from '@/lib/storage';
@@ -72,6 +74,10 @@ const ClipCard = React.memo(function ClipCard({
   onExport,
   onDelete,
   onBlock,
+  onRetryUpload,
+  onCancelUpload,
+  playerFailed,
+  onReloadPlayer,
   isActive,
   isFollowingPoster,
   isOwner,
@@ -89,6 +95,11 @@ const ClipCard = React.memo(function ClipCard({
   onExport: (clip: ClipDisplay) => void;
   onDelete: (clip: ClipDisplay) => void;
   onBlock: (clip: ClipDisplay) => void;
+  onRetryUpload: (tempId: string) => void;
+  onCancelUpload: (tempId: string) => void;
+  /** True when the shared player errored or stalled on THIS card's source. */
+  playerFailed: boolean;
+  onReloadPlayer: () => void;
   // v8.6 P0: was `isVisible`. Now strictly the SINGLE active card. Only
   // the active card mounts <VideoView> attached to the shared player —
   // see ClipsScreen for the architectural rewrite.
@@ -174,11 +185,46 @@ const ClipCard = React.memo(function ClipCard({
   const displayComments = clip.comment_count ?? clip.comments;
   const displayViews = clip.view_count ?? 0;
 
+  // v9.5.6 (iOS UAT BUG-4). A card in the feed used to be a card in the
+  // feed — the optimistic placeholder for an in-flight upload rendered
+  // with the same play overlay and the same fully-live action row as a
+  // posted clip, and neither `status` nor `progress` was read anywhere on
+  // screen. Consequences the tester hit:
+  //
+  //   * a failed upload sat on "Posting…" indefinitely, with the retry
+  //     and cancel handlers already written in ClipsScreen but wired to
+  //     nothing;
+  //   * Share, Save and Delete were tappable on a clip with no row in the
+  //     database and no public URL — Share would have shared a link to
+  //     nothing.
+  //
+  // Everything below keys off these two flags.
+  const isUploading = clip.status === 'uploading';
+  const isFailedUpload = clip.status === 'failed';
+  const isPending = isUploading || isFailedUpload;
+  const uploadPct = Math.max(0, Math.min(100, Math.round(clip.progress ?? 0)));
+
+  const confirmDiscard = useCallback(() => {
+    Alert.alert(
+      'Discard this clip?',
+      'It hasn’t been posted. You’ll need to pick the video again to try later.',
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => onCancelUpload(clip.tempId || clip.id),
+        },
+      ],
+    );
+  }, [onCancelUpload, clip.tempId, clip.id]);
+
   return (
     <View style={styles.clipCard}>
       <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={handleMediaPress}
+        activeOpacity={isPending ? 1 : 0.9}
+        onPress={isPending ? undefined : handleMediaPress}
+        disabled={isPending}
         style={[styles.clipMedia, { backgroundColor: clip.bgColors[0] }]}
       >
         {/* v8.6 P0: only the ACTIVE card mounts <VideoView>. Inactive
@@ -187,20 +233,27 @@ const ClipCard = React.memo(function ClipCard({
             ClipsScreen; when activeClipId changes the parent calls
             sharedPlayer.replace() to swap source without re-allocating
             the codec. */}
-        {isActive && sharedPlayer ? (
-          <VideoView
-            player={sharedPlayer}
-            style={styles.video}
-            nativeControls={false}
-            contentFit="cover"
-          />
-        ) : clip.thumbnailUrl || clip.localUri ? (
-          // v9.4.4: inactive cards show the real still frame instead of a
-          // flat colour. Generated at post time by expo-video-thumbnails
-          // (create-clip) and uploaded next to the video. This is the big
-          // egress win: scrolling the feed now costs a ~40 KB JPEG per
-          // card instead of pulling down a 12 MB video to see what it is.
-          // Still ZERO MediaCodec slots -- an <Image> is not a player.
+        {/* v9.5.7 (iOS UAT BUG-11).
+            ----------------------------------------------------------------
+            The thumbnail used to be the ELSE branch of "is this the active
+            card", so the active card never rendered it -- <VideoView> took
+            its place, and the "still preparing" overlay on top of that was
+            painted with an OPAQUE colour. Three things then had to go right
+            for the card to ever show anything, and when the player failed
+            to reach readyToPlay none of them did: the tester got a flat
+            blue rectangle with a spinner, for the whole session, on a clip
+            whose media_url AND thumbnail_url both return HTTP 200.
+
+            The still frame is now an underlay that is ALWAYS rendered when
+            we have one, with the video layered over it. Whatever happens to
+            the player, there is a real frame behind it. */}
+        {clip.thumbnailUrl || clip.localUri ? (
+          // v9.4.4: real still frame instead of a flat colour. Generated at
+          // post time by expo-video-thumbnails (create-clip) and uploaded
+          // next to the video. This is the big egress win: scrolling the
+          // feed costs a ~40 KB JPEG per card instead of pulling a 12 MB
+          // video to see what it is. ZERO MediaCodec slots -- an <Image>
+          // is not a player.
           <Image
             source={{ uri: clip.thumbnailUrl || clip.localUri! }}
             style={styles.video}
@@ -215,24 +268,96 @@ const ClipCard = React.memo(function ClipCard({
             // placeholder + title overlay still give the card identity.
           />
         )}
-        {/* Loading placeholder — masks the solid-black first paint that
-            expo-video shows before the source is decoded. Only relevant
-            when this card is active and the codec is preparing. */}
-        {isActive && !isReady && (
-          <View style={[styles.videoLoadingOverlay, { backgroundColor: clip.bgColors[0] }]}>
+        {isActive && sharedPlayer && !playerFailed ? (
+          <VideoView
+            player={sharedPlayer}
+            style={StyleSheet.absoluteFill}
+            nativeControls={false}
+            contentFit="cover"
+          />
+        ) : null}
+        {/* Preparing indicator. Translucent, so the still frame stays
+            visible underneath instead of being masked by it, and bounded
+            — see `stalled` in ClipsScreen. */}
+        {isActive && !isReady && !playerFailed && (
+          <View style={styles.videoLoadingOverlay}>
             <ActivityIndicator size="small" color="#fff" />
           </View>
         )}
-        {isActive && isReady && !isPlaying && (
+        {/* The player gave up, or took long enough that we stopped
+            pretending. The poster is already behind this, so all that is
+            needed is an honest control. */}
+        {isActive && playerFailed && (
+          <View style={styles.playbackFailedOverlay}>
+            <Text style={styles.playbackFailedText}>Couldn't load this video</Text>
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                onReloadPlayer();
+              }}
+              style={styles.playbackRetryBtn}
+            >
+              <Text style={styles.playbackRetryText}>Try again</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {!isPending && !playerFailed && isActive && isReady && !isPlaying && (
           <View style={styles.playOverlay}>
             <Text style={styles.playIcon}>▶</Text>
           </View>
         )}
         {/* Inactive cards: explicit "tap to play" affordance so users
-            scrolling fast know the card is interactive. */}
-        {!isActive && (
+            scrolling fast know the card is interactive. A card whose
+            upload hasn't landed is NOT interactive — there is nothing to
+            play — so it gets the upload overlay below instead. */}
+        {!isPending && !isActive && (
           <View style={styles.playOverlay}>
             <Text style={styles.playIcon}>▶</Text>
+          </View>
+        )}
+
+        {/* BUG-4: the upload's actual state, on the card. */}
+        {isUploading && (
+          <View style={styles.uploadOverlay}>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={styles.uploadOverlayTitle}>
+              {clip.time}
+            </Text>
+            <View style={styles.uploadProgressTrack}>
+              <View
+                style={[styles.uploadProgressFill, { width: `${uploadPct}%` }]}
+              />
+            </View>
+            <TouchableOpacity
+              onPress={confirmDiscard}
+              style={styles.uploadOverlayBtn}
+              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+            >
+              <Text style={styles.uploadOverlayBtnText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {isFailedUpload && (
+          <View style={styles.uploadOverlay}>
+            <Text style={styles.uploadFailedTitle}>Upload failed</Text>
+            <Text style={styles.uploadFailedDetail} numberOfLines={3}>
+              {clip.uploadError || 'Something went wrong sending this clip.'}
+            </Text>
+            <View style={styles.uploadFailedActions}>
+              <TouchableOpacity
+                onPress={() => onRetryUpload(clip.tempId || clip.id)}
+                style={[styles.uploadOverlayBtn, styles.uploadRetryBtn]}
+              >
+                <Text style={styles.uploadRetryBtnText}>Retry</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={confirmDiscard}
+                style={styles.uploadOverlayBtn}
+              >
+                <Text style={styles.uploadOverlayBtnText}>Discard</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -241,7 +366,14 @@ const ClipCard = React.memo(function ClipCard({
             (310ms delay made users think nothing happened). This is the
             redundant always-works path. Only shown on the ACTIVE card
             because inactive cards have no playback state of their own. */}
-        {isActive && isReady && (
+        {/* v9.5.8 (iOS UAT UX-23): this corner control and the big centre
+            overlay were both visible whenever the active card was paused,
+            so a stopped clip showed two play buttons. The corner button
+            exists as the redundant always-works PAUSE affordance (v8.5:
+            the single-tap gesture was unreliable) -- which only matters
+            while something is playing. When paused, the centre overlay is
+            already the play control, so the corner one is noise. */}
+        {!isPending && !playerFailed && isActive && isReady && isPlaying && (
           <TouchableOpacity
             style={styles.pauseButton}
             onPress={(e) => {
@@ -250,12 +382,10 @@ const ClipCard = React.memo(function ClipCard({
             }}
             hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Pause"
           >
-            {isPlaying ? (
-              <Pause size={16} color="#fff" fill="#fff" />
-            ) : (
-              <Play size={16} color="#fff" fill="#fff" />
-            )}
+            <Pause size={16} color="#fff" fill="#fff" />
           </TouchableOpacity>
         )}
 
@@ -318,18 +448,34 @@ const ClipCard = React.memo(function ClipCard({
               </TouchableOpacity>
             )
           )}
+          {/* UX-23: a bare red circle-slash with no label, sitting next to
+              Follow, reading as an unexplained destructive action. It is
+              Block. Saying so costs four characters. */}
           {!isOwner && clip.userId && (
             <TouchableOpacity
               style={styles.blockChip}
               onPress={() => onBlock(clip)}
+              accessibilityRole="button"
               accessibilityLabel="Block this user"
             >
               <Slash size={12} color={Colors.dark.error} />
+              <Text style={styles.blockChipText}>Block</Text>
             </TouchableOpacity>
           )}
         </View>
-        <View style={styles.clipActions}>
-          <TouchableOpacity style={styles.actionItem} onPress={() => onLike(clip.id)}>
+        {/* BUG-4: every action here needs a row in media_clips and a public
+            media URL. A placeholder card has neither — its `id` is a
+            client-generated temp string and `videoUrl` is ''. Share would
+            have produced a link to nothing, Save a download of nothing, and
+            Delete would have looked for a row that does not exist. Dim and
+            disable the whole row until the clip is live; the upload's own
+            controls live on the overlay above. */}
+        <View style={[styles.clipActions, isPending && styles.clipActionsPending]}>
+          <TouchableOpacity
+            style={styles.actionItem}
+            onPress={() => onLike(clip.id)}
+            disabled={isPending}
+          >
             <Heart
               size={16}
               color={isLiked ? Colors.dark.error : Colors.dark.textSecondary}
@@ -339,7 +485,11 @@ const ClipCard = React.memo(function ClipCard({
               {displayLikes}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionItem} onPress={() => onComment(clip)}>
+          <TouchableOpacity
+            style={styles.actionItem}
+            onPress={() => onComment(clip)}
+            disabled={isPending}
+          >
             <MessageCircle size={16} color={Colors.dark.textSecondary} />
             <Text style={styles.actionText}>{displayComments}</Text>
           </TouchableOpacity>
@@ -348,17 +498,25 @@ const ClipCard = React.memo(function ClipCard({
               did nothing on tap) and UAT feedback was "what is this feature
               and what's it suppose to do." Share count is now surfaced on
               the Share button so it stays visible without the mystery icon. */}
-          <TouchableOpacity style={styles.actionItem} onPress={() => onShare(clip)}>
+          <TouchableOpacity
+            style={styles.actionItem}
+            onPress={() => onShare(clip)}
+            disabled={isPending}
+          >
             <Share2 size={16} color={Colors.dark.textSecondary} />
             <Text style={styles.actionText}>
               {clip.shares > 0 ? clip.shares : 'Share'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionItem} onPress={() => onExport(clip)}>
+          <TouchableOpacity
+            style={styles.actionItem}
+            onPress={() => onExport(clip)}
+            disabled={isPending}
+          >
             <Download size={16} color={Colors.dark.textSecondary} />
             <Text style={styles.actionText}>Save</Text>
           </TouchableOpacity>
-          {isOwner && (
+          {isOwner && !isPending && (
             <TouchableOpacity style={styles.actionItem} onPress={() => onDelete(clip)}>
               <Trash2 size={16} color={Colors.dark.error} />
               <Text style={[styles.actionText, { color: Colors.dark.error }]}>Delete</Text>
@@ -392,6 +550,18 @@ export default function ClipsScreen() {
   });
   const [isSharedPlaying, setIsSharedPlaying] = useState(false);
   const [isSharedReady, setIsSharedReady] = useState(false);
+  // v9.5.7 (iOS UAT BUG-11): the id of the clip whose playback we have
+  // given up on -- either expo-video reported status 'error', or the
+  // source never reached readyToPlay inside PLAYER_STALL_MS. Before this
+  // there was no terminal state at all: a source that failed to load left
+  // isSharedReady false forever and the card showed a spinner until the
+  // user backgrounded the app. Nothing logged it, either.
+  const [playerFailedFor, setPlayerFailedFor] = useState<string | null>(null);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeClipIdRef = useRef<string | null>(null);
+  // Generous: a 10 MB clip on a slow connection is not a failure. This
+  // exists to bound the unbounded case, not to police slow networks.
+  const PLAYER_STALL_MS = 15_000;
   // v8.7+ P0: user explicitly requested "stop clips auto-playing unless
   // user clicks play". Active-card detection still drives codec slot
   // allocation (no change to the MediaCodec exhaustion fix), but the
@@ -437,6 +607,15 @@ export default function ClipsScreen() {
       return;
     }
     setIsSharedReady(false);
+    // New source: clear any previous verdict and start the clock again.
+    setPlayerFailedFor(null);
+    activeClipIdRef.current = activeClipId;
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+    stallTimerRef.current = setTimeout(() => {
+      // Still not ready. Stop claiming we're loading and hand the user a
+      // control; the poster is already on screen behind the overlay.
+      setPlayerFailedFor(activeClipIdRef.current);
+    }, PLAYER_STALL_MS);
     try {
       sharedPlayer.replace({ uri: clip.videoUrl });
       // v8.7+ P0: only auto-play once the user has opted into playback for
@@ -489,13 +668,60 @@ export default function ClipsScreen() {
   // listener churn anymore.
   useEffect(() => {
     if (!sharedPlayer) return;
-    const sub = sharedPlayer.addListener('statusChange', ({ status }) => {
-      setIsSharedReady(status === 'readyToPlay');
+    const sub = sharedPlayer.addListener('statusChange', (payload: any) => {
+      const status = payload?.status;
+      const ready = status === 'readyToPlay';
+      setIsSharedReady(ready);
+      if (ready) {
+        // Made it. Cancel the stall verdict.
+        if (stallTimerRef.current) {
+          clearTimeout(stallTimerRef.current);
+          stallTimerRef.current = null;
+        }
+        setPlayerFailedFor(null);
+        return;
+      }
+      if (status === 'error') {
+        // v9.5.7 (BUG-11): expo-video was already reporting this and we
+        // were throwing it away, which is why an undecodable source
+        // looked identical to a slow one -- forever.
+        if (stallTimerRef.current) {
+          clearTimeout(stallTimerRef.current);
+          stallTimerRef.current = null;
+        }
+        reportError(
+          new Error(payload?.error?.message ?? 'expo-video status=error'),
+          { source: 'clips:playerStatus', clipId: activeClipIdRef.current },
+        );
+        setPlayerFailedFor(activeClipIdRef.current);
+      }
     });
     return () => {
       try { sub.remove(); } catch { /* ignore */ }
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = null;
+      }
     };
   }, [sharedPlayer]);
+
+  // Re-arm the same source on demand from the card's "Try again".
+  const handleReloadPlayer = useCallback(() => {
+    if (!sharedPlayer) return;
+    const clip = clips.find((c) => c.id === activeClipIdRef.current);
+    if (!clip?.videoUrl) return;
+    setPlayerFailedFor(null);
+    setIsSharedReady(false);
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+    stallTimerRef.current = setTimeout(() => {
+      setPlayerFailedFor(activeClipIdRef.current);
+    }, PLAYER_STALL_MS);
+    try {
+      sharedPlayer.replace({ uri: clip.videoUrl });
+    } catch {
+      setPlayerFailedFor(activeClipIdRef.current);
+    }
+  }, [sharedPlayer, clips]);
 
   const toggleSharedPlay = useCallback(() => {
     if (!sharedPlayer) return;
@@ -780,6 +1006,23 @@ export default function ClipsScreen() {
         }
 
         // Optimistic / in-progress / failed.
+        //
+        // v9.5.6 (iOS UAT BUG-4): `time` used to be the constant string
+        // 'Posting…' for EVERY non-success state, so a job that had
+        // already failed still read "@Sam · Fan Sphere · Posting…" —
+        // forever, because nothing in the feed rendered clip.status either.
+        // The tester watched a dead upload claim to be in progress with no
+        // error, no retry and no way to clear it. Say what is actually
+        // happening.
+        const isFailed = state.status === 'failed';
+        const pct = Math.max(0, Math.min(100, Math.round(state.progress ?? 0)));
+        const subtitle = isFailed
+          ? 'Upload failed'
+          : state.status === 'inserting'
+            ? 'Finishing up…'
+            : state.status === 'queued'
+              ? 'Waiting to upload…'
+              : `Posting… ${pct}%`;
         const placeholder: ClipDisplay = {
           id: state.tempId,
           tempId: state.tempId,
@@ -791,7 +1034,7 @@ export default function ClipsScreen() {
           title: state.title,
           poster: `@${state.displayName}`,
           group: 'Fan Sphere',
-          time: 'Posting…',
+          time: subtitle,
           sport: state.sportId,
           sportIcon: '',
           likes: 0, like_count: 0, view_count: 0,
@@ -800,8 +1043,9 @@ export default function ClipsScreen() {
           videoUrl: '',
           userId: state.userId,
           mediaType: 'video',
-          status: state.status === 'failed' ? 'failed' : 'uploading',
+          status: isFailed ? 'failed' : 'uploading',
           progress: state.progress,
+          uploadError: isFailed ? state.error : undefined,
         };
         if (idx === -1) return [placeholder, ...prev].slice(0, 200);
         const copy = prev.slice();
@@ -1077,6 +1321,10 @@ export default function ClipsScreen() {
           onExport={handleExport}
           onDelete={handleDelete}
           onBlock={handleBlock}
+          onRetryUpload={handleRetryUpload}
+          onCancelUpload={handleCancelUpload}
+          playerFailed={isActive && playerFailedFor === item.id}
+          onReloadPlayer={handleReloadPlayer}
           isActive={isActive}
           isFollowingPoster={followedUserIds.has(item.userId)}
           isOwner={!!currentUserId && item.userId === currentUserId}
@@ -1090,7 +1338,7 @@ export default function ClipsScreen() {
         />
       );
     },
-    [likedClipIds, handleLike, handleShare, handleComment, activeClipId, handleDelete, handleBlock, currentUserId, handleExport, handleFollow, followedUserIds, sharedPlayer, isSharedPlaying, isSharedReady, toggleSharedPlay]
+    [likedClipIds, handleLike, handleShare, handleComment, activeClipId, handleDelete, handleBlock, currentUserId, handleExport, handleFollow, followedUserIds, sharedPlayer, isSharedPlaying, isSharedReady, toggleSharedPlay, handleRetryUpload, handleCancelUpload, playerFailedFor, handleReloadPlayer]
   );
 
   const renderFooter = useCallback(() => {
@@ -1104,12 +1352,17 @@ export default function ClipsScreen() {
 
   const renderEmpty = useCallback(() => {
     if (loading) return null;
+    // v9.5.8 (iOS UAT UX-29): Clips, My Clips and Blocked Users each drew
+    // their own empty state in a different shape -- emoji + headline +
+    // subline here, a bare sentence there, a headline + paragraph
+    // elsewhere. components/EmptyState.tsx already existed for exactly
+    // this and was used by nothing. Now it is.
     return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyEmoji}>🎬</Text>
-        <Text style={styles.emptyTitle}>No highlights yet — drop the first one!</Text>
-        <Text style={styles.emptySubtext}>Be the first to share a highlight!</Text>
-      </View>
+      <EmptyState
+        icon="🎬"
+        title="No highlights yet"
+        subtitle="Be the first to share a highlight from your communities."
+      />
     );
   }, [loading]);
 
@@ -1355,6 +1608,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+    // BUG-11: this used to be painted with the card's solid colour, which
+    // masked the still frame behind it. A light scrim keeps the spinner
+    // legible over any poster without hiding it.
+    backgroundColor: 'rgba(0,0,0,0.25)',
   },
   playOverlay: {
     position: 'absolute',
@@ -1471,6 +1728,9 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
   },
   blockChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
@@ -1478,10 +1738,106 @@ const styles = StyleSheet.create({
     borderColor: Colors.dark.error,
     marginLeft: 6,
   },
+  blockChipText: {
+    color: Colors.dark.error,
+    fontSize: 11,
+    fontWeight: '600',
+  },
   clipActions: {
     flexDirection: 'row',
     gap: 20,
     marginTop: 10,
+  },
+  clipActionsPending: {
+    opacity: 0.35,
+  },
+  playbackFailedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  playbackFailedText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  playbackRetryBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
+  },
+  playbackRetryText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  // BUG-4 upload overlay. Sits over the whole media area of a placeholder
+  // card so the state of the upload is the most legible thing on it.
+  uploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.68)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    gap: 10,
+  },
+  uploadOverlayTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  uploadProgressTrack: {
+    width: '70%',
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    overflow: 'hidden',
+  },
+  uploadProgressFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: Colors.dark.accent,
+  },
+  uploadOverlayBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
+  },
+  uploadOverlayBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  uploadFailedTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  uploadFailedDetail: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
+  uploadFailedActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 2,
+  },
+  uploadRetryBtn: {
+    backgroundColor: Colors.dark.accent,
+    borderColor: Colors.dark.accent,
+  },
+  uploadRetryBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
   },
   actionItem: {
     flexDirection: 'row',

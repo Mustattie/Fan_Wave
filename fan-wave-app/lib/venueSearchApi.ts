@@ -29,11 +29,19 @@ export interface Venue {
   address: string;
   lat: number;
   lon: number;
-  type: 'bar' | 'pub' | 'restaurant' | 'cafe';
+  /** v9.5.6: 'venue' is the catch-all for an establishment that isn't
+   *  clearly food-and-drink. Previously anything unrecognised was called a
+   *  'bar', which is how the town of Prosper, TX ended up wearing a Bar
+   *  badge in the create-watch-party picker (iOS UAT BUG-2). */
+  type: 'bar' | 'pub' | 'restaurant' | 'cafe' | 'venue';
   distance: number; // meters from search point
   /** Google Place ID — preserved for future "save venue" / dedupe paths */
   placeId?: string;
 }
+
+/** The exact set the UI knows how to badge. Anything else is coerced to
+ *  'venue' at the mapping boundary rather than guessed at. */
+const VENUE_TYPES = new Set<string>(['bar', 'pub', 'restaurant', 'cafe', 'venue']);
 
 export type VenueSearchStatus = 'ok' | 'api_error' | 'breaker_open';
 
@@ -186,7 +194,10 @@ async function invokeVenueSearch(
           address: String(v.address || 'Address not available'),
           lat: vLat,
           lon: vLon,
-          type: (v.type as Venue['type']) || 'bar',
+          // Never invent a category. An unknown or malformed type from the
+          // edge function becomes the neutral 'venue' badge, not 'bar' --
+          // a wrong badge is the app claiming to know something it doesn't.
+          type: VENUE_TYPES.has(v.type) ? (v.type as Venue['type']) : 'venue',
           distance,
           placeId: typeof v.placeId === 'string' ? v.placeId : undefined,
         };

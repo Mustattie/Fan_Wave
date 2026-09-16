@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "org.fansphere.app",
+      "sha256_cert_fingerprints": [
+        "97:D5:56:A6:29:F7:EF:EA:D7:93:F5:D4:BA:B0:01:12:14:16:45:60:7B:76:D9:AD:CD:82:5E:5D:B1:D1:BE:3A",
+        "84:DE:16:E9:7F:4E:F0:5B:86:25:B3:DB:27:06:FD:1D:FF:22:82:47:23:83:3C:71:B3:19:16:4F:C4:2E:AA:54"
+      ]
+    }
+  }
+]

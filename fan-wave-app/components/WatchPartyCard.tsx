@@ -105,7 +105,15 @@ export function WatchPartyCard({ party, affinity }: WatchPartyCardProps) {
 
   const rsvpLabel = rsvpStatus === 'going' ? '✓ Going' : rsvpStatus === 'interested' ? '★ Interested' : 'RSVP';
   const rsvpBg = rsvpStatus === 'going' ? Colors.dark.success : rsvpStatus === 'interested' ? Colors.dark.warning : Colors.dark.accent;
-  const displayCount = rsvpStatus === 'going' ? party.rsvpCount + 1 : party.rsvpCount;
+  // v9.5.7 (iOS UAT BUG-14): this used to add 1 to the server count when
+  // the viewer was going, on the assumption that their own RSVP wasn't in
+  // it yet. It is. watch_parties.rsvp_count is maintained server-side and
+  // counts every 'going' row including the viewer's -- verified against
+  // prod, where the denormalized value matched the actual going count on
+  // all 12 parties checked. So the card was reporting N+1 for anyone
+  // attending: the tester's party showed "2/50 going" with one RSVP,
+  // against "0 going" on the detail screen and 0 in the database.
+  const displayCount = party.rsvpCount;
 
   return (
     <TouchableOpacity style={styles.card} onPress={handleCardPress} activeOpacity={0.8}>

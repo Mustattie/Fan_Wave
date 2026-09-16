@@ -14,7 +14,7 @@ import { Check, Users, Sparkles } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 
-type Reason = 'team' | 'city_sport' | 'wc_country';
+type Reason = 'team' | 'city_sport' | 'city_any' | 'wc_country';
 
 interface SuggestedGroup {
   id: string;
@@ -27,9 +27,15 @@ interface SuggestedGroup {
   reason: Reason;
 }
 
+// v9.5.7 (iOS UAT BUG-17): suggest_fan_groups emits FOUR reasons --
+// 'team', 'city_sport', 'wc_country' and 'city_any' -- and this map only
+// covered three. Every city-only suggestion (Dallas Legends, Cowboy
+// Nation, Dallas Fans in the report) looked up `undefined` and rendered
+// an empty dark oval where the team group shows "YOUR TEAM".
 const REASON_LABEL: Record<Reason, string> = {
   team: 'Your team',
   city_sport: 'Near you',
+  city_any: 'In your city',
   wc_country: 'Soccer Cup',
 };
 
@@ -93,8 +99,20 @@ export default function OnboardingSuggestedGroupsScreen() {
         }
 
         setGroups(deduped);
-        // Pre-select everything — multi-select is the default we want.
-        setSelected(new Set(deduped.map((g) => g.id)));
+        // BUG-17: pre-selecting all nine made the primary button read
+        // "Join 9 groups" and put a brand-new account into every city
+        // group at once -- an opt-out decision the user never made, on a
+        // screen they see 90 seconds after installing.
+        //
+        // The team group is the one suggestion we have real evidence for
+        // (they explicitly followed that team a screen ago), so that is
+        // the only one checked by default. The rest are one tap away.
+        const teamGroups = deduped.filter((g) => g.reason === 'team');
+        setSelected(
+          new Set(
+            (teamGroups.length > 0 ? teamGroups : deduped.slice(0, 1)).map((g) => g.id),
+          ),
+        );
       } catch {
         if (!cancelled) goNext();
       } finally {
@@ -205,9 +223,13 @@ export default function OnboardingSuggestedGroupsScreen() {
               onPress={() => toggle(g.id)}
             >
               <View style={styles.cardLeft}>
-                <View style={styles.reasonPill}>
-                  <Text style={styles.reasonText}>{REASON_LABEL[g.reason]}</Text>
-                </View>
+                {/* An unmapped reason renders no pill at all rather than an
+                    empty one -- a blank badge reads as a broken image. */}
+                {REASON_LABEL[g.reason] ? (
+                  <View style={styles.reasonPill}>
+                    <Text style={styles.reasonText}>{REASON_LABEL[g.reason]}</Text>
+                  </View>
+                ) : null}
                 <Text style={styles.groupName} numberOfLines={1}>
                   {g.name}
                 </Text>
@@ -219,7 +241,8 @@ export default function OnboardingSuggestedGroupsScreen() {
                 <View style={styles.metaRow}>
                   <Users size={14} color={Colors.dark.textSecondary} />
                   <Text style={styles.metaText}>
-                    {(g.member_count ?? 0).toLocaleString()} members
+                    {(g.member_count ?? 0).toLocaleString()}{' '}
+                    {(g.member_count ?? 0) === 1 ? 'member' : 'members'}
                   </Text>
                   {g.city ? (
                     <Text style={styles.metaText}> · {g.city}</Text>

@@ -139,8 +139,15 @@ export default function RSVPHistoryScreen() {
           venue: wp?.venue_name || '',
           city: wp?.venue_city || '',
           starts_at: wp?.starts_at || '',
-          sport: sportName || 'Soccer',
-          sport_emoji: sportEmojiMap[sportName] || '⚽',
+          // v9.5.8 (iOS UAT UX-25): these three fell back to Soccer / the
+          // soccer ball for ANY party without a sport -- including one
+          // created with no game linked at all, which then displayed a
+          // confident "⚽ Soccer" badge it had invented. A party with no
+          // sport is a real and normal thing (pick a venue, skip the
+          // game), so the honest render is no sport badge, not a guessed
+          // one. Empty string is the signal; the badge is conditional.
+          sport: sportName,
+          sport_emoji: sportName ? (sportEmojiMap[sportName] || '🏟️') : '',
           sport_color: sportColorMap[sportName] || Colors.dark.accent,
         };
       });
@@ -178,8 +185,13 @@ export default function RSVPHistoryScreen() {
 
   const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
     going: { label: 'Going', bg: Colors.dark.accent, text: '#fff' },
-    interested: { label: 'Interested', bg: Colors.dark.warning, text: '#000' },
-    declined: { label: 'Declined', bg: Colors.dark.textMuted, text: '#fff' },
+    // UX-25: the detail screen's button for this status says "Maybe" and
+    // this list said "Interested" for the same RSVP. 'interested' is the
+    // stored enum value (mig 084 notes the rename was client-side only);
+    // the label the user reads should match everywhere they read it.
+    interested: { label: 'Maybe', bg: Colors.dark.warning, text: '#000' },
+    declined: { label: "Can't Go", bg: Colors.dark.textMuted, text: '#fff' },
+    cant_go: { label: "Can't Go", bg: Colors.dark.textMuted, text: '#fff' },
   };
 
   const renderItem = ({ item }: { item: RSVP }) => {
@@ -191,10 +203,14 @@ export default function RSVPHistoryScreen() {
         onPress={() => router.push(`/watch-party/${item.watch_party_id}` as any)}
       >
         <View style={styles.cardTop}>
-          <View style={[styles.sportBadge, { backgroundColor: item.sport_color + '22' }]}>
-            <Text style={styles.sportEmoji}>{item.sport_emoji}</Text>
-            <Text style={[styles.sportName, { color: item.sport_color }]}>{item.sport}</Text>
-          </View>
+          {item.sport ? (
+            <View style={[styles.sportBadge, { backgroundColor: item.sport_color + '22' }]}>
+              <Text style={styles.sportEmoji}>{item.sport_emoji}</Text>
+              <Text style={[styles.sportName, { color: item.sport_color }]}>{item.sport}</Text>
+            </View>
+          ) : (
+            <View />
+          )}
           <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
             <Text style={[styles.statusText, { color: status.text }]}>{status.label}</Text>
           </View>

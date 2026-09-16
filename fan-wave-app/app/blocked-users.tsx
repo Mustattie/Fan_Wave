@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
+import { EmptyState } from '@/components/EmptyState';
 import { getMyBlocks, unblockUser, type BlockedUser } from '@/lib/blocks';
 
 const AVATAR_COLORS = ['#3498db', '#2ecc71', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c'];
@@ -98,13 +99,12 @@ export default function BlockedUsersScreen() {
           <ActivityIndicator size="large" color={Colors.dark.accent} />
         </View>
       ) : blocks.length === 0 ? (
-        <View style={styles.centered}>
-          <Text style={styles.emptyTitle}>No blocked users</Text>
-          <Text style={styles.emptyBody}>
-            When you block someone, you and they will no longer see each other&apos;s
-            posts, clips, watch parties, or messages.
-          </Text>
-        </View>
+        /* UX-29: same shape as every other empty state now. */
+        <EmptyState
+          icon="🛡️"
+          title="No blocked users"
+          subtitle="When you block someone, you and they will no longer see each other's posts, clips, watch parties, or messages."
+        />
       ) : (
         <FlatList
           data={blocks}

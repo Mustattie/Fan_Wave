@@ -120,9 +120,18 @@ file_size_limit = "50MiB"
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "fansphere://auth-callback"
+# An https URL, because this is where a browser gets sent. A custom scheme here
+# renders a blank page on any desktop browser -- see lib/authRedirect.ts.
+# Pointed at the bridge page rather than the homepage on purpose: site_url is
+# the fallback for any redirect that is not on the allow-list, and the bridge
+# consumes tokens where the homepage would drop them silently.
+site_url = "https://fansphere.org/auth/"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["fansphere://auth-callback", "fansphere://", "http://127.0.0.1:3000"]
+# https://fansphere.org/auth/ is the bridge page (docs/auth/ in this repo) that auth
+# emails now point at. Anything NOT listed here silently falls back to site_url.
+# fansphere://auth-callback stays listed for builds already in the field, which
+# still send it and are fine on a phone -- only their desktop half is blank.
+additional_redirect_urls = ["https://fansphere.org/auth/", "https://fansphere.org/", "fansphere://auth-callback", "fansphere://", "http://127.0.0.1:3000"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # Path to JWT signing key. DO NOT commit your signing keys file to git.

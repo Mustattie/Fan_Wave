@@ -48,12 +48,18 @@
         (function () {
             var path = window.location.pathname || '';
 
+            // Shared content goes to /open/, which reads the type and id back
+            // out of ?p= and shows copy for that specific thing. These four
+            // used to point at '/', which dropped the shared item entirely --
+            // you tapped a friend's watch-party invite and got the marketing
+            // homepage. /invite/ keeps its own page: it is a referral funnel,
+            // not shared content.
             var routes = [
                 { test: /^\/invite\/[^\/]+\/?$/i, target: '/invite/' },
-                { test: /^\/party\/[^\/]+\/?$/i,  target: '/' },
-                { test: /^\/group\/[^\/]+\/?$/i,  target: '/' },
-                { test: /^\/clip\/[^\/]+\/?$/i,   target: '/' },
-                { test: /^\/moment\/[^\/]+\/?$/i, target: '/' },
+                { test: /^\/party\/[^\/]+\/?$/i,  target: '/open/' },
+                { test: /^\/group\/[^\/]+\/?$/i,  target: '/open/' },
+                { test: /^\/clip\/[^\/]+\/?$/i,   target: '/open/' },
+                { test: /^\/moment\/[^\/]+\/?$/i, target: '/open/' },
             ];
 
             for (var i = 0; i < routes.length; i++) {

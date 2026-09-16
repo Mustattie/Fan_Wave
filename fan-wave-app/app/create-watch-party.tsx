@@ -9,13 +9,14 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   FlatList,
   Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Globe, Lock, UserPlus, X, Users, Search, MapPin, CheckCircle2 } from 'lucide-react-native';
+import { Globe, Lock, UserPlus, X, Users, Search, MapPin, CheckCircle2, CalendarDays } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
 import * as Location from 'expo-location';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -202,9 +203,15 @@ export default function CreateWatchPartyScreen() {
   const [customTime, setCustomTime] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  // v9.5.7 (iOS UAT BUG-16): the picker opened on "Sep 16, 2026" -- a week
+  // out -- because the draft was seeded at now + 7 days. Nothing about the
+  // custom path implies "a week from now"; it exists for any date the five
+  // presets don't cover, and the nearest of those is tomorrow. Seeding at
+  // tomorrow 7 PM means the most common custom choices are a scroll or two
+  // away instead of a week of back-scrolling.
   const [customPickerDraft, setCustomPickerDraft] = useState<Date>(() => {
     const d = new Date();
-    d.setDate(d.getDate() + 7);
+    d.setDate(d.getDate() + 1);
     d.setHours(19, 0, 0, 0);
     return d;
   });
@@ -413,44 +420,20 @@ export default function CreateWatchPartyScreen() {
     'idle' | 'requesting' | 'denied' | 'active'
   >('idle');
 
-  const handleUseMyLocation = useCallback(async () => {
-    if (locationStatus === 'requesting') return;
-    setLocationStatus('requesting');
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setLocationStatus('denied');
-        Alert.alert(
-          'Location permission needed',
-          'Enable location access in Settings to see distances from where you actually are. We only use this for distance display — your position is never stored.',
-        );
-        return;
-      }
-      // getCurrentPositionAsync gives a fresh, accurate fix.
-      // getLastKnownPositionAsync would be faster but can be hours stale on
-      // Android. For a one-tap action the ~1 s wait is fine.
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      if (!pos?.coords) {
-        setLocationStatus('denied');
-        return;
-      }
-      setUserLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-      setLocationStatus('active');
-    } catch (e: any) {
-      console.warn('[create-watch-party] location request failed', e?.message);
-      setLocationStatus('denied');
-    }
-  }, [locationStatus]);
 
-  const handleClearMyLocation = useCallback(() => {
-    setUserLocation(null);
-    setLocationStatus('idle');
-  }, []);
-
-  const handleVenueSearch = useCallback(async () => {
+  // v9.5.6 (BUG-5): the search runner is parameterised so the same code
+  // path serves an explicit query and the implicit "what's near me"
+  // browse. `centre` is the Places locationBias anchor; `emptyLabel` is
+  // what the zero-hit message calls the thing that was searched for.
+  const runVenueSearch = useCallback(async (
+    rawQuery: string,
+    centre: { lat: number; lon: number },
+    emptyLabel: string,
+  ) => {
+    const venueQuery = rawQuery;
     if (!venueQuery.trim()) return;
+    const searchLat = centre.lat;
+    const searchLon = centre.lon;
     setVenueLoading(true);
     setSearchError(null);
 
@@ -497,7 +480,7 @@ export default function CreateWatchPartyScreen() {
 
       if (result.status === 'ok') {
         setSearchError(
-          `No venues found within 30 km of ${userCity ?? 'your location'} matching "${venueQuery.trim()}". Try a shorter name, or "Enter venue manually".` +
+          `No venues found within 30 km of ${userCity ?? 'your location'} matching ${emptyLabel}. Try a shorter name, or "Enter venue manually".` +
             debugSuffix(undefined)
         );
       } else {
@@ -536,7 +519,75 @@ export default function CreateWatchPartyScreen() {
     } finally {
       setVenueLoading(false);
     }
-  }, [venueQuery, searchLat, searchLon, coordSource, userCity, userLocation]);
+  }, [coordSource, userCity, userLocation]);
+
+  const handleVenueSearch = useCallback(() => {
+    if (!venueQuery.trim()) return;
+    return runVenueSearch(
+      venueQuery,
+      { lat: searchLat, lon: searchLon },
+      `"${venueQuery.trim()}"`,
+    );
+  }, [runVenueSearch, venueQuery, searchLat, searchLon]);
+
+  // Browse-without-typing.
+  //
+  // iOS UAT 2026-09-09, BUG-5: granting location flipped the pill to
+  // "Using your location" and then did nothing -- empty results area, no
+  // hint, Next still disabled. A first-time host had granted a permission
+  // and been handed a dead end.
+  //
+  // Handing over your GPS is a request to be shown what's around you, so
+  // that is now what happens. Anchored on the device fix rather than the
+  // home-city centroid: the whole point of the tap was "near ME".
+  const handleNearbySearch = useCallback(
+    (coords: { lat: number; lon: number }) =>
+      runVenueSearch('sports bar', coords, 'sports bars near you'),
+    [runVenueSearch],
+  );
+
+  const handleUseMyLocation = useCallback(async () => {
+    if (locationStatus === 'requesting') return;
+    setLocationStatus('requesting');
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLocationStatus('denied');
+        Alert.alert(
+          'Location permission needed',
+          'Enable location access in Settings to see distances from where you actually are. We only use this for distance display — your position is never stored.',
+        );
+        return;
+      }
+      // getCurrentPositionAsync gives a fresh, accurate fix.
+      // getLastKnownPositionAsync would be faster but can be hours stale on
+      // Android. For a one-tap action the ~1 s wait is fine.
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      if (!pos?.coords) {
+        setLocationStatus('denied');
+        return;
+      }
+      const coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      setUserLocation(coords);
+      setLocationStatus('active');
+      // Only auto-browse when the host hasn't already typed something --
+      // clobbering a half-typed venue name with a generic nearby list
+      // would be its own bug.
+      if (!venueQuery.trim() && venueResults.length === 0) {
+        void handleNearbySearch(coords);
+      }
+    } catch (e: any) {
+      console.warn('[create-watch-party] location request failed', e?.message);
+      setLocationStatus('denied');
+    }
+  }, [locationStatus, venueQuery, venueResults.length, handleNearbySearch]);
+
+  const handleClearMyLocation = useCallback(() => {
+    setUserLocation(null);
+    setLocationStatus('idle');
+  }, []);
 
   // -----------------------------------------------------------------------
   // Address autocomplete (debounced)
@@ -710,11 +761,25 @@ export default function CreateWatchPartyScreen() {
     });
   };
 
-  // Auto-generate title when entering step 3
+  // Auto-generate title when entering step 3.
+  //
+  // v9.5.6 (iOS UAT BUG-7): the game-derived title was
+  // "<Home> vs <Away> Watch Party", which for "Indiana Hoosiers vs North
+  // Texas Mean Green" overflowed a single-line input as
+  // "…North Texas Mean Green W…" -- the host could not see what the
+  // title ended with without tapping into the field.
+  //
+  // The " Watch Party" suffix was the least informative 12 characters in
+  // the string and the screen it appears on is already titled "Party
+  // details" on a Create Watch Party wizard, so it is redundant as well as
+  // expensive. Dropping it, plus letting the input wrap to two lines,
+  // makes the common case fully readable. The venue-derived variants keep
+  // their wording -- "Watch Party at Brass Tap" is short and reads as a
+  // sentence rather than a fixture.
   const goToStep3 = () => {
     let autoTitle = '';
     if (selectedGame) {
-      autoTitle = `${selectedGame.homeTeam.name} vs ${selectedGame.awayTeam.name} Watch Party`;
+      autoTitle = `${selectedGame.homeTeam.name} vs ${selectedGame.awayTeam.name}`;
     } else if (manualEntry && manualName.trim()) {
       autoTitle = `Watch Party at ${manualName.trim()}`;
     } else if (selectedVenue) {
@@ -731,6 +796,39 @@ export default function CreateWatchPartyScreen() {
   // -----------------------------------------------------------------------
   const handleCreate = async () => {
     setCreating(true);
+
+    // v9.5.7 (iOS UAT BUG-13): a manual venue whose address was TYPED but
+    // whose autocomplete suggestion was never TAPPED had selectedManualCoords
+    // === null, and the insert below fell back to DEFAULT_LAT/DEFAULT_LON --
+    // the Chicago constants at the top of this file. The tester created
+    // "QA Test Bar, 2500 Victory Ave, Dallas" and it was written at
+    // 41.8781/-87.6298, downtown Chicago, with venue_city 'Dallas'. The
+    // detail screen looked perfect; every distance-ranked surface put the
+    // party 800 miles away.
+    //
+    // A default coordinate is the wrong shape of answer here. Geocode what
+    // the host actually typed, and if that cannot be resolved, say so
+    // instead of inventing a location.
+    let resolvedManualCoords = selectedManualCoords;
+    if (manualEntry && !resolvedManualCoords && manualAddress.trim().length >= 3) {
+      try {
+        const hits = await searchAddress(manualAddress.trim(), searchLat, searchLon);
+        if (hits.length > 0) {
+          resolvedManualCoords = { lat: hits[0].lat, lon: hits[0].lon };
+          if (!selectedManualCity && hits[0].city) setSelectedManualCity(hits[0].city);
+        }
+      } catch {
+        // Fall through to the guard below.
+      }
+    }
+    if (manualEntry && !resolvedManualCoords) {
+      setCreating(false);
+      Alert.alert(
+        'We need the venue location',
+        "We couldn't find that address on the map, so people wouldn't be able to see how far away your party is. Pick one of the address suggestions as you type, or try a fuller address.",
+      );
+      return;
+    }
 
     const venueName = manualEntry ? manualName.trim() : selectedVenue?.name ?? '';
     const venueAddress = manualEntry
@@ -760,8 +858,12 @@ export default function CreateWatchPartyScreen() {
       // 087). Keeps a McKinney venue discoverable by Dallas fans now that
       // venue_city names the venue's own city.
       venue_metro: userCity ? userCity.split(',')[0]!.trim() : null,
-      venue_lat: manualEntry ? (selectedManualCoords?.lat ?? DEFAULT_LAT) : (selectedVenue?.lat ?? DEFAULT_LAT),
-      venue_lon: manualEntry ? (selectedManualCoords?.lon ?? DEFAULT_LON) : (selectedVenue?.lon ?? DEFAULT_LON),
+      // BUG-13: no Chicago fallback on the manual path -- handleCreate
+      // returns early above rather than guessing. A Places-selected venue
+      // always carries real coordinates, so its ?? is unreachable in
+      // practice and stays only as a type guard.
+      venue_lat: manualEntry ? resolvedManualCoords!.lat : (selectedVenue?.lat ?? DEFAULT_LAT),
+      venue_lon: manualEntry ? resolvedManualCoords!.lon : (selectedVenue?.lon ?? DEFAULT_LON),
       game_id: selectedGame?.id ?? null,
       atmosphere,
       capacity,
@@ -970,6 +1072,18 @@ export default function CreateWatchPartyScreen() {
           {!venueLoading && searchError && (
             <View style={styles.searchErrorBox}>
               <Text style={styles.searchErrorText}>{searchError}</Text>
+            </View>
+          )}
+
+          {/* BUG-5: an empty results area with a disabled Next button told
+              a first-time host nothing. Say what to do instead. */}
+          {!venueLoading && !searchError && venueResults.length === 0 && (
+            <View style={styles.venueHintBox}>
+              <Text style={styles.venueHintText}>
+                {locationStatus === 'active'
+                  ? 'Search a bar or restaurant by name, or type a city to see what’s there. Nothing you like? Tap “Enter venue manually” below.'
+                  : 'Search a bar or restaurant by name — or a city, like “Prosper TX” — to see places nearby.'}
+              </Text>
             </View>
           )}
 
@@ -1187,12 +1301,20 @@ export default function CreateWatchPartyScreen() {
       {/* Title */}
       <Text style={styles.fieldLabel}>Title</Text>
       <TextInput
-        style={styles.input}
+        style={[styles.input, styles.titleInput]}
         placeholder="Watch Party Title"
         placeholderTextColor={C.textMuted}
         value={title}
         onChangeText={setTitle}
         maxLength={200}
+        // BUG-7: wraps instead of clipping. blurOnSubmit keeps Return
+        // closing the keyboard rather than inserting a newline into a
+        // field that is rendered on one line everywhere else.
+        multiline
+        blurOnSubmit
+        returnKeyType="done"
+        onSubmitEditing={Keyboard.dismiss}
+        textAlignVertical="top"
       />
 
       {/* Description */}
@@ -1260,7 +1382,20 @@ export default function CreateWatchPartyScreen() {
           v9.4.0 UAT Round 3 (#4): custom-date chip added so hosts
           scheduling 1-2+ weeks out (e.g. "Sunday Aug 22, 4pm") have a
           path. Selecting a preset clears customTime; picking a custom
-          time deselects the preset visually via customTime !== null. */}
+          time deselects the preset visually via customTime !== null.
+
+          v9.5.6 (iOS UAT BUG-6): the custom chip used to RELABEL itself
+          with the chosen date, which meant "Custom…" vanished the moment
+          you used it -- no visible way back into the picker -- and the
+          longer label wrapped the chip onto a row of its own, stranded
+          under five presets still drawn in their unselected style. Nothing
+          on screen said which value was actually going to be used.
+
+          Now the picker entry keeps its name and its place on a dedicated
+          row, and a single summary line states the start time in full. The
+          summary also answers the "did I choose this?" problem with the
+          pre-selected 'Tonight 7PM' default: whatever is live is spelled
+          out, chosen or inherited. */}
       <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Start time</Text>
       <View style={styles.timeRow}>
         {TIME_PRESETS.map((t) => {
@@ -1272,6 +1407,13 @@ export default function CreateWatchPartyScreen() {
               onPress={() => {
                 setSelectedTime(t.value);
                 setCustomTime(null);
+                // BUG-16: the iOS pickers render INLINE (a compact
+                // "Sep 16, 2026" button), and tapping a preset left
+                // showDatePicker true -- so the picker stayed on screen
+                // under the chips and read as a second active value.
+                // Choosing a preset is a decision to not use the picker.
+                setShowDatePicker(false);
+                setShowTimePicker(false);
               }}
             >
               <Text
@@ -1282,57 +1424,131 @@ export default function CreateWatchPartyScreen() {
             </TouchableOpacity>
           );
         })}
+      </View>
+
+      <View style={styles.customTimeRow}>
         <TouchableOpacity
-          style={[styles.timeChip, !!customTime && styles.timeChipActive]}
+          style={[styles.customTimeBtn, !!customTime && styles.timeChipActive]}
           onPress={() => setShowDatePicker(true)}
+          activeOpacity={0.8}
         >
+          <CalendarDays
+            size={15}
+            color={customTime ? '#fff' : C.textSecondary}
+          />
           <Text
             style={[
               styles.timeChipText,
               !!customTime && styles.timeChipTextActive,
             ]}
           >
-            {customTime
-              ? new Date(customTime).toLocaleString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })
-              : 'Custom…'}
+            {customTime ? 'Change date & time…' : 'Pick another date…'}
           </Text>
         </TouchableOpacity>
+        {customTime ? (
+          <TouchableOpacity
+            style={styles.customTimeClear}
+            onPress={() => setCustomTime(null)}
+            hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+          >
+            <Text style={styles.customTimeClearText}>Clear</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
-      {showDatePicker && (
-        <DateTimePicker
-          value={customPickerDraft}
-          mode="date"
-          minimumDate={new Date()}
-          maximumDate={new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)}
-          onChange={(e: DateTimePickerEvent, d?: Date) => {
-            setShowDatePicker(false);
-            if (e.type === 'dismissed' || !d) return;
-            const merged = new Date(customPickerDraft);
-            merged.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
-            setCustomPickerDraft(merged);
-            setShowTimePicker(true);
-          }}
-        />
-      )}
-      {showTimePicker && (
-        <DateTimePicker
-          value={customPickerDraft}
-          mode="time"
-          onChange={(e: DateTimePickerEvent, d?: Date) => {
-            setShowTimePicker(false);
-            if (e.type === 'dismissed' || !d) return;
-            const merged = new Date(customPickerDraft);
-            merged.setHours(d.getHours(), d.getMinutes(), 0, 0);
-            setCustomPickerDraft(merged);
-            setCustomTime(merged.toISOString());
-          }}
-        />
-      )}
+
+      <Text style={styles.startsAtSummary}>
+        Starts{' '}
+        <Text style={styles.startsAtSummaryValue}>
+          {new Date(effectiveStartTime).toLocaleString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+          })}
+        </Text>
+      </Text>
+      {/* BUG-16, second half: "the picker exposes only a date control;
+          there is no visible way to set the time."
+
+          True on iOS. The two-step flow (date picker -> onChange ->
+          time picker) only reaches step two once the DATE picker has
+          fired a change, and iOS renders these inline as bare compact
+          buttons with no label, no framing and no confirm -- so a
+          half-finished custom time looked like a stray pill sitting under
+          the preset chips rather than a control mid-use.
+
+          iOS has a single `datetime` mode that puts both wheels in one
+          control; use it, inside a framed panel with an explicit Done, so
+          the whole choice is visible and dismissible in one place. Android
+          has no datetime mode, so it keeps the sequential date-then-time
+          flow its users already expect from the platform pickers. */}
+      {Platform.OS === 'ios'
+        ? showDatePicker && (
+            <View style={styles.pickerPanel}>
+              <View style={styles.pickerPanelHeader}>
+                <Text style={styles.pickerPanelTitle}>Pick a date and time</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setCustomTime(customPickerDraft.toISOString());
+                    setShowDatePicker(false);
+                  }}
+                  hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                >
+                  <Text style={styles.pickerPanelDone}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={customPickerDraft}
+                mode="datetime"
+                display="spinner"
+                themeVariant="dark"
+                minimumDate={new Date()}
+                maximumDate={new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)}
+                onChange={(_e: DateTimePickerEvent, d?: Date) => {
+                  if (!d) return;
+                  setCustomPickerDraft(d);
+                  // Reflect the scroll immediately in the summary line so
+                  // the value in play is never ambiguous.
+                  setCustomTime(d.toISOString());
+                }}
+              />
+            </View>
+          )
+        : (
+          <>
+            {showDatePicker && (
+              <DateTimePicker
+                value={customPickerDraft}
+                mode="date"
+                minimumDate={new Date()}
+                maximumDate={new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)}
+                onChange={(e: DateTimePickerEvent, d?: Date) => {
+                  setShowDatePicker(false);
+                  if (e.type === 'dismissed' || !d) return;
+                  const merged = new Date(customPickerDraft);
+                  merged.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
+                  setCustomPickerDraft(merged);
+                  setShowTimePicker(true);
+                }}
+              />
+            )}
+            {showTimePicker && (
+              <DateTimePicker
+                value={customPickerDraft}
+                mode="time"
+                onChange={(e: DateTimePickerEvent, d?: Date) => {
+                  setShowTimePicker(false);
+                  if (e.type === 'dismissed' || !d) return;
+                  const merged = new Date(customPickerDraft);
+                  merged.setHours(d.getHours(), d.getMinutes(), 0, 0);
+                  setCustomPickerDraft(merged);
+                  setCustomTime(merged.toISOString());
+                }}
+              />
+            )}
+          </>
+        )}
 
       {/* Visibility */}
       <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Visibility</Text>
@@ -1860,6 +2076,82 @@ const styles = StyleSheet.create({
   },
 
   // Inputs
+  pickerPanel: {
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.surface,
+    overflow: 'hidden',
+  },
+  pickerPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  pickerPanelTitle: {
+    color: C.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  pickerPanelDone: {
+    color: C.accent,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  customTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+  },
+  customTimeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.surface,
+  },
+  customTimeClear: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  customTimeClearText: {
+    color: C.textSecondary,
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
+  startsAtSummary: {
+    marginTop: 10,
+    color: C.textSecondary,
+    fontSize: 13,
+  },
+  startsAtSummaryValue: {
+    color: C.text,
+    fontWeight: '600',
+  },
+  venueHintBox: {
+    marginTop: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  venueHintText: {
+    color: C.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+  },
   input: {
     backgroundColor: C.surface,
     borderRadius: 10,
@@ -1869,6 +2161,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     borderWidth: 1,
     borderColor: C.border,
+  },
+  titleInput: {
+    minHeight: 46,
+    maxHeight: 88,
+    lineHeight: 20,
   },
   textarea: {
     minHeight: 100,

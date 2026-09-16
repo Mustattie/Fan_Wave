@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="referrer" content="no-referrer">
+    <title>Fan Sphere — Email Confirmed</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a0b2e 0%, #2d1b4e 40%, #6c5ce7 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 24px;
+            line-height: 1.6;
+        }
+        .card { max-width: 520px; width: 100%; text-align: center; }
+        .mark { font-size: 44px; line-height: 1; margin-bottom: 18px; }
+        h1 {
+            font-size: clamp(28px, 4.6vw, 40px);
+            font-weight: 900;
+            letter-spacing: -1px;
+            line-height: 1.15;
+            margin-bottom: 14px;
+        }
+        .lede { font-size: 17px; opacity: 0.94; }
+        .detail { font-size: 15px; opacity: 0.78; margin-top: 12px; }
+        .cta-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            margin-top: 30px;
+        }
+        .badge-row { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
+        .store-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: #fff;
+            color: #2d1b4e;
+            text-decoration: none;
+            padding: 12px 22px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 15px;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            min-width: 200px;
+            justify-content: center;
+        }
+        .store-badge.secondary {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.4);
+        }
+        .store-badge:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.22); }
+        .store-badge .label-small { display: block; font-size: 11px; font-weight: 500; opacity: 0.7; letter-spacing: 0.4px; text-transform: uppercase; }
+        .store-badge .label-big { display: block; font-size: 16px; font-weight: 800; }
+        .open-app {
+            display: none;
+            background: #fff;
+            color: #2d1b4e;
+            text-decoration: none;
+            padding: 14px 30px;
+            border-radius: 999px;
+            font-weight: 800;
+            font-size: 16px;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .open-app:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.22); }
+        .steps {
+            text-align: left;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 14px;
+            padding: 18px 20px 18px 38px;
+            margin-top: 26px;
+            font-size: 15px;
+        }
+        .steps li { margin-bottom: 6px; opacity: 0.92; }
+        .steps li:last-child { margin-bottom: 0; }
+        .footer-links {
+            margin-top: 34px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            font-size: 13px;
+            opacity: 0.62;
+        }
+        .footer-links a { color: #fff; text-decoration: none; }
+        .footer-links a:hover { text-decoration: underline; }
+        .copy { margin-top: 14px; font-size: 12px; opacity: 0.45; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="mark" id="mark">&#9989;</div>
+        <h1 id="headline">Email confirmed</h1>
+        <p class="lede" id="lede">Your Fan Sphere account is verified and ready.</p>
+        <p class="detail" id="detail"></p>
+
+        <div class="cta-stack">
+            <a class="open-app" id="open-app" href="#">Open Fan Sphere</a>
+            <div class="badge-row" id="store-badges">
+                <a class="store-badge" href="https://play.google.com/store/apps/details?id=org.fansphere.app">
+                    <span>
+                        <span class="label-small">Get it on</span>
+                        <span class="label-big">Google Play</span>
+                    </span>
+                </a>
+                <a class="store-badge secondary" href="https://apps.apple.com/app/fan-sphere/id6747320180">
+                    <span>
+                        <span class="label-small">Download on the</span>
+                        <span class="label-big">App Store</span>
+                    </span>
+                </a>
+            </div>
+        </div>
+
+        <ol class="steps" id="steps" style="display:none;">
+            <li>Open Fan Sphere on your phone.</li>
+            <li id="step-2">Sign in with your email and password.</li>
+            <li>You're in &mdash; pick your sports and teams.</li>
+        </ol>
+
+        <div class="footer-links">
+            <a href="/">Home</a>
+            <a href="/privacy.html">Privacy</a>
+            <a href="/terms.html">Terms</a>
+            <a href="mailto:support@thabtech.com">Support</a>
+        </div>
+        <div class="copy">&copy; 2026 Thabtech LLC. Fan Sphere is a Thabtech LLC product.</div>
+    </div>
+
+    <script>
+    /*
+     * Bridge between Supabase's https redirect and the app's custom scheme.
+     *
+     * v9.5.10 fixed the phone half of email confirmation by adding an
+     * `auth-callback` route to the app. The desktop half could not be fixed
+     * there: Supabase 302s the browser straight to `fansphere://auth-callback`,
+     * and a desktop browser has no handler for a custom scheme, so it renders
+     * a blank page. The confirmation itself always worked -- Supabase writes
+     * `email_confirmed_at` server-side BEFORE redirecting -- but the tester
+     * sees nothing and reasonably concludes it failed.
+     *
+     * So auth emails point here instead. This page is the one thing a custom
+     * scheme cannot be: an address every browser can open. It tells the
+     * desktop confirmer plainly that they are verified, and on a phone it
+     * hands the tokens straight through to the app.
+     *
+     * The tokens arrive in the URL FRAGMENT, which never leaves the browser --
+     * it is not sent to GitHub Pages and lands in no server log. They are read
+     * into memory and stripped from the visible URL immediately, so they
+     * survive neither the address bar nor session history.
+     */
+    (function () {
+        var APP_URL = 'fansphere://auth-callback';
+
+        function parse(str) {
+            var out = {};
+            if (!str) return out;
+            try {
+                new URLSearchParams(str.replace(/^[#?]/, '')).forEach(function (v, k) {
+                    out[k] = v;
+                });
+            } catch (_) { /* old browser: leave empty, the manual button still works */ }
+            return out;
+        }
+
+        // Supabase uses the fragment for the implicit flow (access_token /
+        // refresh_token) and the query string for PKCE (code) and for errors.
+        var rawFragment = window.location.hash || '';
+        var rawQuery = window.location.search || '';
+        var params = parse(rawQuery);
+        var frag = parse(rawFragment);
+        Object.keys(frag).forEach(function (k) { params[k] = frag[k]; });
+
+        // Strip credentials out of the visible URL before anything else.
+        if (rawFragment && window.history && window.history.replaceState) {
+            try {
+                window.history.replaceState(null, '', window.location.pathname);
+            } catch (_) {}
+        }
+
+        var isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent || '');
+        var errorText = params.error_description || params.error;
+        var type = params.type || '';
+        var hasTokens = !!(params.access_token || params.token_hash || params.code);
+
+        function el(id) { return document.getElementById(id); }
+
+        if (errorText) {
+            el('mark').textContent = '⚠️';
+            el('headline').textContent = 'That link didn’t work';
+            el('lede').textContent = String(errorText).replace(/\+/g, ' ');
+            el('detail').textContent =
+                'Confirmation links expire and can only be used once. Open Fan Sphere, ' +
+                'go to sign in, and tap Resend to get a fresh one.';
+            el('store-badges').style.display = 'none';
+        } else if (!hasTokens) {
+            // A bare visit with nothing attached. This is also where Supabase
+            // lands anyone whose redirect was not on the allow-list, since
+            // site_url points here -- so say something true and useful rather
+            // than congratulating a confirmation that may not have happened.
+            el('mark').textContent = '👋';
+            el('headline').textContent = 'Fan Sphere';
+            el('lede').textContent = 'Open the app on your phone to sign in.';
+            el('steps').style.display = 'block';
+        } else {
+            if (type === 'recovery') {
+                el('headline').textContent = 'Password reset confirmed';
+                el('lede').textContent = 'Finish setting your new password in the app.';
+                el('step-2').textContent = 'Choose your new password.';
+            }
+            el('steps').style.display = 'block';
+            el('detail').textContent = isMobile
+                ? 'Taking you to the app…'
+                : 'You confirmed on a computer, so the last step happens on your phone.';
+        }
+
+        // Hand whatever Supabase gave us to the app, fragment intact. Only
+        // offered when there is something to hand over -- a bare visit to this
+        // page should not try to launch anything.
+        if (hasTokens && !errorText) {
+            var target = APP_URL + rawQuery + rawFragment;
+            var button = el('open-app');
+            button.href = target;
+            button.style.display = 'inline-block';
+
+            if (isMobile) {
+                // A desktop browser would raise an unhandled-protocol dialog for
+                // no benefit, so only phones get the automatic attempt.
+                window.setTimeout(function () {
+                    try { window.location.href = target; } catch (_) {}
+                }, 400);
+            }
+        }
+    })();
+    </script>
+</body>
+</html>

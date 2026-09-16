@@ -15,7 +15,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Search, MapPin, Plus, X, Users, UserPlus } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
 import {
@@ -33,6 +33,7 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { supabase } from '@/lib/supabase';
 import { subscribeToWatchParties } from '@/lib/realtime';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { POPULAR_CITIES } from '@/constants/Cities';
 import {
   mapWatchPartyToDisplay,
   mapChatRoomToDisplay,
@@ -62,21 +63,9 @@ const VISIBILITY_OPTIONS = [
   { id: 'private', label: '🔒 Private' },
 ];
 
-const CITIES = [
-  'Chicago',
-  'New York',
-  'Los Angeles',
-  'Houston',
-  'Phoenix',
-  'Philadelphia',
-  'San Antonio',
-  'Dallas',
-  'Miami',
-  'Atlanta',
-  'Denver',
-  'Seattle',
-  'Boston',
-];
+// UX-24: was a 13-entry list in arbitrary order that had drifted from
+// onboarding's. Both now read constants/Cities.ts.
+const CITIES = POPULAR_CITIES;
 
 // v9.2.6 UAT 2026-07-28: hardcoded map was missing wnba / cfb / cbb /
 // mls / ufc (all added in v9.1.x). When the user tapped one of those
@@ -116,7 +105,12 @@ export default function DiscoverScreen() {
   // Create Group modal state (lifted verbatim from groups.tsx)
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
-  const [selectedSport, setSelectedSport] = useState('nfl');
+  // v9.5.8 (iOS UAT UX-27): this was hard-coded to 'nfl', so the Create
+  // Fan Group sheet opened with NFL already ticked for a user who does not
+  // follow NFL -- a pre-made choice on their behalf, and the wrong one. It
+  // now starts unselected and is seeded from the sports they actually
+  // follow when the sheet opens (see handleOpenCreateModal).
+  const [selectedSport, setSelectedSport] = useState<string>('');
   const [selectedVisibility, setSelectedVisibility] = useState('public');
   const [isCreating, setIsCreating] = useState(false);
   // City used inside the Create Group form. Prefilled from the outer
@@ -543,6 +537,21 @@ export default function DiscoverScreen() {
   const isGroupNameValid =
     newGroupName.trim().length >= 3 && newGroupName.trim().length <= 50;
 
+  // v9.5.8 (iOS UAT UX-24): Home's "Dallas · Change" link routed to the
+  // Discover TAB and stopped there, leaving the user on a screen full of
+  // groups with no city picker in sight -- the link named an action and
+  // performed a navigation. Home now passes ?pickCity=1 and Discover opens
+  // the sheet it already owns.
+  const params = useLocalSearchParams<{ pickCity?: string }>();
+  const pickCityHandledRef = useRef(false);
+  useEffect(() => {
+    if (params.pickCity === '1' && !pickCityHandledRef.current) {
+      pickCityHandledRef.current = true;
+      setCityModalVisible(true);
+    }
+    if (params.pickCity !== '1') pickCityHandledRef.current = false;
+  }, [params.pickCity]);
+
   const handleOpenCreateModal = () => {
     setNewGroupName('');
     setTeamQuery('');
@@ -551,6 +560,27 @@ export default function DiscoverScreen() {
     setInvitedFriends([]);
     // Prefill the modal's city with the outer Discover city (home_city)
     setCreateGroupCity(city);
+    // UX-27: seed the sport from something the user has actually
+    // expressed. The active Discover pill is the strongest signal (they
+    // are looking at that sport right now); otherwise their first
+    // onboarding pick. If we know nothing, pick nothing -- an unselected
+    // row is honest, a wrong pre-selection is not.
+    (async () => {
+      if (activeFilter && activeFilter !== 'all' && SPORT_PILLS.some((p) => p.id === activeFilter)) {
+        setSelectedSport(activeFilter);
+      } else {
+        try {
+          const raw = await AsyncStorage.getItem('selected_sports');
+          const followed: string[] = raw ? JSON.parse(raw) : [];
+          const first = followed
+            .map((x) => String(x).toLowerCase())
+            .find((x) => SPORT_PILLS.some((p) => p.id === x));
+          setSelectedSport(first ?? '');
+        } catch {
+          setSelectedSport('');
+        }
+      }
+    })();
     setShowCreateModal(true);
   };
 
@@ -558,8 +588,10 @@ export default function DiscoverScreen() {
     if (!isGroupNameValid) return;
     setIsCreating(true);
 
+    // UX-27: the fallback was an American football, so a group created
+    // without choosing a sport was stamped with one anyway. Neutral.
     const sportEmoji =
-      SPORT_PILLS.find((s) => s.id === selectedSport)?.emoji || '🏈';
+      SPORT_PILLS.find((s) => s.id === selectedSport)?.emoji || '👥';
 
     try {
       const {
@@ -704,7 +736,10 @@ export default function DiscoverScreen() {
         <Search size={18} color={Colors.dark.textMuted} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search groups, watch parties, venues..."
+          // UX-30: promised venues, which this search does not cover --
+          // watch_parties is queried by title/venue_name/venue_city, and
+          // there is no venue index to search. Say what it does.
+          placeholder="Search groups and watch parties..."
           placeholderTextColor={Colors.dark.textMuted}
           value={searchQuery}
           onChangeText={handleSearchChange}
@@ -738,8 +773,22 @@ export default function DiscoverScreen() {
           }
         >
           {/* Fan Groups section (v9.0 — lifted from (tabs)/groups.tsx) */}
+          {/* v9.5.8 (iOS UAT UX-30): with a query typed, nothing on screen
+              said a search was in effect -- the section headers kept their
+              browse titles, so a query that happened to match what was
+              already showing (searching "Dallas" while in Dallas) looked
+              like the search had been ignored. Name the query and count
+              what it matched. */}
+          {searchQuery.trim() ? (
+            <Text style={styles.resultsHeader}>
+              Results for "{searchQuery.trim()}"
+            </Text>
+          ) : null}
           <View style={styles.groupsSectionHeader}>
-            <Text style={styles.groupsSectionTitle}>Fan Groups</Text>
+            <Text style={styles.groupsSectionTitle}>
+              Fan Groups
+              {searchQuery.trim() ? ` (${suggestedGroups.length})` : ''}
+            </Text>
             <TouchableOpacity
               style={styles.createGroupBtn}
               onPress={handleOpenCreateModal}
@@ -866,11 +915,13 @@ export default function DiscoverScreen() {
               damaging than a button that does nothing. */}
           <SectionHeader
             title={
-              partiesBroadened
-                ? 'Watch Parties · Nearby (broader area)'
-                : city
-                  ? `Watch Parties Near You · ${city}`
-                  : 'Upcoming Watch Parties'
+              searchQuery.trim()
+                ? `Watch Parties (${watchParties.length})`
+                : partiesBroadened
+                  ? 'Watch Parties · Nearby (broader area)'
+                  : city
+                    ? `Watch Parties Near You · ${city}`
+                    : 'Upcoming Watch Parties'
             }
           />
           {watchParties.length > 0 ? (
@@ -1001,7 +1052,12 @@ export default function DiscoverScreen() {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
           >
-            <View style={styles.modalSheet}>
+            {/* v9.5.8 (iOS UAT UX-27): the sheet ended where its content
+                ended, so the dimmed overlay and the tab bar showed through
+                as a dead black band beneath it. flexGrow on the ScrollView
+                already reserves the height; the sheet just has to claim
+                it, and pad past the home indicator. */}
+            <View style={[styles.modalSheet, { flexGrow: 1, paddingBottom: insets.bottom + 12 }]}>
               <View style={styles.modalHandle} />
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitleLarge}>Create Fan Group</Text>
@@ -1332,6 +1388,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   // Fan Groups section header (title + Create button)
+  resultsHeader: {
+    color: Colors.dark.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
   groupsSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',

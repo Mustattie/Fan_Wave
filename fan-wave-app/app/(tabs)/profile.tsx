@@ -27,7 +27,7 @@ import {
   Trophy,
   Shield,
   ScrollText,
-  Slash,
+  UserX,
   Trash2,
   Crown,
   Stethoscope,
@@ -236,7 +236,16 @@ export default function ProfileScreen() {
   const menuItems = [
     { icon: Edit3, label: 'Edit Profile', color: Colors.dark.text, badge: null as string | null },
     { icon: Crown, label: 'Subscription', color: Colors.dark.accent, badge: subBadge },
-    { icon: Stethoscope, label: 'IAP Diagnostics', color: Colors.dark.warning, badge: null },
+    // v9.5.7 (iOS UAT BUG-15): this shipped unconditionally, so a
+    // brand-new free account saw a yellow "IAP Diagnostics" row wedged
+    // between Subscription and My Sports and could open the internal
+    // receipt/entitlement dump at app/iap-debug.tsx. It is a developer
+    // tool; __DEV__ is false in every store build, so this removes it
+    // from TestFlight and production while keeping it one tap away in
+    // local development.
+    ...(__DEV__
+      ? [{ icon: Stethoscope, label: 'IAP Diagnostics', color: Colors.dark.warning, badge: null as string | null }]
+      : []),
     { icon: Trophy, label: 'My Sports', color: Colors.dark.text, badge: null },
     { icon: Star, label: 'My Teams', color: Colors.dark.text, badge: null },
     { icon: Ticket, label: 'RSVP History', color: Colors.dark.text, badge: null },
@@ -244,7 +253,10 @@ export default function ProfileScreen() {
     { icon: BarChart3, label: 'My Stats', color: Colors.dark.text, badge: null },
     { icon: Bell, label: 'Notifications', color: Colors.dark.text, badge: null },
     { icon: Share2, label: 'Invite Friends', color: Colors.dark.accent, badge: null },
-    { icon: Slash, label: 'Blocked Users', color: Colors.dark.text, badge: null },
+    // UX-28: `Slash` is a bare diagonal line, which next to a column of
+    // outlined glyphs reads as a failed icon rather than an intentional
+    // one. UserX is the same idea drawn as a recognisable object.
+    { icon: UserX, label: 'Blocked Users', color: Colors.dark.text, badge: null },
     { icon: Shield, label: 'Privacy Policy', color: Colors.dark.text, badge: null },
     { icon: ScrollText, label: 'Terms of Service', color: Colors.dark.text, badge: null },
     { icon: LogOut, label: 'Sign Out', color: Colors.dark.error, badge: null },

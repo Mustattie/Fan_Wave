@@ -587,6 +587,11 @@ export default function FanGroupDetailScreen() {
 
   const displayedOnlineCount = onlineCount || group?.onlineCount || 0;
 
+  // BUG-20: one predicate for "may this person put text into this room",
+  // used by the composer. Mirrors the chat_messages insert policy rather
+  // than restating it, so the UI cannot promise what RLS will refuse.
+  const canPost = isMember || isOwner;
+
   const renderMessage = ({ item }: { item: ChatMessageDisplay }) => (
     <View
       style={[
@@ -718,9 +723,17 @@ export default function FanGroupDetailScreen() {
           <Text style={styles.headerName} numberOfLines={1}>
             {group.name}
           </Text>
+          {/* BUG-20: the separator was unconditional, so with no presence
+              data the header read "6 members ·" with nothing after it. */}
           <Text style={styles.headerMeta}>
-            {group.memberCount.toLocaleString()} members ·{' '}
-            <Text style={styles.onlineText}>{displayedOnlineCount} online</Text>
+            {group.memberCount.toLocaleString()}{' '}
+            {group.memberCount === 1 ? 'member' : 'members'}
+            {displayedOnlineCount > 0 ? (
+              <>
+                {' · '}
+                <Text style={styles.onlineText}>{displayedOnlineCount} online</Text>
+              </>
+            ) : null}
           </Text>
         </View>
         {/* Share only surfaces once the user has joined. Pinned-banner
@@ -746,7 +759,9 @@ export default function FanGroupDetailScreen() {
         <View style={styles.pinnedInfo}>
           <Text style={styles.pinnedTitle}>{group.name}</Text>
           <Text style={styles.pinnedMeta}>
-            {group.memberCount.toLocaleString()} members · {group.tags?.join(' · ') || ''}
+            {group.memberCount.toLocaleString()}{' '}
+            {group.memberCount === 1 ? 'member' : 'members'}
+            {group.tags && group.tags.length > 0 ? ` · ${group.tags.join(' · ')}` : ''}
           </Text>
         </View>
         {!isOwner && !isMember ? (
@@ -844,40 +859,68 @@ export default function FanGroupDetailScreen() {
               { paddingBottom: 10 + insets.bottom },
             ]}
           >
-            <TouchableOpacity
-              style={styles.inputAction}
-              onPress={handleAttachMedia}
-              disabled={attaching}
-            >
-              {attaching ? (
-                <ActivityIndicator size="small" color={Colors.dark.accent} />
-              ) : (
-                <ImageIcon size={20} color={Colors.dark.textSecondary} />
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.inputAction} onPress={() => setEmojiOpen((o) => !o)}>
-              <Smile size={20} color={emojiOpen ? Colors.dark.accent : Colors.dark.textMuted} />
-            </TouchableOpacity>
-            <TextInput
-              style={styles.textInput}
-              placeholder="Message..."
-              placeholderTextColor={Colors.dark.textMuted}
-              value={message}
-              onChangeText={setMessage}
-              onSubmitEditing={handleSend}
-              returnKeyType="send"
-              maxLength={2000}
-            />
-            <TouchableOpacity
-              style={[
-                styles.sendButton,
-                !message.trim() && styles.sendButtonDisabled,
-              ]}
-              onPress={handleSend}
-              disabled={!message.trim()}
-            >
-              <Send size={18} color={message.trim() ? '#fff' : Colors.dark.textMuted} />
-            </TouchableOpacity>
+            {/* v9.5.7 (iOS UAT BUG-20): the composer rendered fully live
+                for someone who is not a member -- attach, emoji, a
+                "Message..." field and an enabled Send -- while a Join
+                banner sat at the top of the same screen. Previewing a
+                public group is fine and intended; inviting someone to
+                type into it when the insert will be refused by RLS
+                (chat_messages is member-gated, mig 053) is not. The
+                composer now states the requirement and routes to the
+                action that fixes it. */}
+            {canPost ? (
+              <>
+                <TouchableOpacity
+                  style={styles.inputAction}
+                  onPress={handleAttachMedia}
+                  disabled={attaching}
+                >
+                  {attaching ? (
+                    <ActivityIndicator size="small" color={Colors.dark.accent} />
+                  ) : (
+                    <ImageIcon size={20} color={Colors.dark.textSecondary} />
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.inputAction} onPress={() => setEmojiOpen((o) => !o)}>
+                  <Smile size={20} color={emojiOpen ? Colors.dark.accent : Colors.dark.textMuted} />
+                </TouchableOpacity>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Message..."
+                  placeholderTextColor={Colors.dark.textMuted}
+                  value={message}
+                  onChangeText={setMessage}
+                  onSubmitEditing={handleSend}
+                  returnKeyType="send"
+                  maxLength={2000}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.sendButton,
+                    !message.trim() && styles.sendButtonDisabled,
+                  ]}
+                  onPress={handleSend}
+                  disabled={!message.trim()}
+                >
+                  <Send size={18} color={message.trim() ? '#fff' : Colors.dark.textMuted} />
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={styles.joinToPost}
+                onPress={handleJoin}
+                disabled={joining}
+                activeOpacity={0.85}
+              >
+                {joining ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.joinToPostText}>
+                    Join this group to join the conversation
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -1099,6 +1142,19 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: Colors.dark.border, backgroundColor: Colors.dark.tabBar,
   },
   inputAction: { padding: 4 },
+  joinToPost: {
+    flex: 1,
+    backgroundColor: Colors.dark.accent,
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  joinToPostText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
   emojiStrip: {
     flexDirection: 'row',
     flexWrap: 'wrap',
