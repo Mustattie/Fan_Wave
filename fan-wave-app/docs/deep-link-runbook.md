@@ -1,8 +1,10 @@
 # Deep Link Runbook — App Links / Universal Links
 
-**Status**: association files and app routes shipped in v9.5.12. Android is
-complete and verifiable today. **iOS is blocked on hosting** — see
-"The iOS blocker" below. Nothing else is outstanding.
+**Status**: shipped and **live on fansphere.org** as of 2026-09-16. Both
+association files are served, Google's Digital Asset Links API validates both
+Android fingerprints, and Apple's CDN has fetched and accepted the AASA. No
+hosting change is needed. What remains is on-device verification, which needs
+a build.
 
 ## The correction that unblocked this
 
@@ -99,30 +101,38 @@ Two consequences worth stating plainly:
    (all use `{{ .ConfirmationURL }}`) — so the fallback is unreachable rather
    than safe. It stops being a latent trap the moment `docs/` is on main.
 
-## The iOS blocker
+## The iOS content-type question, and why it turned out not to block
 
-`apple-app-site-association` must be served with **no file extension** *and*
-`Content-Type: application/json`. GitHub Pages serves extensionless files as
-`application/octet-stream` and offers no per-file header control — there is no
-`_headers` file, no config, no workaround at the Pages layer.
+Apple documents that `apple-app-site-association` must be served with **no file
+extension** *and* `Content-Type: application/json`. GitHub Pages cannot do the
+second half — extensionless files come back as `application/octet-stream`, and
+there is no `_headers` file, no config, no per-file header control. On the
+documentation alone this looked fatal, and the plan was a Cloudflare proxy with
+a Transform Rule, at the cost of migrating the Resend email DNS.
 
-So `docs/.well-known/apple-app-site-association` is correct and committed, but
-**iOS Universal Links will not verify while fansphere.org is served directly by
-GitHub Pages.** Android is unaffected: `assetlinks.json` carries a `.json`
-extension and is served as `application/json` automatically.
+**Measured instead of assumed, and the measurement disagreed.** Modern iOS does
+not fetch the file from your origin; it asks Apple's CDN, which fetches on your
+behalf. That CDN accepted ours from GitHub Pages despite the wrong type:
 
-Fixing it means putting something in front that can set the header:
+```sh
+curl -sD- https://app-site-association.cdn-apple.com/a/v1/fansphere.org
+# HTTP/1.1 200 OK
+# Content-Type: application/json          <-- Apple re-serves it correctly
+# Cache-Control: max-age=3600,public
+# ...body byte-identical to docs/.well-known/apple-app-site-association
+```
 
-- **Cloudflare proxy** (recommended) — nameservers move to Cloudflare, GitHub
-  Pages stays the origin, a Transform Rule sets the content type. URLs do not
-  change. **Risk: the Resend email DNS (SPF via `send.fansphere.org`, DKIM, and
-  the DMARC CNAME) must be migrated exactly, or auth email delivery breaks.**
-  Verify every record with `dig` before and after the nameserver switch.
-- **Vercel / Netlify** — full `headers` control, but the same DNS move.
-- **Subdomain** — host only the association file elsewhere. Rejected: Apple
-  fetches AASA from the exact domain in `associatedDomains` and follows no
-  redirects, so this would mean changing `DEEP_LINK_BASE` and invalidating
-  every link already shared.
+So no hosting change, no nameserver move, and the Resend records stay untouched.
+**This is the endpoint to trust** — it is what devices actually read, so it
+answers "will iOS see my file" far better than `curl`ing our own origin does.
+
+Two honest caveats. Apple's leniency here is observed behaviour, not a promise;
+if a future iOS tightens it, the fix is the Cloudflare proxy described above, and
+nothing else about the setup would need to change. And a CDN hit proves Apple
+*has* the file — only a device tapping a real link proves the whole chain.
+
+Android never had the problem: `assetlinks.json` carries a `.json` extension and
+is served as `application/json` automatically.
 
 ## Fingerprints, and where they came from
 
@@ -171,18 +181,19 @@ adb shell am start -a android.intent.action.VIEW \
   -d "https://fansphere.org/party/<known-uuid>"
 ```
 
-iOS, once the hosting change is in:
+iOS:
 
 ```sh
-curl -sI https://fansphere.org/.well-known/apple-app-site-association \
-  | grep -i 'content-type\|HTTP/'
-#    expect: content-type: application/json  <-- the whole blocker, in one line
+# Ask Apple what Apple has -- NOT our own origin, whose content-type is
+# wrong and does not matter. Confirmed 200 + application/json 2026-09-16.
+curl -sD- https://app-site-association.cdn-apple.com/a/v1/fansphere.org
 ```
 
 Then Safari → `https://fansphere.org/party/<uuid>` → should open the app.
-Apple's CDN caches AASA aggressively; `swcutil dl -d fansphere.org` on a test
-Mac forces a refetch. A device that has already cached a failed lookup may need
-the app reinstalled.
+Apple's CDN caches for an hour and devices cache longer; `swcutil dl -d
+fansphere.org` on a test Mac forces a refetch, and a device that already cached
+a failed lookup may need the app reinstalled. Re-run the curl above after any
+edit to the AASA — a stale CDN copy looks exactly like a broken file.
 
 Regression check that matters more than any of the above: **confirm a signup
 email still opens `/auth/` in a browser and does not get captured by the app.**
