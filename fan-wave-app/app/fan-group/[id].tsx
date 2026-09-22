@@ -282,18 +282,74 @@ export default function FanGroupDetailScreen() {
     })();
   }, [id, currentUserId]);
 
-  // Realtime: new messages
+  // Realtime: new messages.
+  //
+  // Phase 1 (2026-09-16): the handler reads currentUserId through a ref so
+  // the effect depends on `id` alone -- it used to re-subscribe once per
+  // open when the auth user resolved (null -> uuid), one wasted join and
+  // leave on the socket. And Realtime replays nothing that was sent while
+  // the channel was down, so a re-join now fetches everything newer than
+  // the newest message on screen.
+  const currentUserIdRef = useRef(currentUserId);
+  currentUserIdRef.current = currentUserId;
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
+  const catchUpMessages = useCallback(async () => {
+    if (!id) return;
+    const known = messagesRef.current.filter((m) => m.kind !== 'moment');
+    const newest = known
+      .map((m) => m.created_at)
+      .filter(Boolean)
+      .sort()
+      .pop();
+    if (!newest) return;
+    // A few seconds of overlap covers clock skew between an optimistic
+    // bubble's client timestamp and the server's; ids dedupe the rest.
+    const since = new Date(new Date(newest).getTime() - 5_000).toISOString();
+    try {
+      const { data, error } = await withTimeout(
+        () => supabase
+          .from('messages')
+          .select('*')
+          .eq('chat_room_id', id)
+          .gt('created_at', since)
+          .order('created_at', { ascending: true })
+          .limit(100),
+        CHAT_RPC_TIMEOUT_MS,
+      );
+      if (error || !data?.length) return;
+      const uid = currentUserIdRef.current || undefined;
+      setMessages((prev) => {
+        const seen = new Set(prev.map((m) => m.id));
+        const fresh = data
+          .map((row: any) => mapMessageToDisplay(row, uid))
+          .filter((m) => !seen.has(m.id) && !m.isMe);
+        if (fresh.length === 0) return prev;
+        return [...prev, ...fresh].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        );
+      });
+    } catch (e) {
+      reportError(e, { source: 'fan-group:catchUpMessages', groupId: id });
+    }
+  }, [id]);
+
   useEffect(() => {
     if (!id) return;
-    const unsub = subscribeToMessages(id, (newRow) => {
-      // Avoid duplicating our own optimistic messages
-      const incoming = mapMessageToDisplay(newRow, currentUserId || undefined);
-      if (!incoming.isMe) {
-        setMessages((prev) => [...prev, incoming]);
-      }
-    });
+    const unsub = subscribeToMessages(
+      id,
+      (newRow) => {
+        // Avoid duplicating our own optimistic messages
+        const incoming = mapMessageToDisplay(newRow, currentUserIdRef.current || undefined);
+        if (!incoming.isMe) {
+          setMessages((prev) => [...prev, incoming]);
+        }
+      },
+      catchUpMessages,
+    );
     return unsub;
-  }, [id, currentUserId]);
+  }, [id, catchUpMessages]);
 
   // Realtime: presence
   //
@@ -381,9 +437,11 @@ export default function FanGroupDetailScreen() {
           return;
         }
       } catch {
-        // Rate-limit RPC timed out. Send anyway; the DB RLS will still
-        // enforce the ceiling if we cross it. Better than dropping a
-        // legitimate message because the check hung.
+        // Rate-limit RPC timed out. Send anyway rather than drop a
+        // legitimate message because the check hung. (Migration 099
+        // makes the limiter itself authoritative -- it counts against
+        // auth.uid(), not the id we pass -- but no RLS policy enforces a
+        // ceiling on messages, so a timeout here does fail open.)
       }
     }
 
@@ -537,6 +595,29 @@ export default function FanGroupDetailScreen() {
 
       // Optimistic bubble with the local uri so the sender sees it
       // immediately; the DB write below promotes it with the CDN url.
+      // Phase 1 (2026-09-16): the media path skipped the limiter entirely,
+      // so a burst of attachments was unbounded while text was capped at
+      // 60/min. Same bucket as text.
+      if (currentUserId) {
+        try {
+          const { data: allowed } = await withTimeout(
+            () => supabase.rpc('check_rate_limit', {
+              p_user_id: currentUserId,
+              p_action: 'message_send',
+              p_max_count: 60,
+              p_window_seconds: 60,
+            }),
+            CHAT_RPC_TIMEOUT_MS,
+          );
+          if (allowed === false) {
+            Alert.alert('Slow down', "You're sending quickly. Try again in a moment.");
+            return;
+          }
+        } catch {
+          // Limiter timed out; proceed as the text path does.
+        }
+      }
+
       const optimisticId = `local-${Date.now()}`;
       const optimistic: ChatMessageDisplay = {
         id: optimisticId,

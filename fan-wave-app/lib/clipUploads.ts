@@ -10,17 +10,38 @@
 // all of them upload at once would saturate the cellular link; 2 is enough
 // that the next clip starts while the first finishes the last few MB.
 //
-// Persistence: pending jobs are mirrored to AsyncStorage so navigating away
-// and back doesn't lose the placeholder. Full-app-kill recovery (resume an
-// interrupted upload after process death) is deferred to v7.
+// Persistence and recovery (Phase 1, 2026-09-16 scalability review):
+// jobs are mirrored to AsyncStorage, and -- this is the part that was
+// missing -- read back on the next launch by initClipUploads(). Before,
+// rehydratePending() existed but nothing called it, so a process kill in
+// the camera (the memory peak of the whole app) lost the upload with no
+// card, no error and an orphaned object in the bucket. Now:
+//
+//   * a job that was queued / uploading / inserting when the process died
+//     comes back as queued and runs again, under a FRESH storage path;
+//   * a job that had already failed comes back as failed, with its Retry
+//     button, instead of disappearing;
+//   * a job whose local file is gone comes back as failed with a message
+//     that says so -- the one case we genuinely cannot resume;
+//   * when the app returns to the foreground, a job that failed on a
+//     timeout or a network drop is retried once automatically (iOS
+//     suspends the upload task in the background, so a long camera trip
+//     reliably produced exactly that failure).
+//
+// Every retry, manual or automatic, uploads to a new path. The Storage
+// call sends x-upsert:false, so re-using the old path after a timeout that
+// the server had in fact completed answered 409 forever.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
 import { supabase } from './supabase';
-import { uploadClip, deleteClipAssets } from './storage';
-import { reportError } from './errorReporting';
+import { uploadClip, deleteClipAssets, fileExists } from './storage';
+import { addBreadcrumb, reportError } from './errorReporting';
 import { withTimeout } from './withTimeout';
+import { trackEvent } from './analytics';
 
-const PENDING_KEY = 'clipUploads.pending.v1';
+const PENDING_KEY_V1 = 'clipUploads.pending.v1';
+const PENDING_KEY = 'clipUploads.pending.v2';
 const MAX_CONCURRENT = 2;
 
 // The Storage upload is already bounded (UPLOAD_TIMEOUT_MS in storage.ts).
@@ -32,6 +53,16 @@ const MAX_CONCURRENT = 2;
 const INSERT_TIMEOUT_MS = 30_000;
 
 export type UploadStatus = 'queued' | 'uploading' | 'inserting' | 'failed';
+
+/** Why a job failed, for telemetry and for deciding whether to auto-retry. */
+export type UploadErrorKind =
+  | 'timeout'
+  | 'network'
+  | 'server'
+  | 'auth'
+  | 'client'
+  | 'file_missing'
+  | 'unknown';
 
 export interface PendingClipJob {
   tempId: string;
@@ -58,9 +89,25 @@ export interface JobState extends PendingClipJob {
   status?: UploadStatus;
   progress: number;
   error?: string;
+  errorKind?: UploadErrorKind;
   realId?: string;
   mediaUrl?: string;
   thumbnailUrl?: string | null;
+  /** How many times this job has been started (1 on the first run). */
+  attempt?: number;
+  /** True if this job was read back from disk after a restart. */
+  recovered?: boolean;
+  /** The one automatic foreground retry has been spent. */
+  autoRetried?: boolean;
+}
+
+/** What goes to disk: the job plus enough state to bring it back honestly. */
+interface PersistedJob extends PendingClipJob {
+  status: 'queued' | 'failed';
+  error?: string;
+  errorKind?: UploadErrorKind;
+  attempt?: number;
+  autoRetried?: boolean;
 }
 
 type Listener = (state: JobState) => void;
@@ -68,6 +115,8 @@ type Listener = (state: JobState) => void;
 const listeners = new Set<Listener>();
 const jobs = new Map<string, JobState>();
 let inFlight = 0;
+let initializedForUser: string | null = null;
+let appStateSubscription: { remove: () => void } | null = null;
 
 export function subscribeToClipUploads(fn: Listener): () => void {
   listeners.add(fn);
@@ -88,66 +137,7 @@ function emit(state: JobState) {
   }
 }
 
-async function persistPending(): Promise<void> {
-  const pending = Array.from(jobs.values())
-    .filter((j) => j.status !== 'failed')
-    .map((j) => ({
-      tempId: j.tempId,
-      localUri: j.localUri,
-      contentType: j.contentType,
-      subpath: j.subpath,
-      title: j.title,
-      description: j.description,
-      sportId: j.sportId,
-      momentType: j.momentType,
-      durationSeconds: j.durationSeconds,
-      userId: j.userId,
-      profileId: j.profileId,
-      displayName: j.displayName,
-      createdAt: j.createdAt,
-      localThumbnailUri: j.localThumbnailUri ?? null,
-    }));
-  try {
-    await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(pending));
-  } catch (e) {
-    reportError(e, { source: 'clipUploads.persist' });
-  }
-}
-
-export async function rehydratePending(): Promise<PendingClipJob[]> {
-  try {
-    const raw = await AsyncStorage.getItem(PENDING_KEY);
-    return raw ? (JSON.parse(raw) as PendingClipJob[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function generateTempId(): string {
-  return `temp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
-}
-
-export function enqueueClipUpload(job: PendingClipJob): JobState {
-  const initial: JobState = { ...job, status: 'queued', progress: 0 };
-  emit(initial);
-  void persistPending();
-  void tryRun();
-  return initial;
-}
-
-export function retryClipUpload(tempId: string): void {
-  const existing = jobs.get(tempId);
-  if (!existing) return;
-  emit({ ...existing, status: 'queued', progress: 0, error: undefined });
-  void persistPending();
-  void tryRun();
-}
-
-export function cancelClipUpload(tempId: string): void {
-  const existing = jobs.get(tempId);
-  jobs.delete(tempId);
-  // Fire a "cleared" event so subscribers can drop the placeholder. Status
-  // is intentionally undefined to signal removal.
+function emitRemoval(tempId: string, existing?: JobState) {
   for (const fn of listeners) {
     try {
       fn({
@@ -160,7 +150,267 @@ export function cancelClipUpload(tempId: string): void {
       reportError(e, { source: 'clipUploads.cancel' });
     }
   }
+}
+
+function toPersisted(j: JobState): PersistedJob {
+  return {
+    tempId: j.tempId,
+    localUri: j.localUri,
+    contentType: j.contentType,
+    subpath: j.subpath,
+    title: j.title,
+    description: j.description,
+    sportId: j.sportId,
+    momentType: j.momentType,
+    durationSeconds: j.durationSeconds,
+    userId: j.userId,
+    profileId: j.profileId,
+    displayName: j.displayName,
+    createdAt: j.createdAt,
+    localThumbnailUri: j.localThumbnailUri ?? null,
+    // Anything in flight when the process dies must start over.
+    status: j.status === 'failed' ? 'failed' : 'queued',
+    error: j.error,
+    errorKind: j.errorKind,
+    attempt: j.attempt,
+    autoRetried: j.autoRetried,
+  };
+}
+
+async function persistPending(): Promise<void> {
+  const pending = Array.from(jobs.values())
+    .filter((j) => !!j.status)
+    .map(toPersisted);
+  try {
+    await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+  } catch (e) {
+    reportError(e, { source: 'clipUploads.persist' });
+  }
+}
+
+/**
+ * Read persisted jobs. Reads the v1 key too (written by builds before this
+ * change, which never read it back) so an upload stranded by an older
+ * build is recovered by this one; the v1 key is cleared after the read.
+ */
+export async function rehydratePending(): Promise<PersistedJob[]> {
+  const out: PersistedJob[] = [];
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_KEY);
+    if (raw) out.push(...(JSON.parse(raw) as PersistedJob[]));
+  } catch {
+    /* unreadable -- treat as empty */
+  }
+  try {
+    const rawV1 = await AsyncStorage.getItem(PENDING_KEY_V1);
+    if (rawV1) {
+      const v1 = JSON.parse(rawV1) as PendingClipJob[];
+      for (const j of v1) {
+        if (!out.some((o) => o.tempId === j.tempId)) {
+          out.push({ ...j, status: 'queued' });
+        }
+      }
+      AsyncStorage.removeItem(PENDING_KEY_V1).catch(() => {});
+    }
+  } catch {
+    /* ignore */
+  }
+  return out;
+}
+
+export function generateTempId(): string {
+  return `temp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/** A new object path with the same extension. Never re-use a path. */
+export function freshSubpath(previous: string): string {
+  const ext = (previous.split('.').pop() || 'mp4').toLowerCase();
+  return `${Date.now()}.${ext}`;
+}
+
+export function classifyUploadError(e: unknown): UploadErrorKind {
+  const msg = String((e as any)?.message ?? e ?? '');
+  if (msg.startsWith('Timeout after') || msg.startsWith('Upload timed out')) return 'timeout';
+  if (msg === 'Not signed in') return 'auth';
+  const status = msg.match(/Upload failed \((\d{3})\)/);
+  if (status) {
+    const code = Number(status[1]);
+    if (code === 401 || code === 403) return 'auth';
+    if (code >= 500) return 'server';
+    return 'client';
+  }
+  if (/network request failed|network error|failed to fetch|econn|socket|unreachable/i.test(msg)) {
+    return 'network';
+  }
+  return 'unknown';
+}
+
+function isTransient(kind: UploadErrorKind | undefined): boolean {
+  return kind === 'timeout' || kind === 'network' || kind === 'server';
+}
+
+function friendlyMessage(kind: UploadErrorKind, raw: string): string {
+  switch (kind) {
+    case 'timeout':
+    case 'network':
+      return 'The connection dropped before this finished. Tap Retry when you have signal.';
+    case 'server':
+      return 'The server had a problem. Tap Retry in a moment.';
+    case 'auth':
+      return 'Your session needed a refresh. Tap Retry to post this clip.';
+    case 'file_missing':
+      return 'The original video is no longer on this device, so this upload cannot be resumed.';
+    default:
+      return raw || 'Upload failed.';
+  }
+}
+
+export function enqueueClipUpload(job: PendingClipJob): JobState {
+  const initial: JobState = { ...job, status: 'queued', progress: 0, attempt: 0 };
+  emit(initial);
+  addBreadcrumb('clips', 'upload.enqueued', { tempId: job.tempId });
   void persistPending();
+  void tryRun();
+  return initial;
+}
+
+export function retryClipUpload(tempId: string, source: 'manual' | 'auto' = 'manual'): void {
+  const existing = jobs.get(tempId);
+  if (!existing) return;
+  // Fresh path every time: the previous attempt may have completed on the
+  // server after our timeout fired, and x-upsert:false would 409 on it.
+  emit({
+    ...existing,
+    status: 'queued',
+    progress: 0,
+    error: undefined,
+    errorKind: undefined,
+    subpath: freshSubpath(existing.subpath),
+    autoRetried: existing.autoRetried || source === 'auto',
+  });
+  void trackEvent('clip_upload_retried', 'clips', {
+    source,
+    attempt: existing.attempt ?? 0,
+    previous_error: existing.errorKind ?? null,
+  });
+  addBreadcrumb('clips', 'upload.retried', { tempId, source });
+  void persistPending();
+  void tryRun();
+}
+
+export function cancelClipUpload(tempId: string): void {
+  const existing = jobs.get(tempId);
+  jobs.delete(tempId);
+  // Fire a "cleared" event so subscribers can drop the placeholder. Status
+  // is intentionally undefined to signal removal.
+  emitRemoval(tempId, existing);
+  addBreadcrumb('clips', 'upload.cancelled', { tempId });
+  void persistPending();
+}
+
+/**
+ * Bring back whatever was on disk for this user and start listening for
+ * foreground transitions. Call once the session is known (root layout).
+ * Safe to call again for the same user; a different user replaces the
+ * in-memory queue.
+ */
+export async function initClipUploads(userId: string): Promise<void> {
+  if (initializedForUser === userId) return;
+  initializedForUser = userId;
+
+  // A previous account's jobs must not run under this one.
+  for (const j of Array.from(jobs.values())) {
+    if (j.userId !== userId) {
+      jobs.delete(j.tempId);
+      emitRemoval(j.tempId, j);
+    }
+  }
+
+  const persisted = await rehydratePending();
+  let resumed = 0;
+  let restoredFailed = 0;
+  let fileMissing = 0;
+  let dropped = 0;
+
+  for (const p of persisted) {
+    if (jobs.has(p.tempId)) continue; // already live in memory (warm start)
+    if (p.userId !== userId) {
+      dropped += 1;
+      continue;
+    }
+    const videoOk = await fileExists(p.localUri);
+    const thumbOk = p.localThumbnailUri ? await fileExists(p.localThumbnailUri) : false;
+    const base: JobState = {
+      ...p,
+      localThumbnailUri: thumbOk ? p.localThumbnailUri : null,
+      progress: 0,
+      recovered: true,
+      attempt: p.attempt ?? 0,
+      autoRetried: p.autoRetried,
+    };
+    if (!videoOk) {
+      fileMissing += 1;
+      emit({
+        ...base,
+        status: 'failed',
+        errorKind: 'file_missing',
+        error: friendlyMessage('file_missing', ''),
+      });
+      continue;
+    }
+    if (p.status === 'failed') {
+      restoredFailed += 1;
+      emit({
+        ...base,
+        status: 'failed',
+        errorKind: p.errorKind ?? 'unknown',
+        error: p.error ?? friendlyMessage(p.errorKind ?? 'unknown', ''),
+      });
+      continue;
+    }
+    resumed += 1;
+    emit({ ...base, status: 'queued', subpath: freshSubpath(p.subpath) });
+  }
+
+  if (persisted.length > 0) {
+    void trackEvent('clip_upload_recovered', 'clips', {
+      found: persisted.length,
+      resumed,
+      restored_failed: restoredFailed,
+      file_missing: fileMissing,
+      dropped,
+    });
+    addBreadcrumb('clips', 'upload.recovered', {
+      found: persisted.length,
+      resumed,
+      restoredFailed,
+      fileMissing,
+      dropped,
+    });
+  }
+
+  await persistPending();
+  void tryRun();
+
+  if (!appStateSubscription) {
+    appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') resumeAfterForeground();
+    });
+  }
+}
+
+/**
+ * On return to the foreground: kick any queued job, and give a job that
+ * failed on a timeout / network drop / 5xx one automatic retry. Failures
+ * that need the user (auth, a 4xx, a missing file) keep their Retry button.
+ */
+export function resumeAfterForeground(): void {
+  for (const j of Array.from(jobs.values())) {
+    if (j.status === 'failed' && isTransient(j.errorKind) && !j.autoRetried) {
+      retryClipUpload(j.tempId, 'auto');
+    }
+  }
+  void tryRun();
 }
 
 async function tryRun(): Promise<void> {
@@ -169,7 +419,14 @@ async function tryRun(): Promise<void> {
   if (!next) return;
 
   inFlight++;
-  emit({ ...next, status: 'uploading', progress: 0 });
+  const attempt = (next.attempt ?? 0) + 1;
+  const startedAt = Date.now();
+  emit({ ...next, status: 'uploading', progress: 0, attempt });
+  void trackEvent('clip_upload_started', 'clips', {
+    attempt,
+    recovered: !!next.recovered,
+  });
+  addBreadcrumb('clips', 'upload.started', { tempId: next.tempId, attempt });
 
   try {
     const { publicUrl } = await uploadClip(next.localUri, {
@@ -244,20 +501,41 @@ async function tryRun(): Promise<void> {
     });
     jobs.delete(next.tempId);
     await persistPending();
+
+    const durationMs = Date.now() - startedAt;
+    void trackEvent('clip_upload_succeeded', 'clips', {
+      attempt,
+      duration_ms: durationMs,
+      recovered: !!next.recovered,
+    });
+    // The product event the admin activity screen has always listed but
+    // nothing emitted (audit item 3).
+    void trackEvent('clip_uploaded', 'clips', {
+      sport_id: next.sportId || null,
+      duration_seconds: next.durationSeconds ?? null,
+      has_thumbnail: !!thumbnailUrl,
+    });
+    addBreadcrumb('clips', 'upload.succeeded', { tempId: next.tempId, attempt, durationMs });
   } catch (e: any) {
-    reportError(e, { source: 'clipUploads.run', tempId: next.tempId });
-    // This string is now user-facing -- the feed renders it under
-    // "Upload failed" on the card (BUG-4). Translate the two internal
-    // shapes a host cannot act on into something they can.
-    const raw = e?.message || '';
-    const friendly = raw.startsWith('Timeout after')
-      ? 'The connection dropped before this finished. Tap Retry when you have signal.'
-      : raw || 'Upload failed.';
+    reportError(e, { source: 'clipUploads.run', tempId: next.tempId, attempt });
+    const kind = classifyUploadError(e);
+    // This string is user-facing -- the feed renders it under
+    // "Upload failed" on the card (BUG-4).
+    const friendly = friendlyMessage(kind, e?.message || '');
     emit({
       ...(jobs.get(next.tempId) || next),
       status: 'failed',
       error: friendly,
+      errorKind: kind,
+      attempt,
     });
+    void trackEvent('clip_upload_failed', 'clips', {
+      attempt,
+      error_kind: kind,
+      duration_ms: Date.now() - startedAt,
+    });
+    addBreadcrumb('clips', 'upload.failed', { tempId: next.tempId, attempt, kind });
+    await persistPending();
   } finally {
     inFlight--;
     void tryRun();
@@ -270,4 +548,14 @@ export function activeUploadCount(): number {
     (j) =>
       j.status === 'uploading' || j.status === 'inserting' || j.status === 'queued',
   ).length;
+}
+
+/** Test hook. */
+export function _resetClipUploadsForTests(): void {
+  jobs.clear();
+  listeners.clear();
+  inFlight = 0;
+  initializedForUser = null;
+  appStateSubscription?.remove();
+  appStateSubscription = null;
 }

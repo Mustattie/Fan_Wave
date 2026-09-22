@@ -6,7 +6,12 @@ type EventName =
   | 'group_created' | 'group_joined' | 'watch_party_created' | 'watch_party_rsvp'
   | 'message_sent' | 'moment_created' | 'clip_uploaded' | 'clip_liked' | 'clip_shared'
   | 'content_shared' | 'clip_exported' | 'invite_shared' | 'invite_opened'
-  | 'screen_viewed';
+  | 'screen_viewed'
+  // Phase 1 (2026-09-16): clip upload lifecycle. `clip_uploaded` above is
+  // the product event (a clip exists); these are the pipeline's own
+  // started / succeeded / failed / retried / recovered signals.
+  | 'clip_upload_started' | 'clip_upload_succeeded' | 'clip_upload_failed'
+  | 'clip_upload_retried' | 'clip_upload_recovered';
 
 interface EventMetadata {
   [key: string]: string | number | boolean | null;

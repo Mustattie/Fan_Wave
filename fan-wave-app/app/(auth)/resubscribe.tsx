@@ -15,6 +15,7 @@ import { Colors } from '@/constants/Colors';
 import { useSubscriptionState, restorePurchases } from '@/lib/entitlements';
 import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
 import { supabase } from '@/lib/supabase';
+import { markIntentionalSignOut } from '@/lib/authTelemetry';
 
 const MANAGE_SUBSCRIPTION_URL =
   Platform.OS === 'ios'
@@ -47,6 +48,7 @@ export default function ResubscribeScreen() {
   };
 
   const handleSignOut = async () => {
+    markIntentionalSignOut();
     await supabase.auth.signOut();
     router.replace('/(auth)/sign-in');
   };

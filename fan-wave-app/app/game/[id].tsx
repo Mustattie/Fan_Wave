@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { ArrowLeft, MapPin, Users, MessageCircle, Trophy } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
@@ -118,34 +118,54 @@ export default function GameDetailScreen() {
     })();
   }, [loadAll]);
 
+  // Refetch just the game row so we get freshly joined team names instead
+  // of trying to patch the mapped shape client-side.
+  const refetchGame = useCallback(() => {
+    if (!id) return;
+    supabase
+      .from('games')
+      .select(
+        '*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)',
+      )
+      .eq('id', id)
+      .maybeSingle()
+      .then(
+        ({ data }) => {
+          if (data) setGame(mapGameToDisplay(data));
+        },
+        () => {
+          /* ignore — user can pull-to-refresh */
+        },
+      );
+  }, [id]);
+
   // Live score patching — reuse the same subscribeToGames helper Game Day
   // uses so a live goal / score change hits the header without a manual
   // refresh.
-  useEffect(() => {
-    if (!id) return;
-    const unsub = subscribeToGames((row) => {
-      if (row.id !== id) return;
-      try {
-        // Refetch just the game row so we get freshly joined team names
-        // instead of trying to patch the mapped shape client-side.
-        supabase
-          .from('games')
-          .select(
-            '*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)',
-          )
-          .eq('id', id)
-          .maybeSingle()
-          .then(({ data }) => {
-            if (data) setGame(mapGameToDisplay(data));
-          });
-      } catch {
-        /* ignore — user can pull-to-refresh */
-      }
-    });
-    return () => {
-      unsub();
-    };
-  }, [id]);
+  //
+  // Phase 1 (2026-09-16): focus-gated. As a plain useEffect this stayed
+  // subscribed underneath the live-chat screen pushed on top of it, and
+  // its cleanup used to remove the shared `games-realtime` channel out
+  // from under the root layout. The registry in lib/realtime.ts fixes the
+  // sharing; the focus gate stops the waste. On return (and on a channel
+  // re-join) the row is refetched so nothing that changed meanwhile is
+  // missed. loadAll() already fetches the game on first mount, so the
+  // first focus skips the extra round-trip.
+  const focusedBeforeRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+      if (focusedBeforeRef.current) refetchGame();
+      focusedBeforeRef.current = true;
+      const unsub = subscribeToGames((row) => {
+        if (row.id !== id) return;
+        refetchGame();
+      }, refetchGame);
+      return () => {
+        unsub();
+      };
+    }, [id, refetchGame]),
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

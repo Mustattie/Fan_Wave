@@ -5,6 +5,7 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { supabase } from './supabase';
 import { reportError } from './errorReporting';
 import { chooseAndroidReplacement } from './androidReplacement';
+import { subscribeToTable } from './realtime';
 
 // ---------------------------------------------------------------------------
 // IAP diagnostic state — exposes runtime visibility into the RevenueCat
@@ -282,24 +283,21 @@ export function useEntitlementsRealtime() {
 
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!mounted || !user) return;
-      const channel = supabase
-        .channel(`entitlements-${user.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'users',
-            filter: `auth_id=eq.${user.id}`,
-          },
-          () => {
-            queryClient.invalidateQueries({ queryKey: ['entitlements'] });
-          },
-        )
-        .subscribe();
-      unsub = () => {
-        supabase.removeChannel(channel);
+      const invalidate = () => {
+        queryClient.invalidateQueries({ queryKey: ['entitlements'] });
       };
+      // Phase 1 (2026-09-16): through the shared registry so this join is
+      // status-checked and re-joins invalidate the cache (a webhook write
+      // that landed while the socket was down would otherwise be missed
+      // until the next cold start).
+      unsub = subscribeToTable(
+        `entitlements-${user.id}`,
+        'users',
+        'UPDATE',
+        invalidate,
+        `auth_id=eq.${user.id}`,
+        { onReconnect: invalidate },
+      );
     });
 
     return () => {

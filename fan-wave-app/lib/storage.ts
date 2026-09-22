@@ -107,8 +107,16 @@ export async function validateClip(uri: string, opts?: ValidationOptions): Promi
 // the path server-side).
 // ---------------------------------------------------------------------------
 export async function uploadClip(uri: string, opts: UploadOptions): Promise<UploadResult> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not signed in');
+  // Phase 1 (2026-09-16): getSession(), not getUser(). getUser() is a
+  // network round-trip to /auth/v1/user on every upload, and with a token
+  // that expired while the user sat in the camera it answers 401 before
+  // the auto-refresh has had a chance to run. getSession() refreshes an
+  // expired-with-margin token itself and hands back the user from the
+  // JWT, so the bearer captured below is fresh at upload start.
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
+  const accessToken = session?.access_token;
+  if (!user || !accessToken) throw new Error('Not signed in');
 
   const path = `${user.id}/${opts.subpath}`;
   const provider = getProvider();
@@ -116,18 +124,32 @@ export async function uploadClip(uri: string, opts: UploadOptions): Promise<Uplo
   if (provider === 'cloudinary') {
     return uploadToCloudinary(uri, path, opts.contentType);
   }
-  return uploadToSupabase(uri, path, opts.contentType, opts.onProgress);
+  return uploadToSupabase(uri, path, opts.contentType, accessToken, opts.onProgress);
+}
+
+/**
+ * Does a local media URI still point at a file? Used by the upload queue
+ * when it brings jobs back after a restart. Some URIs (Android content://)
+ * cannot be stat'ed; those are treated as present so the upload gets to
+ * try rather than being written off.
+ */
+export async function fileExists(uri: string): Promise<boolean> {
+  if (!uri) return false;
+  try {
+    const info = await getInfoAsync(uri);
+    return (info as any)?.exists !== false;
+  } catch {
+    return true;
+  }
 }
 
 async function uploadToSupabase(
   uri: string,
   path: string,
   contentType: string,
+  accessToken: string,
   onProgress?: (pct: number) => void,
 ): Promise<UploadResult> {
-  const { data: { session } } = await supabase.auth.getSession();
-  const accessToken = session?.access_token;
-  if (!accessToken) throw new Error('Not signed in');
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 
   // Native binary upload via expo-file-system createUploadTask — same
@@ -157,6 +179,12 @@ async function uploadToSupabase(
     // Native task keeps running until we explicitly cancel it. Do this
     // even for non-timeout errors so we don't leak the OS-level thread.
     try { await task.cancelAsync(); } catch { /* best-effort */ }
+    // Phase 1: the server may have finished the PUT just as our timeout
+    // fired. The queue retries under a fresh path (so no 409), which means
+    // this one would be an orphan. Remove is idempotent and cheap; if the
+    // object never existed, or the token is the problem, this just fails
+    // quietly.
+    try { await supabase.storage.from('clips').remove([path]); } catch { /* best-effort */ }
     if (e?.message?.startsWith('Timeout after')) {
       throw new Error('Upload timed out. Check your connection and try again.');
     }

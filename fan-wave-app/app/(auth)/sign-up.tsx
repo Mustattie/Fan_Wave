@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { Mail, Lock, User, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { markIntentionalSignOut } from '@/lib/authTelemetry';
 import { AUTH_REDIRECT_URL } from '@/lib/authRedirect';
 import { parseAuthError } from '@/lib/authErrors';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
@@ -120,6 +121,7 @@ export default function SignUpScreen() {
       // their own email already exists) gets routed to sign-in.
       const identities = data?.user?.identities;
       if (Array.isArray(identities) && identities.length === 0) {
+        markIntentionalSignOut();
         await supabase.auth.signOut();
         Alert.alert(
           'Account already exists',
@@ -135,6 +137,7 @@ export default function SignUpScreen() {
       // Confirm Email is enabled in Supabase. signUp may return a temporary
       // session before the user verifies — sign it out so the user can't slip
       // through unverified, then route to the verify-email screen.
+      markIntentionalSignOut();
       await supabase.auth.signOut();
 
       Alert.alert(

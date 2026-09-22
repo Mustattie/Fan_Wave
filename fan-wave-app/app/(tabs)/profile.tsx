@@ -34,6 +34,7 @@ import {
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { markIntentionalSignOut } from '@/lib/authTelemetry';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useSubscriptionState } from '@/lib/entitlements';
@@ -148,6 +149,7 @@ export default function ProfileScreen() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
+            markIntentionalSignOut();
             await supabase.auth.signOut();
             await AsyncStorage.removeItem('onboarding_complete');
             await AsyncStorage.removeItem('user_city');

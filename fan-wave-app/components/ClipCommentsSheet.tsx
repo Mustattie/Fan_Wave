@@ -129,21 +129,15 @@ export function ClipCommentsSheet({ visible, onClose, clipId, onCountChange }: P
     }
   }, [visible, clipId, loadComments]);
 
-  // Realtime: pick up other users' new comments while the sheet is open.
-  useEffect(() => {
-    if (!visible || !clipId) return;
-    const channel = supabase
-      .channel(`clip-comments-${clipId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'clip_comments', filter: `clip_id=eq.${clipId}` },
-        () => loadComments(clipId),
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [visible, clipId, loadComments]);
+  // Phase 1 (2026-09-16): the realtime subscription that used to live here
+  // was a no-op. `clip_comments` has never been added to the
+  // supabase_realtime publication (migration 052 published messages,
+  // media_clips, watch_party_rsvps and match_moments; nothing published
+  // this table), so the channel joined, received nothing, and cost a
+  // socket join + leave per sheet open. Comments load on open and after
+  // the user's own submit, which is the behaviour users actually saw.
+  // If live comments are wanted, publish the table first and subscribe
+  // through lib/realtime.ts so the join is status-checked.
 
   const submit = async () => {
     if (!clipId) return;

@@ -46,7 +46,13 @@ async function main() {
     log(!error && data === false, 'has_wc_access(fake-uid) returns false', error?.message);
   }
 
-  // ─── 2. check_rate_limit — anon call should be callable ──────────────
+  // ─── 2. check_rate_limit — anon must NOT be able to call it ──────────
+  // Migration 099: the limiter counts against auth.uid() and EXECUTE is
+  // revoked from anon. This check used to assert the opposite (a boolean
+  // back for an anon caller passing a made-up uid), which was the bug.
+  // Accept either shape of refusal: PostgREST's permission error, or --
+  // on a database where 099 has not been applied yet -- a plain boolean,
+  // which we report as a failure so the gap is visible.
   {
     const { data, error } = await supabase.rpc('check_rate_limit', {
       p_user_id: FAKE_UID,
@@ -54,7 +60,14 @@ async function main() {
       p_max_count: 1,
       p_window_seconds: 60,
     });
-    log(!error && typeof data === 'boolean', 'check_rate_limit returns boolean', error?.message);
+    const denied = !!error && /permission denied|not allowed|42501/i.test(
+      `${error.code ?? ''} ${error.message ?? ''}`,
+    );
+    log(
+      denied,
+      'check_rate_limit refuses anon (mig 099)',
+      denied ? undefined : `anon got ${error ? error.message : JSON.stringify(data)}`,
+    );
   }
 
   // ─── 3. Tables exist (anon SELECT — entitlements has user-scoped RLS,

@@ -12,6 +12,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { markIntentionalSignOut } from '@/lib/authTelemetry';
 import { AUTH_REDIRECT_URL } from '@/lib/authRedirect';
 import { parseAuthError } from '@/lib/authErrors';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
@@ -48,6 +49,7 @@ export default function SignInScreen() {
       // Gate access until email is confirmed. If Confirm Email is on,
       // an unconfirmed user shouldn't have a usable session.
       if (data.session && !data.session.user.email_confirmed_at) {
+        markIntentionalSignOut();
         await supabase.auth.signOut();
         Alert.alert(
           'Email not verified',

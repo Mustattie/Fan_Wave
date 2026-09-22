@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Alert, AppState, Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import { reportError } from '@/lib/errorReporting';
+import { createResilientFetch } from '@/lib/authFetch';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
@@ -48,6 +49,12 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+  },
+  global: {
+    // Phase 1 (2026-09-16): a 429 on the token endpoint must not become a
+    // sign-out. See lib/authFetch.ts. Wrapped in an arrow so the global
+    // fetch is looked up at call time, not at module load.
+    fetch: createResilientFetch((input, init) => fetch(input, init)),
   },
 });
 

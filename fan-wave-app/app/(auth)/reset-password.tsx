@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { markIntentionalSignOut } from '@/lib/authTelemetry';
 import { reportError } from '@/lib/errorReporting';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 
@@ -48,6 +49,7 @@ export default function ResetPasswordScreen() {
         {
           text: 'OK',
           onPress: async () => {
+            markIntentionalSignOut();
             await supabase.auth.signOut();
             router.replace('/(auth)/sign-in');
           },

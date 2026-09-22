@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { ChevronLeft, AlertTriangle, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { markIntentionalSignOut } from '@/lib/authTelemetry';
 import { reportError } from '@/lib/errorReporting';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 
@@ -31,6 +32,7 @@ export default function DeleteAccountScreen() {
     try {
       const { error } = await supabase.rpc('delete_my_account');
       if (error) throw error;
+      markIntentionalSignOut();
       await supabase.auth.signOut();
       Alert.alert(
         'Account deleted',

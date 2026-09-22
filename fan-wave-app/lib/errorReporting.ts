@@ -18,15 +18,38 @@ let sentry: Sentry | null = null;
 let initialised = false;
 
 const DSN = process.env.EXPO_PUBLIC_SENTRY_DSN || '';
-const ENV = process.env.APP_ENV || (process.env.NODE_ENV ?? 'development');
+// Only EXPO_PUBLIC_* variables are inlined into the JS bundle. The bare
+// APP_ENV that eas.json sets is visible to the build process but is
+// `undefined` here at runtime, so every build -- UAT included -- used to
+// tag itself with NODE_ENV ('production'). EXPO_PUBLIC_APP_ENV carries the
+// real value ('staging' for the preview profile) into the app.
+const ENV =
+  process.env.EXPO_PUBLIC_APP_ENV ||
+  process.env.APP_ENV ||
+  (process.env.NODE_ENV ?? 'development');
+
+/**
+ * A DSN is usable only if it looks like one. The placeholders that ship in
+ * the .env templates (`__SET_PROD_SENTRY_DSN__`, `YOUR_...`) are not, and
+ * handing them to Sentry.init() produces an "invalid DSN" error at boot
+ * and no reporting -- silently, in a release build.
+ */
+export function isUsableDsn(dsn: string): boolean {
+  return /^https:\/\/[^@\s]+@[^/\s]+\/\d+$/.test(dsn.trim());
+}
+
+/** Whether events are actually going to Sentry (vs. the console fallback). */
+export function isErrorReportingActive(): boolean {
+  return sentry !== null;
+}
 
 export function initErrorReporting(): void {
   if (initialised) return;
   initialised = true;
 
-  if (!DSN || DSN.startsWith('YOUR_')) {
+  if (!isUsableDsn(DSN)) {
     if (__DEV__) {
-      console.log('[errorReporting] No Sentry DSN — using console fallback.');
+      console.log('[errorReporting] No usable Sentry DSN — using console fallback.');
     }
     return;
   }
@@ -42,6 +65,16 @@ export function initErrorReporting(): void {
       enableAutoSessionTracking: true,
       enabled: !__DEV__,
     });
+    // UAT verification (2026-09-22): one info event per cold start, staging
+    // builds only, so "did Sentry come up in this build" is answerable from
+    // the dashboard within a minute of install instead of by waiting for a
+    // real failure. Production builds send nothing here.
+    if (ENV === 'staging' && !__DEV__) {
+      sentry.captureMessage('uat.sentry_smoke', {
+        level: 'info',
+        extra: { environment: ENV, at: new Date().toISOString() },
+      });
+    }
   } catch (e) {
     if (__DEV__) {
       console.log('[errorReporting] Sentry native module unavailable, falling back to console.', e);
@@ -81,6 +114,25 @@ export function reportMessage(
     console.warn('[reportMessage]', message, context ?? '');
   } else if (__DEV__) {
     console.log('[reportMessage]', message, context ?? '');
+  }
+}
+
+/**
+ * Low-volume trail of what happened before an error: auth events, realtime
+ * joins/errors, clip upload lifecycle. Attached to the next Sentry event;
+ * printed in dev. Callers must never pass tokens or secrets in `data`.
+ */
+export function addBreadcrumb(
+  category: 'auth' | 'realtime' | 'clips',
+  message: string,
+  data?: Record<string, string | number | boolean | null>,
+): void {
+  if (sentry) {
+    sentry.addBreadcrumb({ category, message, data, level: 'info' });
+    return;
+  }
+  if (__DEV__) {
+    console.log(`[${category}] ${message}`, data ?? '');
   }
 }
 

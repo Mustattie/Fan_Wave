@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import {
   ArrowLeft,
   Share2,
@@ -132,15 +132,25 @@ export default function WatchPartyDetailScreen() {
     loadParty();
   }, [id]);
 
-  // Realtime RSVP count updates
-  useEffect(() => {
-    if (!id) return;
-    const unsub = subscribeToRsvpCounts(id, () => {
-      // Refetch attendees on any RSVP change
-      loadAttendees();
-    });
-    return unsub;
-  }, [id]);
+  // Realtime RSVP count updates.
+  //
+  // Phase 1 (2026-09-16): focus-gated, so the channel is released while
+  // another screen covers this one, and the attendee list is re-read on
+  // return and on a channel re-join to pick up anything missed.
+  const focusedBeforeRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+      if (focusedBeforeRef.current) loadAttendees();
+      focusedBeforeRef.current = true;
+      const unsub = subscribeToRsvpCounts(id, () => {
+        // Refetch attendees on any RSVP change
+        loadAttendees();
+      });
+      return unsub;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [id]),
+  );
 
   const loadParty = async () => {
     if (!id) return;

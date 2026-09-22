@@ -3,7 +3,7 @@ import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments, useRootNavigationState, ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LogBox, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -26,11 +26,13 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { AppQueryClientProvider } from '@/hooks/useQueryClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-reanimated';
-import { initErrorReporting, setUserContext, clearUserContext, reportError } from '@/lib/errorReporting';
+import { initErrorReporting, setUserContext, clearUserContext, reportError, reportMessage, addBreadcrumb } from '@/lib/errorReporting';
 import { configureRevenueCat, useEntitlementsRealtime, useSubscriptionState } from '@/lib/entitlements';
 import { useGamesRealtime } from '@/lib/realtime';
 import { useAppStateFocus } from '@/lib/appState';
 import { queryClient } from '@/hooks/useQueryClient';
+import { consumeIntentionalSignOut, reportUnexpectedSignOut } from '@/lib/authTelemetry';
+import { initClipUploads } from '@/lib/clipUploads';
 
 // Custom ErrorBoundary so React render-tree crashes (the "Something went
 // wrong / Cannot read property 'X' of null" screen) ALSO get reported to
@@ -120,10 +122,15 @@ function AppStateFocusBridge() {
 
 function NavigationGuard({
   session,
+  sessionResolved,
   onboardingComplete,
   hasSeenWelcome,
 }: {
   session: Session | null;
+  /** False until getSession() has actually answered (or INITIAL_SESSION
+   *  fired). While false, `session === null` means "unknown", not
+   *  "signed out", and this guard must not act on it. */
+  sessionResolved: boolean;
   onboardingComplete: boolean;
   hasSeenWelcome: boolean;
 }) {
@@ -139,6 +146,13 @@ function NavigationGuard({
 
   useEffect(() => {
     if (!navigationState?.key) return;
+    // Phase 1 (2026-09-16): never route on an unknown session. The old
+    // code raced getSession() against a 5 s timer and let this guard run
+    // either way, so a slow AsyncStorage read (a device under memory
+    // pressure right after the camera, i.e. mid clip post) rendered as a
+    // trip to Sign In followed by a trip back to the tabs when the real
+    // session arrived -- the "logged out and logged back in" report.
+    if (!sessionResolved) return;
     // Wait for entitlement state to load — otherwise a trial/active user
     // would briefly route to Choose Plan based on the default 'none'.
     if (session && entLoading) return;
@@ -178,14 +192,24 @@ function NavigationGuard({
         router.replace('/(auth)/resubscribe');
       }
     }
-  }, [session, segments, navigationState?.key, onboardingComplete, hasSeenWelcome, subscriptionStatus, hasPremiumAccess, entLoading]);
+  }, [session, sessionResolved, segments, navigationState?.key, onboardingComplete, hasSeenWelcome, subscriptionStatus, hasPremiumAccess, entLoading]);
 
   return null;
 }
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
+  // True once getSession() has answered or INITIAL_SESSION has fired. It
+  // gates both rendering and NavigationGuard: until then a null session is
+  // "not known yet", never "signed out".
   const [initialized, setInitialized] = useState(false);
+  const initializedRef = useRef(false);
+  const markSessionResolved = (how: string) => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    setInitialized(true);
+    addBreadcrumb('auth', 'session.resolved', { how });
+  };
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
   const [hasSeenWelcome, setHasSeenWelcome] = useState(true); // default true to avoid flash
@@ -200,16 +224,20 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    // Race Supabase auth against a 5-second timeout to prevent
-    // the app from hanging on slow/unreachable networks
-    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 5000));
-    const authCheck = supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    }).catch(() => {});
-
-    Promise.race([authCheck, timeout]).finally(() => {
-      setInitialized(true);
-    });
+    // Phase 1 (2026-09-16): no 5 s race. getSession() reads AsyncStorage
+    // (no network unless the token is near expiry), so this resolves in
+    // milliseconds normally and in a few seconds on a starved device. The
+    // decision is made when it answers -- the failsafe below is the only
+    // other way out, and it says so in the breadcrumb trail.
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setSession(session);
+        markSessionResolved('getSession');
+      })
+      .catch((e) => {
+        reportError(e, { source: '_layout:getSession' });
+        markSessionResolved('getSession.error');
+      });
 
     Promise.all([
       AsyncStorage.getItem('onboarding_complete'),
@@ -365,6 +393,19 @@ export default function RootLayout() {
         } else if (session) {
           setSession(session);
         }
+        // INITIAL_SESSION is auth-js reporting what it found in storage,
+        // with or without a session. Either answer resolves the question.
+        if (event === 'INITIAL_SESSION') {
+          markSessionResolved('INITIAL_SESSION');
+        }
+        addBreadcrumb('auth', `event.${event}`, { hasSession: !!session });
+        // The upload queue needs a user to resume under. Same call for a
+        // fresh sign-in and a persisted-session boot.
+        if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+          initClipUploads(session.user.id).catch((e) =>
+            reportError(e, { source: '_layout:initClipUploads' }),
+          );
+        }
         if (event === 'SIGNED_IN' && session) {
           setUserContext({ id: session.user.id, email: session.user.email });
           registerForPushNotifications();
@@ -398,6 +439,14 @@ export default function RootLayout() {
           seedUserCityFromProfile(session.user.id);
           refreshOnboardedFromServer(session.user.id);
         } else if (event === 'SIGNED_OUT') {
+          // Phase 1 (2026-09-16): was this us, or did auth-js drop the
+          // session on its own? Every app-initiated signOut() marks itself
+          // first (lib/authTelemetry.ts). Anything unmarked is a session
+          // the client lost -- refresh failure, revoked token -- and gets
+          // reported with the last auth-endpoint failure attached.
+          if (!consumeIntentionalSignOut()) {
+            reportUnexpectedSignOut();
+          }
           clearUserContext();
           clearPushToken();
           setAnalyticsUser(null);
@@ -451,14 +500,20 @@ export default function RootLayout() {
     }
   }, [loaded, initialized, onboardingChecked]);
 
-  // Failsafe: force splash to hide after 8 seconds no matter what
+  // Failsafe: force splash to hide after 10 seconds no matter what. If the
+  // session still has not resolved by then, something is wrong with
+  // storage itself; say so rather than sit on a blank screen forever.
   useEffect(() => {
     const failsafe = setTimeout(() => {
-      setInitialized(true);
+      if (!initializedRef.current) {
+        reportMessage('auth.session_resolve_timeout', 'warning', { afterMs: 10_000 });
+      }
+      markSessionResolved('failsafe');
       setOnboardingChecked(true);
       SplashScreen.hideAsync();
-    }, 8000);
+    }, 10_000);
     return () => clearTimeout(failsafe);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!loaded || !initialized || !onboardingChecked) {
@@ -473,7 +528,7 @@ export default function RootLayout() {
         <EntitlementsRealtimeBridge />
         <GamesRealtimeBridge />
         <AppStateFocusBridge />
-        <NavigationGuard session={session} onboardingComplete={onboardingComplete} hasSeenWelcome={hasSeenWelcome} />
+        <NavigationGuard session={session} sessionResolved={initialized} onboardingComplete={onboardingComplete} hasSeenWelcome={hasSeenWelcome} />
         {/* v9.5.8 (iOS UAT UX-22): My Sports and the Notifications inbox
             rendered an unstyled native stack header reading "< (tabs)
             my-sports" and "< (tabs) notifications" ABOVE the app's own

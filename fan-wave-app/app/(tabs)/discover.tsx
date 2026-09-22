@@ -465,17 +465,24 @@ export default function DiscoverScreen() {
   );
 
   // v8.7 P0: realtime — mirror new watch parties into local state.
-  useEffect(() => {
-    if (!city) return;
-    const unsubscribe = subscribeToWatchParties(city, (row) => {
-      const display = mapWatchPartyToDisplay(row);
-      setWatchParties((prev) => {
-        if (prev.some((p) => p.id === display.id)) return prev;
-        return [display, ...prev];
+  //
+  // Phase 1 (2026-09-16): focus-gated. As a plain useEffect this channel
+  // stayed joined for the rest of the session once Discover had been
+  // visited, and it shares the Home tab's `watch-parties-<city>` topic.
+  // The focus refetch just above already catches up on return.
+  useFocusEffect(
+    useCallback(() => {
+      if (!city) return;
+      const unsubscribe = subscribeToWatchParties(city, (row) => {
+        const display = mapWatchPartyToDisplay(row);
+        setWatchParties((prev) => {
+          if (prev.some((p) => p.id === display.id)) return prev;
+          return [display, ...prev];
+        });
       });
-    });
-    return unsubscribe;
-  }, [city]);
+      return unsubscribe;
+    }, [city]),
+  );
 
   // Team search with debounce (Create Group modal)
   useEffect(() => {
