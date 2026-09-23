@@ -17,7 +17,7 @@ import { Colors } from '@/constants/Colors';
 import { SPORTS } from '@/constants/Sports';
 import { TierPicker } from '@/components/TierPicker';
 import { FollowTier, TIER_BY_ID, getTierDistribution } from '@/constants/FollowTiers';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 
 interface Team {
   id: string;
@@ -159,7 +159,7 @@ export default function OnboardingTeamsScreen() {
 
     // Persist to Supabase user_team_follows
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (user) {
         for (const { teamId, tier } of teamsWithTiers) {
           await supabase.rpc('follow_team', {

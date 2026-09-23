@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { WC_TEAMS, getTeamsByGroup, WCTeam } from '@/constants/WorldCupData';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
 import { useHasWCAccess } from '@/lib/entitlements';
 
@@ -51,7 +51,7 @@ export function WCTeamFollowModal({ visible, onClose, onUpdate }: WCTeamFollowMo
 
     async function load() {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await getLocalUser();
         if (!user) return;
 
         // Fetch WC team rows so we can map code ↔ UUID
@@ -114,7 +114,7 @@ export function WCTeamFollowModal({ visible, onClose, onUpdate }: WCTeamFollowMo
       // Persist to Supabase
       if (teamId) {
         try {
-          const { data: { user } } = await supabase.auth.getUser();
+          const { data: { user } } = await getLocalUser();
           if (!user) return;
 
           if (wasFollowing) {

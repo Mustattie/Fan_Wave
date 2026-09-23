@@ -23,7 +23,7 @@ import { Colors } from '@/constants/Colors';
 import { reportError } from '@/lib/errorReporting';
 import { SportPillRow } from '@/components/SportPill';
 import { EmptyState } from '@/components/EmptyState';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { TierBadge } from '@/components/TierBadge';
 import { deleteClipAssets } from '@/lib/storage';
 import { subscribeToClips } from '@/lib/realtime';
@@ -42,6 +42,15 @@ import { CLIP_FEED_BUFFER_OPTIONS } from '@/lib/videoBuffer';
 import { SharedVideoSource } from '@/lib/sharedVideoSource';
 
 const PAGE_SIZE = 20;
+// Stability fix 5 (2026-09-23): the 200-clip cap used to apply only to
+// realtime inserts and upload placeholders; pagination appended without
+// bound, so a long live-game session on a low-RAM device grew the list
+// (and its card views and decoded posters) indefinitely. Pagination now
+// stops at the same cap. 200 clips is ten pages -- pull-to-refresh
+// starts over.
+const MAX_LOADED_CLIPS = 200;
+// Same idea for the per-session "already recorded a view" guard.
+const MAX_RECORDED_VIEWS = 500;
 
 // v9.2.0: dropped NFL/NBA sport pills. Sport is content metadata, not
 // a discovery mode -- it's shown as a badge on each clip card now
@@ -591,7 +600,7 @@ export default function ClipsScreen() {
   const [autoplayEnabled, setAutoplayEnabled] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    getLocalUser().then(({ data }) => {
       setCurrentUserId(data.user?.id ?? null);
     });
   }, []);
@@ -755,6 +764,11 @@ export default function ClipsScreen() {
   useEffect(() => {
     if (!activeClipId) return;
     if (recordedViewsRef.current.has(activeClipId)) return;
+    // Stability fix 5: bounded. The server dedupes per hour anyway
+    // (record_clip_view, mig 080); this Set only saves round-trips.
+    if (recordedViewsRef.current.size >= MAX_RECORDED_VIEWS) {
+      recordedViewsRef.current.clear();
+    }
     recordedViewsRef.current.add(activeClipId);
     // Fire and forget; failures don't affect UX.
     supabase
@@ -928,8 +942,8 @@ export default function ClipsScreen() {
           if (error) throw error;
           const mapped = await hydratePosters((data ?? []).map(mapClipToDisplay));
           if (replace) setClips(mapped);
-          else setClips((prev) => [...prev, ...mapped]);
-          setHasMore(mapped.length === PAGE_SIZE);
+          else setClips((prev) => [...prev, ...mapped].slice(0, MAX_LOADED_CLIPS));
+          setHasMore(mapped.length === PAGE_SIZE && (pageNum + 1) * PAGE_SIZE < MAX_LOADED_CLIPS);
           return;
         }
 
@@ -975,8 +989,8 @@ export default function ClipsScreen() {
         if (data && data.length > 0) {
           const mapped = await hydratePosters(data.map(mapClipToDisplay));
           if (replace) setClips(mapped);
-          else setClips((prev) => [...prev, ...mapped]);
-          setHasMore(data.length === PAGE_SIZE);
+          else setClips((prev) => [...prev, ...mapped].slice(0, MAX_LOADED_CLIPS));
+          setHasMore(data.length === PAGE_SIZE && (pageNum + 1) * PAGE_SIZE < MAX_LOADED_CLIPS);
         } else {
           if (replace) setClips([]);
           setHasMore(false);
@@ -999,7 +1013,7 @@ export default function ClipsScreen() {
     if (clips.length === 0) return;
     let cancelled = false;
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user || cancelled) return;
 
       const clipIds = clips.map((c) => c.id);
@@ -1014,13 +1028,16 @@ export default function ClipsScreen() {
         .eq('user_id', user.id)
         .in('clip_id', clipIds);
       if (cancelled) return;
-      if (likedRows && likedRows.length > 0) {
-        setLikedClipIds((prev) => {
-          const next = new Set(prev);
-          for (const row of likedRows as any[]) next.add(row.clip_id);
-          return next;
-        });
-      }
+      // Stability fix 5: keep only ids that are still on the list (so the
+      // Set cannot outgrow the capped feed) plus what the server says.
+      // Optimistic toggles on visible clips survive because their ids are
+      // in `clipIds`.
+      const clipIdSet = new Set(clipIds);
+      setLikedClipIds((prev) => {
+        const next = new Set(Array.from(prev).filter((id) => clipIdSet.has(id)));
+        for (const row of (likedRows ?? []) as any[]) next.add(row.clip_id);
+        return next;
+      });
 
       // Batch-fetch which of the visible clip posters this user follows.
       if (posterIds.length > 0) {
@@ -1030,13 +1047,12 @@ export default function ClipsScreen() {
           .eq('follower_id', user.id)
           .in('following_id', posterIds);
         if (cancelled) return;
-        if (followedRows && followedRows.length > 0) {
-          setFollowedUserIds((prev) => {
-            const next = new Set(prev);
-            for (const row of followedRows as any[]) next.add(row.following_id);
-            return next;
-          });
-        }
+        const posterIdSet = new Set(posterIds);
+        setFollowedUserIds((prev) => {
+          const next = new Set(Array.from(prev).filter((id) => posterIdSet.has(id)));
+          for (const row of (followedRows ?? []) as any[]) next.add(row.following_id);
+          return next;
+        });
       }
     })();
     return () => { cancelled = true; };

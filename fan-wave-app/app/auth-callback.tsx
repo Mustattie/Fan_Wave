@@ -5,8 +5,9 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { CheckCircle2, AlertCircle } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
-import { reportError } from '@/lib/errorReporting';
+import { supabase, routeAfterAuthLink } from '@/lib/supabase';
+import { reportError, addBreadcrumb } from '@/lib/errorReporting';
+import { claimAuthLink } from '@/lib/authLinkClaims';
 
 /**
  * Landing route for `fansphere://auth-callback`.
@@ -71,23 +72,35 @@ export default function AuthCallbackScreen() {
 
         const accessToken = params.access_token || (fragment as any).access_token;
         const refreshToken = params.refresh_token || (fragment as any).refresh_token;
+        const linkType = (params.type || (fragment as any).type || null) as string | null;
 
         if (accessToken && refreshToken) {
-          const { error } = await supabase.auth.setSession({
-            access_token: String(accessToken),
-            refresh_token: String(refreshToken),
-          });
-          if (error) throw error;
+          // Stability fix 8: the global Linking handler in lib/supabase.ts
+          // sees the same URL. Whichever runs first exchanges the tokens;
+          // the other only reflects the result. Two setSession calls with
+          // one refresh token is how a session family gets revoked.
+          if (claimAuthLink(String(accessToken))) {
+            const { error } = await supabase.auth.setSession({
+              access_token: String(accessToken),
+              refresh_token: String(refreshToken),
+            });
+            if (error) throw error;
+            addBreadcrumb('auth', 'link.consumed', { by: 'auth-callback', type: linkType });
+            routeAfterAuthLink(linkType);
+          } else {
+            addBreadcrumb('auth', 'link.already_claimed', { by: 'auth-callback' });
+          }
           if (!cancelled) setState('ok');
           // The root NavigationGuard owns where a signed-in user belongs —
           // onboarding for a fresh account, tabs for a returning one. Don't
-          // second-guess it from here; just let it see the session.
+          // second-guess it from here; just let it see the session. The one
+          // exception is a recovery link, routed above.
           return;
         }
 
         // PKCE / token_hash style confirmation.
         const tokenHash = params.token_hash || (fragment as any).token_hash;
-        const type = (params.type || (fragment as any).type || 'signup') as any;
+        const type = (linkType || 'signup') as any;
         if (tokenHash) {
           const { error } = await supabase.auth.verifyOtp({
             token_hash: String(tokenHash),
@@ -95,6 +108,7 @@ export default function AuthCallbackScreen() {
           });
           if (error) throw error;
           if (!cancelled) setState('ok');
+          routeAfterAuthLink(linkType);
           return;
         }
 

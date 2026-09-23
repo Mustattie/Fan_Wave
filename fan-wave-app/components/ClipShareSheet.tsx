@@ -13,6 +13,7 @@ import {
 import { Share2, Music2, Camera, Link as LinkIcon, X } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { trackEvent } from '@/lib/analytics';
+import { deleteLocalFile } from '@/lib/storage';
 
 /**
  * Custom share sheet for clips. Always shows:
@@ -74,6 +75,10 @@ async function saveClipToGallery(clip: { id: string; mediaUrl?: string }): Promi
       return download.uri;
     }
     await MediaLibrary.saveToLibraryAsync(download.uri);
+    // Stability fix 6: the gallery copy is what TikTok / Instagram pick up;
+    // the cache download was never removed and every share left a full
+    // mp4 behind. Callers only test the return for truthiness.
+    void deleteLocalFile(download.uri);
     return download.uri;
   } catch {
     return null;

@@ -17,6 +17,10 @@ jest.mock('@/lib/supabase', () => ({
     })),
     auth: {
       getUser: jest.fn(() => Promise.resolve({ data: { user: null } })),
+      getSession: jest.fn(() => Promise.resolve({ data: { session: null } })),
     },
   },
+  getSessionUser: jest.fn(() => Promise.resolve(null)),
+  getLocalUser: jest.fn(() => Promise.resolve({ data: { user: null }, error: null })),
+  routeAfterAuthLink: jest.fn(),
 }));

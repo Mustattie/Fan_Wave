@@ -11,7 +11,7 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { SPORTS } from '@/constants/Sports';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 
 type SportItem = (typeof SPORTS)[number];
 
@@ -25,7 +25,7 @@ export default function OnboardingSportsScreen() {
   // never see the sport-picker again.
   useEffect(() => {
     let cancelled = false;
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    getLocalUser().then(async ({ data: { user } }) => {
       if (!user || cancelled) return;
       const { data } = await supabase
         .from('users')

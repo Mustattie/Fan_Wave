@@ -19,7 +19,7 @@ import { subscribeToGames } from '@/lib/realtime';
 import { mapGameRealtimePatch, type GameDisplay } from '@/lib/mappers';
 import { useGames } from '@/hooks/useData';
 import { queryClient } from '@/hooks/useQueryClient';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { SPORTS, SPORT_BY_ID } from '@/constants/Sports';
 
 // Game Day (v9.0.1):
@@ -53,7 +53,7 @@ export default function GameDayScreen() {
         const set = new Set(fromStorage.map((s) => s.toString().toLowerCase()));
 
         try {
-          const { data: { user } } = await supabase.auth.getUser();
+          const { data: { user } } = await getLocalUser();
           if (user) {
             const { data: follows } = await supabase.rpc('get_user_teams', {
               p_user_id: user.id,

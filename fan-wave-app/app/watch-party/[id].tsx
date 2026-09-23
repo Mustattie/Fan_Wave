@@ -25,7 +25,7 @@ import {
   Slash,
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { TierBadge } from '@/components/TierBadge';
 import { subscribeToRsvpCounts } from '@/lib/realtime';
 import { getSportEmoji, getSportColor, formatFullDate } from '@/lib/mappers';
@@ -235,7 +235,7 @@ export default function WatchPartyDetailScreen() {
       });
 
       // Check if current user is the creator
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const { data: { user: currentUser } } = await getLocalUser();
       const creatorMatch = currentUser?.id === data.creator_id;
       setIsCreator(creatorMatch);
 
@@ -264,7 +264,7 @@ export default function WatchPartyDetailScreen() {
       // is host-aware and returns totals per row. Guest branch gets
       // going only + summary; host branch gets all statuses ordered
       // going -> maybe -> cant_go with the same totals.
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const { data: { user: currentUser } } = await getLocalUser();
       const viewerId = currentUser?.id ?? null;
 
       const { data, error } = await supabase.rpc('get_watch_party_attendees_v2', {
@@ -355,7 +355,7 @@ export default function WatchPartyDetailScreen() {
 
     // Rate limiter (FW-102): 20 RSVP toggles per day.
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (user) {
         const { data: allowed } = await supabase.rpc('check_rate_limit', {
           p_user_id: user.id,
@@ -377,7 +377,7 @@ export default function WatchPartyDetailScreen() {
     const isWcParty = party?.event_id === WC_EVENT_ID;
     if (isWcParty && newStatus === 'going') {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await getLocalUser();
         if (user) {
           const { data: userRow } = await supabase
             .from('users')

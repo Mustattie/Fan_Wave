@@ -1,5 +1,5 @@
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setCache, getCache, getStaleCache } from '@/lib/cache';
 const FETCH_TIMEOUT = 10_000; // 10 seconds
@@ -239,7 +239,7 @@ export function useMyRsvps() {
     queryKey: ['myRsvps'],
     queryFn: async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await getLocalUser();
         if (!user) return {};
         const { data, error } = await withTimeout(
           () => supabase
@@ -307,7 +307,7 @@ export function useMyGroups(limit = 3) {
   return useQuery<ChatRoomDisplay[]>({
     queryKey: ['myGroups', limit],
     queryFn: async () => {
-      const { data: { user } } = await withTimeout(() => supabase.auth.getUser(), FETCH_TIMEOUT);
+      const { data: { user } } = await withTimeout(() => getLocalUser(), FETCH_TIMEOUT);
       if (!user) return [];
 
       // Cache must be user-scoped — Bulls Nation Chicago surfaced in
@@ -365,7 +365,7 @@ export function useUserCity() {
     queryFn: async () => {
       try {
         const { data: { user } } = await withTimeout(
-          () => supabase.auth.getUser(),
+          () => getLocalUser(),
           FETCH_TIMEOUT
         );
         if (user) {

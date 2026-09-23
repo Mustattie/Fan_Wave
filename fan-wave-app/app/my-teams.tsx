@@ -20,7 +20,7 @@ import {
   getTierDistribution,
 } from '@/constants/FollowTiers';
 import { loadFollowsFromStorage } from '@/lib/tierUtils';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { reportError } from '@/lib/errorReporting';
 
 export default function MyTeamsScreen() {
@@ -32,7 +32,7 @@ export default function MyTeamsScreen() {
   const loadTeams = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData } = await getLocalUser();
       if (userData?.user) {
         const { data, error } = await supabase.rpc('get_user_teams', {
           p_user_id: userData.user.id,
@@ -103,7 +103,7 @@ export default function MyTeamsScreen() {
         prev.map((t) => (t.team_id === teamId ? { ...t, tier: newTier } : t))
       );
       try {
-        const { data: userData } = await supabase.auth.getUser();
+        const { data: userData } = await getLocalUser();
         if (userData?.user) {
           await supabase.rpc('follow_team', {
             p_user_id: userData.user.id,
@@ -131,7 +131,7 @@ export default function MyTeamsScreen() {
             onPress: async () => {
               setTeams((prev) => prev.filter((t) => t.team_id !== team.team_id));
               try {
-                const { data: userData } = await supabase.auth.getUser();
+                const { data: userData } = await getLocalUser();
                 if (userData?.user) {
                   await supabase.rpc('unfollow_team', {
                     p_user_id: userData.user.id,

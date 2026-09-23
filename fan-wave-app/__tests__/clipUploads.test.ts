@@ -2,10 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const mockUploadClip = jest.fn();
 const mockFileExists = jest.fn(async (_uri: string) => true);
+const mockDeleteLocalFile = jest.fn(async (_uri: string | null | undefined) => {});
 jest.mock('@/lib/storage', () => ({
   uploadClip: (...a: any[]) => mockUploadClip(...a),
   deleteClipAssets: jest.fn(async () => 0),
   fileExists: (uri: string) => mockFileExists(uri),
+  deleteLocalFile: (uri: string | null | undefined) => mockDeleteLocalFile(uri),
 }));
 
 const mockTrackEvent = jest.fn();
@@ -262,6 +264,49 @@ describe('clipUploads', () => {
       expect(rec.latest('legacy')!.realId).toBe('row-1');
       expect(AsyncStorage.removeItem).toHaveBeenCalledWith('clipUploads.pending.v1');
       rec.unsub();
+    });
+
+    it('drops a failed job older than 7 days and removes its local files (fix 6)', async () => {
+      const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+      const stale = job({
+        tempId: 'stale',
+        createdAt: eightDaysAgo,
+        localUri: 'file:///old.mp4',
+        localThumbnailUri: 'file:///old.thumb.jpg',
+      });
+      const fresh = job({ tempId: 'fresh' });
+      (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) =>
+        key === 'clipUploads.pending.v2'
+          ? JSON.stringify([
+              { ...stale, status: 'failed', errorKind: 'client', error: 'x' },
+              { ...fresh, status: 'failed', errorKind: 'client', error: 'y' },
+            ])
+          : null,
+      );
+      const rec = recorder();
+
+      await initClipUploads('user-1');
+      await flush();
+
+      expect(rec.latest('stale')).toBeUndefined();
+      expect(rec.latest('fresh')).toMatchObject({ status: 'failed', recovered: true });
+      expect(mockDeleteLocalFile).toHaveBeenCalledWith('file:///old.mp4');
+      expect(mockDeleteLocalFile).toHaveBeenCalledWith('file:///old.thumb.jpg');
+      expect(mockTrackEvent).toHaveBeenCalledWith(
+        'clip_upload_recovered',
+        'clips',
+        expect.objectContaining({ expired: 1, restored_failed: 1 }),
+      );
+      rec.unsub();
+    });
+
+    it('deletes the local thumbnail after it is uploaded (fix 6)', async () => {
+      mockUploadClip.mockResolvedValue({ publicUrl: 'https://cdn/clips/u/t.mp4', provider: 'supabase' });
+      const j = job({ localThumbnailUri: 'file:///still.jpg' });
+      enqueueClipUpload(j);
+      await flush();
+      await flush();
+      expect(mockDeleteLocalFile).toHaveBeenCalledWith('file:///still.jpg');
     });
 
     it('is a no-op when called twice for the same user', async () => {

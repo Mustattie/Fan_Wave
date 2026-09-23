@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, MapPin, Calendar } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import { reportError } from '@/lib/errorReporting';
 
@@ -49,7 +49,7 @@ export default function RSVPHistoryScreen() {
     };
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user) {
         setRsvps([]);
         setLoading(false);

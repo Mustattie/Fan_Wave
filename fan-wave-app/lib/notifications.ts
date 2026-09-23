@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import { router } from 'expo-router';
-import { supabase } from './supabase';
+import { supabase, getLocalUser } from './supabase';
 
 // expo-notifications is not supported in Expo Go (SDK 53+).
 // All notification functions gracefully no-op when unavailable.
@@ -75,7 +75,7 @@ export async function clearPushToken(): Promise<void> {
  */
 export async function getNotificationPreferences(): Promise<NotificationPreferences | null> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await getLocalUser();
     if (!user) return null;
 
     const { data } = await supabase

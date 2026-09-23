@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, getLocalUser } from './supabase';
 
 // ── Badge Check (call after key actions) ─────────────────
 
@@ -64,7 +64,7 @@ export interface UserBadge {
  */
 export async function getUserBadges(): Promise<UserBadge[]> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await getLocalUser();
     if (!user) return [];
 
     const { data, error } = await supabase

@@ -32,7 +32,7 @@ import {
 } from '@/lib/venueSearchApi';
 import { cityFromAddress } from '@/lib/addressCity';
 import { PaywallGate } from '@/components/paywall/PaywallGate';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mapGameToDisplay, type GameDisplay } from '@/lib/mappers';
 import { reportError } from '@/lib/errorReporting';
@@ -265,7 +265,7 @@ export default function CreateWatchPartyScreen() {
       // cache.
       if (!storedCity) {
         try {
-          const { data: { user } } = await supabase.auth.getUser();
+          const { data: { user } } = await getLocalUser();
           if (user) {
             const { data: profile } = await supabase
               .from('users')
@@ -872,7 +872,7 @@ export default function CreateWatchPartyScreen() {
     };
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData } = await getLocalUser();
       const userId = userData?.user?.id;
       if (!userId) throw new Error('Not authenticated');
 

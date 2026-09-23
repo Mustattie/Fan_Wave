@@ -1,5 +1,6 @@
 import {
   createUploadTask,
+  deleteAsync,
   FileSystemUploadType,
   getInfoAsync,
 } from 'expo-file-system/legacy';
@@ -140,6 +141,21 @@ export async function fileExists(uri: string): Promise<boolean> {
     return (info as any)?.exists !== false;
   } catch {
     return true;
+  }
+}
+
+/**
+ * Best-effort removal of a temp file the app itself created (a thumbnail
+ * still, an export download). Never throws; only touches file:// URIs so a
+ * content:// picker URI or a remote URL can never be handed to deleteAsync
+ * by mistake. Stability fix 6: these were never cleaned up.
+ */
+export async function deleteLocalFile(uri: string | null | undefined): Promise<void> {
+  if (!uri || !uri.startsWith('file://')) return;
+  try {
+    await deleteAsync(uri, { idempotent: true });
+  } catch {
+    /* best-effort */
   }
 }
 

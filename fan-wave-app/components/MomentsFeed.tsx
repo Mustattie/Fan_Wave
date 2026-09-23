@@ -22,7 +22,7 @@ import { Video, Film, X, Share2, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { getMomentTypesForSport, REACTION_EMOJIS } from '@/constants/MomentTypes';
 import type { MomentType } from '@/constants/MomentTypes';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { formatRelativeTime } from '@/lib/mappers';
 import { reportError } from '@/lib/errorReporting';
 
@@ -127,7 +127,7 @@ export default function MomentsFeed({
   // Load auth user once so handlePost can write match_moments.user_id
   // (NOT NULL in the schema — previous inserts were failing silently).
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    getLocalUser().then(({ data: { user } }) => {
       if (user) setCurrentUserId(user.id);
     }).catch(() => {});
   }, []);

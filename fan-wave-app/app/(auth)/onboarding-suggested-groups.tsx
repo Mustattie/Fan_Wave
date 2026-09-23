@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Check, Users, Sparkles } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 
 type Reason = 'team' | 'city_sport' | 'city_any' | 'wc_country';
 
@@ -60,7 +60,7 @@ export default function OnboardingSuggestedGroupsScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await getLocalUser();
         if (!user) {
           if (!cancelled) goNext();
           return;
@@ -141,7 +141,7 @@ export default function OnboardingSuggestedGroupsScreen() {
     }
     setSubmitting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user) {
         goNext();
         return;

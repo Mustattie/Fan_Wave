@@ -16,7 +16,7 @@ import { Image } from 'expo-image';
 import { ArrowLeft, Play, X, Eye, Heart, MessageCircle, Share2, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { EmptyState } from '@/components/EmptyState';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { deleteClipAssets } from '@/lib/storage';
 import { useRouter, useFocusEffect } from 'expo-router';
 
@@ -65,7 +65,7 @@ export default function MyClipsScreen() {
   const loadClips = useCallback(async () => {
     setLoadError(null);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user) {
         setLoadError('Not signed in. Sign in to see your clips.');
         setClips([]);

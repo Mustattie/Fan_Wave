@@ -11,7 +11,7 @@ import {
   Share,
 } from 'react-native';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { subscribeToTable } from '@/lib/realtime';
 import { reportError } from '@/lib/errorReporting';
 
@@ -189,7 +189,7 @@ export function WCSchedule() {
   // Fetch followed WC teams in a single query using inner join
   const fetchFollowedTeams = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user) return;
 
       const { data, error } = await supabase

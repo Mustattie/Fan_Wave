@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { SPORTS } from '@/constants/Sports';
 import { getMomentTypesForSport, type MomentType } from '@/constants/MomentTypes';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
@@ -281,7 +281,7 @@ export default function CreateClipScreen() {
     setPosting(true);
     try {
       const { data: { user } } = await withTimeout(
-        supabase.auth.getUser(),
+        getLocalUser(),
         PRE_ENQUEUE_TIMEOUT_MS,
       );
       if (!user) {

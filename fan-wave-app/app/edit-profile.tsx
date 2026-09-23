@@ -15,7 +15,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 import { reportError } from '@/lib/errorReporting';
 import { queryClient } from '@/hooks/useQueryClient';
@@ -55,7 +55,7 @@ export default function EditProfileScreen() {
 
   const loadProfile = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user) return;
 
       const { data } = await supabase
@@ -178,7 +178,7 @@ export default function EditProfileScreen() {
 
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user) return;
 
       const uploadedUrl = await uploadAvatar(user.id);

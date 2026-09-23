@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
-import { supabase } from './supabase';
+import { supabase, getLocalUser } from './supabase';
 import { reportError } from './errorReporting';
 import { chooseAndroidReplacement } from './androidReplacement';
 import { subscribeToTable } from './realtime';
@@ -204,7 +204,7 @@ export function useSubscriptionState() {
   return useQuery<EntitlementState>({
     queryKey: ['entitlements'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user) return DEFAULT_STATE;
       const { data, error } = await supabase
         .from('users')
@@ -281,7 +281,7 @@ export function useEntitlementsRealtime() {
     let mounted = true;
     let unsub: (() => void) | null = null;
 
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    getLocalUser().then(({ data: { user } }) => {
       if (!mounted || !user) return;
       const invalidate = () => {
         queryClient.invalidateQueries({ queryKey: ['entitlements'] });

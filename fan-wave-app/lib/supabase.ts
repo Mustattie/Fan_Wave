@@ -1,8 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { Alert, AppState, Platform } from 'react-native';
 import * as Linking from 'expo-linking';
-import { reportError } from '@/lib/errorReporting';
+import type { User } from '@supabase/supabase-js';
+import { reportError, addBreadcrumb } from '@/lib/errorReporting';
 import { createResilientFetch } from '@/lib/authFetch';
+import { claimAuthLink } from '@/lib/authLinkClaims';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
@@ -117,6 +119,12 @@ export function setupAuthDeepLinkHandler(): () => void {
     const accessToken = params.get('access_token');
     const refreshToken = params.get('refresh_token');
     if (!accessToken || !refreshToken) return;
+    // Stability fix 8: app/auth-callback may already have exchanged these
+    // tokens (or will, if it runs first). One setSession per link.
+    if (!claimAuthLink(accessToken)) {
+      addBreadcrumb('auth', 'link.already_claimed', { by: 'deepLinkHandler' });
+      return;
+    }
 
     try {
       const { error } = await supabase.auth.setSession({
@@ -124,6 +132,8 @@ export function setupAuthDeepLinkHandler(): () => void {
         refresh_token: refreshToken,
       });
       if (error) throw error;
+      addBreadcrumb('auth', 'link.consumed', { by: 'deepLinkHandler', type: params.get('type') ?? null });
+      routeAfterAuthLink(params.get('type'));
     } catch (e) {
       reportError(e, { source: 'supabase:setupAuthDeepLinkHandler' });
       Alert.alert(
@@ -141,6 +151,50 @@ export function setupAuthDeepLinkHandler(): () => void {
   // Handle URLs while app is running (warm start)
   const subscription = Linking.addEventListener('url', handleUrl);
   return () => subscription.remove();
+}
+
+/**
+ * Where a consumed auth link should land. A password-recovery link used
+ * to sign the user straight into the tabs: the app waited for a
+ * PASSWORD_RECOVERY event, but supabase-js only emits that when it parses
+ * the URL itself (detectSessionInUrl, disabled here); a manual setSession
+ * emits SIGNED_IN. The link's own `type=recovery` marker is the signal.
+ * Confirmation / magic links fall through to NavigationGuard as before.
+ */
+export function routeAfterAuthLink(type: string | null | undefined): void {
+  if (type !== 'recovery') return;
+  try {
+    // require() to avoid a circular import at module-load time (the
+    // router imports screens that import this module).
+    const { router } = require('expo-router');
+    router.replace('/(auth)/reset-password');
+  } catch {
+    /* Router not ready — the user can still navigate manually. */
+  }
+}
+
+/**
+ * The signed-in user from the locally persisted session, without a
+ * network round-trip (stability fix 9). supabase.auth.getUser() validates
+ * the JWT against the server on every call; the app called it from 54
+ * places just to learn its own user id, which cost a request each time,
+ * bunched into a burst on every resume, and turned every one of those
+ * sites into a sign-out trigger the moment a session was revoked
+ * server-side. Screens that only need `id` / `email` / metadata use this;
+ * flows that must validate the session (sign-in, sign-up, account
+ * deletion, boot) keep getUser().
+ *
+ * getSession() refreshes an expired-with-margin token itself, so the user
+ * returned here is the one the next authenticated request will act as.
+ */
+export async function getSessionUser(): Promise<User | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user ?? null;
+}
+
+/** Same as getSessionUser, in getUser()'s `{ data: { user } }` shape. */
+export async function getLocalUser(): Promise<{ data: { user: User | null }; error: null }> {
+  return { data: { user: await getSessionUser() }, error: null };
 }
 
 function explainAuthLinkError(

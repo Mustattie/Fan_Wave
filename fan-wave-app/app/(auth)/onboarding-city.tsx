@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Colors } from '@/constants/Colors';
 import { POPULAR_CITIES } from '@/constants/Cities';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 
 // UX-24: shared with Discover's city sheet -- see constants/Cities.ts.
 
@@ -220,7 +220,7 @@ export default function OnboardingCityScreen() {
     // onboarded_at column is added by migration 020; if it isn't applied yet
     // we retry without it so home_city still gets saved.
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (user) {
         const now = new Date().toISOString();
         const { error } = await supabase

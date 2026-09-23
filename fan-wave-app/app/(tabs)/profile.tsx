@@ -33,7 +33,7 @@ import {
   Stethoscope,
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { markIntentionalSignOut } from '@/lib/authTelemetry';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
@@ -66,7 +66,7 @@ export default function ProfileScreen() {
 
   const loadProfile = async () => {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await getLocalUser();
 
       if (authError || !user) {
         setLoading(false);

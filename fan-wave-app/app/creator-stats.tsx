@@ -14,7 +14,7 @@ import { ArrowLeft, Eye, Heart, Share2, TrendingUp, Users } from 'lucide-react-n
 import { Colors } from '@/constants/Colors';
 import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
 import { useHasTierOrHigher } from '@/lib/entitlements';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 
 type TimePeriod = '7d' | '30d' | 'all';
 
@@ -56,7 +56,7 @@ export default function CreatorStatsScreen() {
   const loadStats = async () => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user) return;
 
       // v9.2.2: window applies to ENGAGEMENT TIMESTAMPS, not clip

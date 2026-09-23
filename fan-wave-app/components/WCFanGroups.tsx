@@ -15,7 +15,7 @@ import { shareGroup } from '@/lib/sharing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reportError } from '@/lib/errorReporting';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
 import { useHasWCAccess, isExpoGo } from '@/lib/entitlements';
 
@@ -142,7 +142,7 @@ export default function WCFanGroups() {
         // returned saw the Join button re-active. The user-reported
         // "join then come back and asked to join again" bug.
         try {
-          const { data: { user } } = await supabase.auth.getUser();
+          const { data: { user } } = await getLocalUser();
           if (user) {
             const ids = mapped.map((g) => g.id);
             if (ids.length > 0) {
@@ -250,7 +250,7 @@ export default function WCFanGroups() {
       // Prior to v8 this insert was missing user_id and silently 42501-
       // failed, leaving an optimistic-only "Joined" badge that vanished
       // on next launch.
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user) {
         reportError(new Error('Join attempted without auth user'), {
           source: 'WCFanGroups:handleJoin', groupId,

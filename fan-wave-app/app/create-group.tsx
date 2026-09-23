@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Users } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { reportError } from '@/lib/errorReporting';
 import { SportPillRow } from '@/components/SportPill';
 import { SPORTS, SPORT_BY_ID, type SportId } from '@/constants/Sports';
@@ -118,7 +118,7 @@ export default function CreateGroupScreen() {
     };
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user) {
         Alert.alert('Error', 'Please sign in to create a group.');
         setIsCreating(false);

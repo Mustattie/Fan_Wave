@@ -23,7 +23,7 @@ import { subscribeToGames, subscribeToWatchParties } from '@/lib/realtime';
 import { mapGameToDisplay, mapWatchPartyToDisplay } from '@/lib/mappers';
 import { useGames, useWatchParties, useMyGroups, useUserCity } from '@/hooks/useData';
 import { queryClient } from '@/hooks/useQueryClient';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -43,7 +43,7 @@ export default function HomeScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await getLocalUser();
         if (!user || cancelled) return;
         const { data } = await supabase
           .from('users')
@@ -91,7 +91,7 @@ export default function HomeScreen() {
     let cancelled = false;
     (async () => {
       if (watchParties.length === 0) return;
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user || cancelled) return;
       const partyIds = watchParties.map((p) => p.id);
       const results = await Promise.all(
@@ -131,7 +131,7 @@ export default function HomeScreen() {
         // Followed teams → sport names. Cheap: one RPC, also handles WC
         // (the FIFA World Cup league joins to the 'Soccer' sport).
         try {
-          const { data: { user } } = await supabase.auth.getUser();
+          const { data: { user } } = await getLocalUser();
           if (user) {
             const { data: follows } = await supabase.rpc('get_user_teams', {
               p_user_id: user.id,

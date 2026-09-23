@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { reportError } from '@/lib/errorReporting';
 import type { ChatRoomDisplay } from '@/lib/mappers';
 
@@ -52,7 +52,7 @@ export function GroupCard({
     if (joining || joinedLocally || isMember) return;
     setJoining(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user) {
         Alert.alert('Sign in required', 'Please sign in to join a group.');
         return;

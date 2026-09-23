@@ -3,6 +3,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { cacheDirectory, downloadAsync } from 'expo-file-system/legacy';
 import { trackEvent } from './analytics';
+import { deleteLocalFile } from './storage';
 
 /**
  * Download and save a clip to the device's camera roll.
@@ -71,6 +72,11 @@ export async function exportClipToGallery(clip: {
         method: 'share_sheet',
       });
       return true;
+    } finally {
+      // Stability fix 6: the copy in the camera roll (or the share
+      // target) is the one that matters; the cache download was never
+      // removed and each export left another full mp4 behind.
+      void deleteLocalFile(download.uri);
     }
   } catch {
     Alert.alert('Export Failed', 'Something went wrong. Please try again.');

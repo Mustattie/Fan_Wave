@@ -30,7 +30,7 @@ import { SportPillRow } from '@/components/SportPill';
 import { WatchPartyCard } from '@/components/WatchPartyCard';
 import { GroupCard } from '@/components/GroupCard';
 import { SectionHeader } from '@/components/SectionHeader';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { subscribeToWatchParties } from '@/lib/realtime';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { POPULAR_CITIES } from '@/constants/Cities';
@@ -214,7 +214,7 @@ export default function DiscoverScreen() {
     async (sport?: string, search?: string) => {
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await getLocalUser();
       if (!user) {
         return { joined: [], suggested: [] };
       }
@@ -407,7 +407,7 @@ export default function DiscoverScreen() {
   // ownership check work correctly.
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       setCurrentUserId(user?.id ?? null);
     })();
   }, []);
@@ -419,7 +419,7 @@ export default function DiscoverScreen() {
       try {
         const {
           data: { user },
-        } = await supabase.auth.getUser();
+        } = await getLocalUser();
         if (user) {
           const { data } = await supabase
             .from('users')
@@ -603,7 +603,7 @@ export default function DiscoverScreen() {
     try {
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await getLocalUser();
       if (!user) throw new Error('Not authenticated');
 
       // Look up sport_id from sport key

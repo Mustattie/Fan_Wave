@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { X, Send, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { reportError } from '@/lib/errorReporting';
 import { isExpoGo } from '@/lib/entitlements';
 
@@ -72,7 +72,7 @@ export function ClipCommentsSheet({ visible, onClose, clipId, onCountChange }: P
   const loadComments = useCallback(async (id: string) => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       setCurrentUserId(user?.id ?? null);
 
       const { data, error } = await supabase
@@ -149,7 +149,7 @@ export function ClipCommentsSheet({ visible, onClose, clipId, onCountChange }: P
     }
     setPosting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getLocalUser();
       if (!user) {
         Alert.alert('Sign in required', 'Please sign in to post a comment.');
         return;

@@ -35,7 +35,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
 import { supabase } from './supabase';
-import { uploadClip, deleteClipAssets, fileExists } from './storage';
+import { uploadClip, deleteClipAssets, deleteLocalFile, fileExists } from './storage';
 import { addBreadcrumb, reportError } from './errorReporting';
 import { withTimeout } from './withTimeout';
 import { trackEvent } from './analytics';
@@ -43,6 +43,11 @@ import { trackEvent } from './analytics';
 const PENDING_KEY_V1 = 'clipUploads.pending.v1';
 const PENDING_KEY = 'clipUploads.pending.v2';
 const MAX_CONCURRENT = 2;
+// Stability fix 6 (2026-09-23): a failed job used to come back on every
+// launch forever, each one pinning its recorded video on disk through the
+// localUri it carries. A week is long enough to come back to a failed post;
+// past that the job is dropped and the recording it referenced is removed.
+const FAILED_JOB_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 // The Storage upload is already bounded (UPLOAD_TIMEOUT_MS in storage.ts).
 // The row insert that follows it was not, and a PostgREST call that never
@@ -332,10 +337,17 @@ export async function initClipUploads(userId: string): Promise<void> {
   let fileMissing = 0;
   let dropped = 0;
 
+  let expired = 0;
   for (const p of persisted) {
     if (jobs.has(p.tempId)) continue; // already live in memory (warm start)
     if (p.userId !== userId) {
       dropped += 1;
+      continue;
+    }
+    if (p.status === 'failed' && Date.now() - new Date(p.createdAt).getTime() > FAILED_JOB_TTL_MS) {
+      expired += 1;
+      void deleteLocalFile(p.localThumbnailUri);
+      void deleteLocalFile(p.localUri);
       continue;
     }
     const videoOk = await fileExists(p.localUri);
@@ -379,6 +391,7 @@ export async function initClipUploads(userId: string): Promise<void> {
       restored_failed: restoredFailed,
       file_missing: fileMissing,
       dropped,
+      expired,
     });
     addBreadcrumb('clips', 'upload.recovered', {
       found: persisted.length,
@@ -386,6 +399,7 @@ export async function initClipUploads(userId: string): Promise<void> {
       restoredFailed,
       fileMissing,
       dropped,
+      expired,
     });
   }
 
@@ -450,6 +464,9 @@ async function tryRun(): Promise<void> {
           subpath: next.subpath.replace(/\.[^.]+$/, '') + '.thumb.jpg',
         });
         thumbnailUrl = thumb.publicUrl;
+        // Stability fix 6: the still frame is in the bucket now; the local
+        // copy expo-video-thumbnails wrote was never deleted before.
+        void deleteLocalFile(next.localThumbnailUri);
       } catch (e) {
         reportError(e, { source: 'clipUploads.thumbnail', tempId: next.tempId });
       }

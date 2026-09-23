@@ -24,7 +24,7 @@ import {
   Share2,
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, getLocalUser } from '@/lib/supabase';
 import { reportError } from '@/lib/errorReporting';
 import { subscribeToMessages, subscribeToPresence } from '@/lib/realtime';
 import * as Contacts from 'expo-contacts';
@@ -152,7 +152,7 @@ export default function FanGroupDetailScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await getLocalUser();
         if (user) {
           setCurrentUserId(user.id);
           const displayName = user.user_metadata?.display_name || user.email || 'You';
@@ -182,7 +182,7 @@ export default function FanGroupDetailScreen() {
           setGroup(mapChatRoomToDisplay(data));
           // Owner check uses the raw row's owner_id, which the mapper
           // doesn't always preserve verbatim.
-          const auth = await supabase.auth.getUser();
+          const auth = await getLocalUser();
           const uid = auth.data.user?.id ?? null;
           setIsOwner(!!uid && data.owner_id === uid);
         }
@@ -361,9 +361,20 @@ export default function FanGroupDetailScreen() {
   // the counters. Gate presence on isMember || isOwner so non-members
   // don't spike the count while browsing, and reset the local count
   // to 0 when we drop off / never joined.
+  //
+  // Stability fix 7 (2026-09-23): the effect depended on
+  // [id, currentUserId, isMember, isOwner], and those resolve one after
+  // another on open (auth user, then membership, then owner check), so the
+  // presence channel was torn down and re-joined up to three times per
+  // visit -- the churn behind the v9.4.1 "cannot add presence callbacks
+  // after joining" crash and the presence_channel_error events. Collapse
+  // the gate to one boolean and read the user id through the ref the
+  // messages effect already keeps; the eligibility flip is the only thing
+  // that should (re)subscribe.
+  const presenceEligible = isMember || isOwner;
   useEffect(() => {
     if (!id) return;
-    if (!(isMember || isOwner)) {
+    if (!presenceEligible) {
       setOnlineCount(0);
       return;
     }
@@ -372,10 +383,10 @@ export default function FanGroupDetailScreen() {
       (state) => {
         setOnlineCount(Object.keys(state).length);
       },
-      { user_id: currentUserId || 'anon', online_at: new Date().toISOString() },
+      { user_id: currentUserIdRef.current || 'anon', online_at: new Date().toISOString() },
     );
     return unsub;
-  }, [id, currentUserId, isMember, isOwner]);
+  }, [id, presenceEligible]);
 
   // Paginated message loading
   const loadMoreMessages = useCallback(async () => {
