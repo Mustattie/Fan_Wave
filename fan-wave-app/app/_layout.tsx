@@ -438,6 +438,12 @@ export default function RootLayout() {
           startAnalyticsFlush();
           seedUserCityFromProfile(session.user.id);
           refreshOnboardedFromServer(session.user.id);
+          // Stability fix 4: a persisted-session boot never logged the
+          // RevenueCat user in (only SIGNED_IN did), so purchases on a
+          // cold start were tied to an anonymous app_user_id until the
+          // next real sign-in. configureRevenueCat is idempotent now, so
+          // this only adds the logIn.
+          configureRevenueCat(session.user.id).catch(() => {});
         } else if (event === 'SIGNED_OUT') {
           // Phase 1 (2026-09-16): was this us, or did auth-js drop the
           // session on its own? Every app-initiated signOut() marks itself

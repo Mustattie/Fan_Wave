@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  AppState,
   ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -37,6 +38,8 @@ import { trackEvent } from '@/lib/analytics';
 import { blockUser } from '@/lib/blocks';
 import { ClipShareSheet } from '@/components/ClipShareSheet';
 import { ClipCommentsSheet } from '@/components/ClipCommentsSheet';
+import { CLIP_FEED_BUFFER_OPTIONS } from '@/lib/videoBuffer';
+import { SharedVideoSource } from '@/lib/sharedVideoSource';
 
 const PAGE_SIZE = 20;
 
@@ -545,9 +548,25 @@ export default function ClipsScreen() {
   // is acquired the first time a clip becomes active and re-used for
   // every subsequent active clip — no allocation churn.
   const sharedPlayer = useVideoPlayer(null as any, (p) => {
+    // Stability fix 2: bound ExoPlayer's buffer (see lib/videoBuffer.ts).
+    // Set before any source is loaded so the first allocation already
+    // honours it.
+    p.bufferOptions = CLIP_FEED_BUFFER_OPTIONS;
     p.loop = true;
     p.muted = true;
   });
+  // Stability fix 3: one loader per player instance owns the generation
+  // token / same-uri dedupe / release rules (lib/sharedVideoSource.ts).
+  const sourceRef = useRef<SharedVideoSource | null>(null);
+  if (sharedPlayer && sourceRef.current === null) {
+    sourceRef.current = new SharedVideoSource(sharedPlayer);
+  }
+  // Bumped when the app returns to the foreground after the source was
+  // released, so the load effect below runs again for the active card.
+  const [foregroundTick, setForegroundTick] = useState(0);
+  // Set by that same foreground path: the reload must come back paused
+  // (as returning to the app always did), even if autoplay is opted in.
+  const resumePausedRef = useRef(false);
   const [isSharedPlaying, setIsSharedPlaying] = useState(false);
   const [isSharedReady, setIsSharedReady] = useState(false);
   // v9.5.7 (iOS UAT BUG-11): the id of the clip whose playback we have
@@ -598,46 +617,133 @@ export default function ClipsScreen() {
   // call replace(null) because some expo-video releases dispose the
   // codec, which the next play call would have to re-acquire. Keeping
   // the last source loaded but paused makes the next active swap cheap.
+  //
+  // Stability fix 3 (2026-09-23): the load is now `replaceAsync` through
+  // SharedVideoSource, which gives us three things `replace` never had:
+  //   * a generation token -- a load that resolves after the active card
+  //     has moved on is 'stale' and must not touch play/pause;
+  //   * same-uri dedupe -- the autoplay opt-in re-runs this effect for the
+  //     clip that is already loaded, which used to reload it and play()
+  //     twice;
+  //   * an effect cleanup -- `cancelled` stops a superseded run from
+  //     mutating state even if its promise resolves first.
+  // play()/pause() run only after the load settles; failures go through the
+  // same playerFailedFor path the statusChange listener uses. On Android
+  // replaceAsync is documented as equivalent to replace, so the decoder
+  // lifecycle there is unchanged.
   useEffect(() => {
-    if (!sharedPlayer) return;
+    const source = sourceRef.current;
+    if (!sharedPlayer || !source) return;
     const clip = clips.find((c) => c.id === activeClipId);
     if (!activeClipId || !clip || !clip.videoUrl) {
+      // Nothing visible: pause and make sure no in-flight load can start
+      // playback later. The loaded source stays (see the note above).
+      source.invalidate();
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = null;
+      }
       try { sharedPlayer.pause(); } catch { /* ignore */ }
       setIsSharedPlaying(false);
       return;
     }
-    setIsSharedReady(false);
-    // New source: clear any previous verdict and start the clock again.
-    setPlayerFailedFor(null);
     activeClipIdRef.current = activeClipId;
-    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
-    stallTimerRef.current = setTimeout(() => {
-      // Still not ready. Stop claiming we're loading and hand the user a
-      // control; the poster is already on screen behind the overlay.
-      setPlayerFailedFor(activeClipIdRef.current);
-    }, PLAYER_STALL_MS);
-    try {
-      sharedPlayer.replace({ uri: clip.videoUrl });
+    const uri = clip.videoUrl;
+    let cancelled = false;
+
+    const applyPlayState = () => {
       // v8.7+ P0: only auto-play once the user has opted into playback for
       // the session. Source still LOADS so the active card paints the
       // first frame quickly when the user does tap play — but nothing
       // starts playing without an explicit gesture on first view.
-      if (autoplayEnabled) {
-        sharedPlayer.play();
-        setIsSharedPlaying(true);
-      } else {
-        sharedPlayer.pause();
-        setIsSharedPlaying(false);
+      const forcePause = resumePausedRef.current;
+      resumePausedRef.current = false;
+      try {
+        if (autoplayEnabled && !forcePause) {
+          sharedPlayer.play();
+          setIsSharedPlaying(true);
+        } else {
+          sharedPlayer.pause();
+          setIsSharedPlaying(false);
+        }
+      } catch {
+        /* native release / dispose race — next viewability tick will retry */
       }
-    } catch {
-      /* native release / dispose race — next viewability tick will retry */
+    };
+
+    const alreadyLoaded = source.currentUri === uri && source.pendingUri === null;
+    if (!alreadyLoaded) {
+      setIsSharedReady(false);
+      // New source: clear any previous verdict and start the clock again.
+      setPlayerFailedFor(null);
+      if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = setTimeout(() => {
+        // Still not ready. Stop claiming we're loading and hand the user a
+        // control; the poster is already on screen behind the overlay.
+        setPlayerFailedFor(activeClipIdRef.current);
+      }, PLAYER_STALL_MS);
     }
+
+    (async () => {
+      const { outcome, error } = await source.load(uri);
+      if (cancelled || outcome === 'stale') return;
+      if (outcome === 'error') {
+        if (stallTimerRef.current) {
+          clearTimeout(stallTimerRef.current);
+          stallTimerRef.current = null;
+        }
+        reportError(error, { source: 'clips:replaceAsync', clipId: activeClipId });
+        setPlayerFailedFor(activeClipId);
+        return;
+      }
+      // 'loaded' or 'same': the player holds this uri and it is current.
+      applyPlayState();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
     // We intentionally do not depend on `clips` array reference here
     // because every Realtime patch produces a new reference and would
     // re-fire this effect, churning sources. activeClipId is stable until
-    // the user actually scrolls.
+    // the user actually scrolls. foregroundTick re-runs it after the
+    // background release below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeClipId, sharedPlayer, autoplayEnabled]);
+  }, [activeClipId, sharedPlayer, autoplayEnabled, foregroundTick]);
+
+  // Stability fix 2: on background, pause AND release the source so its
+  // decoder and buffers go with it -- nothing is on screen, so the codec
+  // dispose race that keeps tab blur to pause-only does not apply. On
+  // return the load effect re-runs (foregroundTick) and reloads the active
+  // card, paused; the user taps play, as they did before. 'inactive'
+  // (control centre, notification shade on iOS) only pauses.
+  useEffect(() => {
+    const source = sourceRef.current;
+    if (!sharedPlayer || !source) return;
+    let released = false;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        if (released) {
+          released = false;
+          resumePausedRef.current = true;
+          setForegroundTick((t) => t + 1);
+        }
+        return;
+      }
+      try { sharedPlayer.pause(); } catch { /* ignore */ }
+      setIsSharedPlaying(false);
+      if (state === 'background' && source.currentUri !== null) {
+        released = true;
+        if (stallTimerRef.current) {
+          clearTimeout(stallTimerRef.current);
+          stallTimerRef.current = null;
+        }
+        // Not awaited: a rejection is swallowed inside release().
+        void source.release();
+      }
+    });
+    return () => sub.remove();
+  }, [sharedPlayer]);
 
   // v9.2.0: record a view when a clip becomes active. Prior to this,
   // media_clips.view_count was never incremented anywhere in the app
@@ -706,21 +812,34 @@ export default function ClipsScreen() {
   }, [sharedPlayer]);
 
   // Re-arm the same source on demand from the card's "Try again".
+  // Stability fix 3: forced reload through the same loader, so a user who
+  // taps Try again and then scrolls on cannot have the old clip resolve on
+  // top of the new card.
   const handleReloadPlayer = useCallback(() => {
-    if (!sharedPlayer) return;
-    const clip = clips.find((c) => c.id === activeClipIdRef.current);
-    if (!clip?.videoUrl) return;
+    const source = sourceRef.current;
+    if (!sharedPlayer || !source) return;
+    const clipId = activeClipIdRef.current;
+    const clip = clips.find((c) => c.id === clipId);
+    if (!clip?.videoUrl || !clipId) return;
     setPlayerFailedFor(null);
     setIsSharedReady(false);
     if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
     stallTimerRef.current = setTimeout(() => {
       setPlayerFailedFor(activeClipIdRef.current);
     }, PLAYER_STALL_MS);
-    try {
-      sharedPlayer.replace({ uri: clip.videoUrl });
-    } catch {
-      setPlayerFailedFor(activeClipIdRef.current);
-    }
+    void source.load(clip.videoUrl, { force: true }).then(({ outcome, error }) => {
+      if (outcome === 'stale' || activeClipIdRef.current !== clipId) return;
+      if (outcome === 'error') {
+        if (stallTimerRef.current) {
+          clearTimeout(stallTimerRef.current);
+          stallTimerRef.current = null;
+        }
+        reportError(error, { source: 'clips:reloadPlayer', clipId });
+        setPlayerFailedFor(clipId);
+      }
+      // 'loaded': the statusChange listener flips isSharedReady; playback
+      // stays paused until the user taps play, exactly as before.
+    });
   }, [sharedPlayer, clips]);
 
   const toggleSharedPlay = useCallback(() => {

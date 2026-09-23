@@ -314,7 +314,30 @@ export function useEntitlementsRealtime() {
 // missing keys so the app boots even before the RevenueCat dashboard is
 // set up.
 // ---------------------------------------------------------------------------
+// Stability fix 4 (2026-09-23 investigation). configureRevenueCat() ran
+// unguarded from the root mount effect AND from every SIGNED_IN, so a
+// fresh sign-in called Purchases.configure() twice back to back; a
+// persisted-session boot (INITIAL_SESSION) never logged in at all, leaving
+// RevenueCat on an anonymous app_user_id until the next real sign-in. The
+// module-level state below makes configure idempotent per API key, logIn
+// idempotent per user, and serialises concurrent callers.
+let configuredApiKey: string | null = null;
+let loggedInUserId: string | null = null;
+let configureInFlight: Promise<void> | null = null;
+
 export async function configureRevenueCat(authUserId?: string | null): Promise<void> {
+  // Two callers can overlap (mount effect + the first auth event). Let the
+  // second wait for the first, then run its own (now cheap) pass.
+  if (configureInFlight) {
+    await configureInFlight;
+  }
+  configureInFlight = configureRevenueCatOnce(authUserId).finally(() => {
+    configureInFlight = null;
+  });
+  return configureInFlight;
+}
+
+async function configureRevenueCatOnce(authUserId?: string | null): Promise<void> {
   // Expo Go has no native IAP module. Prior to v9.1.1, Purchases.configure()
   // threw "Invalid API key. The native store is not available when running
   // inside Expo Go" and reportError() surfaced it as a red LogBox overlay
@@ -367,23 +390,42 @@ export async function configureRevenueCat(authUserId?: string | null): Promise<v
     return;
   }
 
-  patchRcStatus({ configureCalled: true });
-  try {
-    await Purchases.configure({ apiKey });
-    patchRcStatus({ configureSucceeded: true });
-  } catch (e: any) {
-    patchRcStatus({
-      configureSucceeded: false,
-      lastError: e?.message ?? 'Purchases.configure threw',
-    });
-    reportError(e, { source: 'entitlements:configureRevenueCat:configure', apiKeyPrefix: apiKey.slice(0, 6) });
-    return;
+  // Configure once per API key. The module flag covers the normal case; the
+  // SDK's own isConfigured() covers a JS reload over a still-configured
+  // native instance (dev), and is best-effort because older SDKs lack it.
+  let alreadyConfigured = configuredApiKey === apiKey;
+  if (!alreadyConfigured && typeof Purchases.isConfigured === 'function') {
+    try {
+      alreadyConfigured = (await Purchases.isConfigured()) === true;
+    } catch {
+      alreadyConfigured = false;
+    }
   }
+  if (!alreadyConfigured) {
+    patchRcStatus({ configureCalled: true });
+    try {
+      await Purchases.configure({ apiKey });
+      patchRcStatus({ configureSucceeded: true });
+    } catch (e: any) {
+      patchRcStatus({
+        configureSucceeded: false,
+        lastError: e?.message ?? 'Purchases.configure threw',
+      });
+      reportError(e, { source: 'entitlements:configureRevenueCat:configure', apiKeyPrefix: apiKey.slice(0, 6) });
+      return;
+    }
+  }
+  configuredApiKey = apiKey;
 
-  if (authUserId) {
+  // Log in once per user. A second SIGNED_IN for the same user (or the
+  // mount call with no id) is a no-op here.
+  if (authUserId && authUserId !== loggedInUserId) {
     patchRcStatus({ loginCalled: true });
     try {
       await Purchases.logIn(authUserId);
+      loggedInUserId = authUserId;
+      // Offerings can be user-dependent; never serve another user's.
+      invalidateOfferingsCache();
       patchRcStatus({ loginSucceeded: true });
     } catch (e: any) {
       patchRcStatus({
@@ -393,6 +435,56 @@ export async function configureRevenueCat(authUserId?: string | null): Promise<v
       reportError(e, { source: 'entitlements:configureRevenueCat:logIn' });
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Offerings cache (stability fix 4).
+//
+// getTierPrice() called Purchases.getOfferings() per price, and every caller
+// asked for two prices with Promise.all -- two full offerings fetches and two
+// StoreProduct mappings, concurrently, on every paywall open; /subscription
+// and /choose-plan paid that again on mount. The mapping is where the S10+
+// OutOfMemoryError finally failed. One fetch per ~5 minutes, shared by
+// concurrent callers, is all a price label needs. Failures and "no current
+// offering" results are not cached, so a transient outage retries on the
+// next open. RevenueCat keeps its own cache underneath; this one exists to
+// stop the concurrent double mapping.
+// ---------------------------------------------------------------------------
+const OFFERINGS_TTL_MS = 5 * 60 * 1000;
+
+let offeringsCache: { at: number; offerings: any } | null = null;
+let offeringsInFlight: Promise<any> | null = null;
+
+export function invalidateOfferingsCache(): void {
+  offeringsCache = null;
+}
+
+async function getOfferingsCached(Purchases: any, now: () => number = Date.now): Promise<any> {
+  if (offeringsCache && now() - offeringsCache.at < OFFERINGS_TTL_MS) {
+    return offeringsCache.offerings;
+  }
+  if (offeringsInFlight) return offeringsInFlight;
+  offeringsInFlight = (async () => {
+    try {
+      const offerings = await Purchases.getOfferings();
+      if (offerings?.current) {
+        offeringsCache = { at: now(), offerings };
+      }
+      return offerings;
+    } finally {
+      offeringsInFlight = null;
+    }
+  })();
+  return offeringsInFlight;
+}
+
+/** Test hook. */
+export function _resetRevenueCatStateForTests(): void {
+  configuredApiKey = null;
+  loggedInUserId = null;
+  configureInFlight = null;
+  offeringsCache = null;
+  offeringsInFlight = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -505,7 +597,7 @@ async function findPackageForTierPlan(
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const Purchases = require('react-native-purchases').default;
-    const offerings = await Purchases.getOfferings();
+    const offerings = await getOfferingsCached(Purchases);
     const current = offerings?.current;
     const packages: any[] = current?.availablePackages ?? [];
     if (packages.length === 0) return null;

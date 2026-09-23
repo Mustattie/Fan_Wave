@@ -484,8 +484,34 @@ export function subscribeToGames(
 }
 
 /**
- * Subscribe to watch party changes in a given city.
- * Uses a single channel with wildcard event to reduce connection count.
+ * v9.4.3 (mig 087): venue_city is the venue's own city now; the metro
+ * anchor is what "parties near <city>" means. First comma segment only,
+ * matching how 087 backfills venue_metro. Case-insensitive because the
+ * city string comes from user input / AsyncStorage and the metro from a
+ * geocoder.
+ */
+export function watchPartyMatchesCity(row: { venue_metro?: string | null }, city: string): boolean {
+  const want = city.split(',')[0]!.trim().toLowerCase();
+  if (!want) return false;
+  const have = (row?.venue_metro ?? '').toString().trim().toLowerCase();
+  return have === want;
+}
+
+/**
+ * Subscribe to watch party changes near a given city.
+ *
+ * UAT 2026-09-22 (first Sentry `realtime.channel_error` after Phase 1 made
+ * joins visible): this channel had never joined. Two reasons, each fatal
+ * on its own: `watch_parties` was never added to the supabase_realtime
+ * publication (migration 100 does that), and the filter used `ilike`,
+ * which Realtime does not support (eq, neq, lt, lte, gt, gte, in only).
+ * So the INSERT hook and the "belt-and-braces" invalidation in Home never
+ * ran; parties only ever showed up on the stale-time refetch.
+ *
+ * Now: one unfiltered `watch-parties` topic, shared by Home and Discover
+ * through the registry, with the metro match done client-side. Party
+ * inserts are rare (tens per day app-wide), so the traffic is negligible
+ * and the match cannot be broken by casing or a filter operator again.
  */
 export function subscribeToWatchParties(
   city: string,
@@ -493,20 +519,18 @@ export function subscribeToWatchParties(
   onUpdate?: (party: any) => void,
 ): () => void {
   return subscribeToTable(
-    `watch-parties-${city}`,
+    'watch-parties',
     'watch_parties',
     '*',
     (payload) => {
+      const row = payload.new as any;
+      if (!watchPartyMatchesCity(row, city)) return;
       if (payload.eventType === 'INSERT') {
-        onInsert(payload.new);
+        onInsert(row);
       } else if (payload.eventType === 'UPDATE' && onUpdate) {
-        onUpdate(payload.new);
+        onUpdate(row);
       }
     },
-    // v9.4.3 (mig 087): venue_city is the venue's own city now; the metro
-    // anchor is what "parties near <city>" means. First comma segment only,
-    // matching how 087 backfills venue_metro.
-    `venue_metro=ilike.${city.split(',')[0]!.trim()}`,
   );
 }
 

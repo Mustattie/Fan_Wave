@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  AppState,
   ScrollView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -33,6 +34,7 @@ import {
   activeUploadCount,
 } from '@/lib/clipUploads';
 import { PremiumPaywall } from '@/components/paywall/PremiumPaywall';
+import { CLIP_PREVIEW_BUFFER_OPTIONS } from '@/lib/videoBuffer';
 
 // v9.2.5 UAT 2026-07-28: cap every pre-enqueue Supabase call at 10s.
 // Without this, a stalled cell connection freezes the Post button
@@ -100,10 +102,36 @@ export default function CreateClipScreen() {
   // (black preview reported in v9.1 UAT). No point spinning the decoder
   // when we're blocking Post anyway; the banner tells the tester why.
   const player = useVideoPlayer(inExpoGo ? null : (activeVideoUri || null), (p) => {
+    // Stability fix 1: bound the buffer BEFORE the first load. Without this
+    // ExoPlayer's 50 s default swallowed the whole recording into the Java
+    // heap (see lib/videoBuffer.ts).
+    p.bufferOptions = CLIP_PREVIEW_BUFFER_OPTIONS;
     p.loop = true;
     p.muted = true;
     p.play();
   });
+
+  // Stability fix 1: the preview looped on behind the quota paywall and
+  // while the app was in the background, holding its decoder and buffer
+  // the whole time. Pause in both cases; resume when neither applies.
+  const appActiveRef = useRef(AppState.currentState === 'active');
+  useEffect(() => {
+    const apply = () => {
+      if (!player) return;
+      try {
+        if (showQuotaPaywall || !appActiveRef.current) player.pause();
+        else player.play();
+      } catch {
+        /* player mid-release -- nothing to do */
+      }
+    };
+    apply();
+    const sub = AppState.addEventListener('change', (state) => {
+      appActiveRef.current = state === 'active';
+      apply();
+    });
+    return () => sub.remove();
+  }, [player, showQuotaPaywall]);
 
   // If the user landed on Create Clip without first choosing a source
   // (any entry point that doesn't pre-pick a videoUri), prompt Record

@@ -218,3 +218,17 @@ describe('realtime registry', () => {
     expect(mockRemoveChannel).not.toHaveBeenCalled();
   });
 });
+
+describe('watchPartyMatchesCity', () => {
+  const { watchPartyMatchesCity } = require('../lib/realtime');
+  it('matches on the first comma segment, case-insensitively', () => {
+    expect(watchPartyMatchesCity({ venue_metro: 'Dallas' }, 'Dallas')).toBe(true);
+    expect(watchPartyMatchesCity({ venue_metro: 'McKinney' }, 'McKinney, Texas')).toBe(true);
+    expect(watchPartyMatchesCity({ venue_metro: 'dallas' }, 'DALLAS')).toBe(true);
+  });
+  it('rejects other metros and empty input', () => {
+    expect(watchPartyMatchesCity({ venue_metro: 'Prosper' }, 'Dallas')).toBe(false);
+    expect(watchPartyMatchesCity({ venue_metro: null }, 'Dallas')).toBe(false);
+    expect(watchPartyMatchesCity({ venue_metro: 'Dallas' }, '')).toBe(false);
+  });
+});
