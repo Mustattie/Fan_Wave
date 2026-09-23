@@ -103,9 +103,11 @@ export function reportMessage(
   message: string,
   level: 'info' | 'warning' | 'error' = 'info',
   context?: Context,
+  /** Indexed in Sentry (filterable, shown in the issue header), unlike `extra`. */
+  tags?: Record<string, string>,
 ): void {
   if (sentry) {
-    sentry.captureMessage(message, { level, extra: context });
+    sentry.captureMessage(message, { level, extra: context, tags });
     return;
   }
   if (level === 'error') {

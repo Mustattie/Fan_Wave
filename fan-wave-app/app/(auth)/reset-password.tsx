@@ -13,14 +13,18 @@ import { Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { markIntentionalSignOut } from '@/lib/authTelemetry';
+import { clearRecoveryPending } from '@/lib/authRecovery';
 import { reportError } from '@/lib/errorReporting';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 
-// Reached from the password-reset deep link handler (lib/supabase.ts) —
-// the recovery token is exchanged for a session there, then _layout.tsx
-// routes here on PASSWORD_RECOVERY. The user must set a new password
-// before doing anything else in the app; otherwise their existing (now-
-// known-to-attacker) password remains active.
+// Reached from the password-reset deep link. The recovery token is
+// exchanged for a session by whichever link consumer runs first
+// (lib/supabase.ts or app/auth-callback.tsx); both then mark recovery
+// pending (lib/authRecovery.ts) and NavigationGuard holds the user here
+// until the password is changed. The user must set a new password before
+// doing anything else in the app; otherwise their existing (now-known-to-
+// attacker) password remains active -- which is why backing out signs out
+// rather than leaving the recovery session logged in.
 export default function ResetPasswordScreen() {
   const router = useRouter();
   const [password, setPassword] = useState('');
@@ -45,6 +49,10 @@ export default function ResetPasswordScreen() {
         Alert.alert('Could not update', error.message);
         return;
       }
+      // Recovery is complete; release the guard before the sign-out so
+      // the next session (the user signing in with the new password) is
+      // routed normally.
+      clearRecoveryPending();
       Alert.alert('Password updated', 'You can now sign in with your new password.', [
         {
           text: 'OK',
@@ -62,7 +70,21 @@ export default function ResetPasswordScreen() {
 
   return (
     <KeyboardAwareScreen style={styles.container} contentContainerStyle={styles.content}>
-      <TouchableOpacity onPress={() => router.replace('/(auth)/sign-in')} style={styles.backBtn}>
+      <TouchableOpacity
+        onPress={async () => {
+          // Backing out abandons the recovery: end the session the link
+          // created rather than leave it signed in with the old password.
+          clearRecoveryPending();
+          markIntentionalSignOut();
+          try {
+            await supabase.auth.signOut();
+          } catch {
+            /* the guard routes on the resulting state either way */
+          }
+          router.replace('/(auth)/sign-in');
+        }}
+        style={styles.backBtn}
+      >
         <ArrowLeft size={24} color={Colors.dark.text} />
       </TouchableOpacity>
 

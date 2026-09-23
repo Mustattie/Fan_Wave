@@ -33,6 +33,7 @@ import { useAppStateFocus } from '@/lib/appState';
 import { queryClient } from '@/hooks/useQueryClient';
 import { consumeIntentionalSignOut, reportUnexpectedSignOut } from '@/lib/authTelemetry';
 import { initClipUploads } from '@/lib/clipUploads';
+import { useRecoveryPending, markRecoveryPending, clearRecoveryPending } from '@/lib/authRecovery';
 
 // Custom ErrorBoundary so React render-tree crashes (the "Something went
 // wrong / Cannot read property 'X' of null" screen) ALSO get reported to
@@ -143,6 +144,9 @@ function NavigationGuard({
   const { data: entState, isLoading: entLoading } = useSubscriptionState();
   const subscriptionStatus = entState?.status ?? 'none';
   const hasPremiumAccess = entState?.hasPremiumAccess ?? false;
+  // Build 28 UAT: a consumed password-recovery link sets this; while it is
+  // set, the only place a signed-in user may be is the new-password screen.
+  const recoveryPending = useRecoveryPending();
 
   useEffect(() => {
     if (!navigationState?.key) return;
@@ -164,6 +168,19 @@ function NavigationGuard({
     const onPaymentScreen =
       segments[1] === 'choose-plan' ||
       segments[1] === 'resubscribe';
+    const onResetPasswordScreen = segments[1] === 'reset-password';
+
+    // Password recovery outranks every other destination. The recovery
+    // link gave this session a real login; until the password is changed
+    // (or the user backs out, which signs out) nothing else is reachable.
+    // This is the branch that was missing: the signed-in rule below used
+    // to replace reset-password with the tabs on its next run.
+    if (session && recoveryPending) {
+      if (!(inAuthGroup && onResetPasswordScreen)) {
+        router.replace('/(auth)/reset-password');
+      }
+      return;
+    }
 
     if (!session && !inAuthGroup) {
       if (!hasSeenWelcome) {
@@ -192,7 +209,7 @@ function NavigationGuard({
         router.replace('/(auth)/resubscribe');
       }
     }
-  }, [session, sessionResolved, segments, navigationState?.key, onboardingComplete, hasSeenWelcome, subscriptionStatus, hasPremiumAccess, entLoading]);
+  }, [session, sessionResolved, recoveryPending, segments, navigationState?.key, onboardingComplete, hasSeenWelcome, subscriptionStatus, hasPremiumAccess, entLoading]);
 
   return null;
 }
@@ -453,6 +470,9 @@ export default function RootLayout() {
           if (!consumeIntentionalSignOut()) {
             reportUnexpectedSignOut();
           }
+          // A sign-out ends any recovery in progress; the next session is
+          // an ordinary one.
+          clearRecoveryPending();
           clearUserContext();
           clearPushToken();
           setAnalyticsUser(null);
@@ -474,7 +494,10 @@ export default function RootLayout() {
           // completes setSession(). Route the user to the new-password
           // form so they don't sit on whatever screen the app happened
           // to be on when the link opened. Uses a require() to avoid a
-          // circular import at module-load time.
+          // circular import at module-load time. (With detectSessionInUrl
+          // off this event does not fire in practice; the link consumers
+          // set the flag themselves. Kept for the case where it does.)
+          markRecoveryPending();
           try {
             const { router } = require('expo-router');
             router.replace('/(auth)/reset-password');

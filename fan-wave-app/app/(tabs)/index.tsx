@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bell, Plus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { loadInterestSports, sameStringSet } from '@/lib/interestSports';
 import { Colors } from '@/constants/Colors';
 import { GameCard } from '@/components/GameCard';
 import { WatchPartyCard } from '@/components/WatchPartyCard';
@@ -120,43 +120,23 @@ export default function HomeScreen() {
     };
   }, [watchParties]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem('selected_sports');
-        const fromStorage: string[] = raw ? JSON.parse(raw) : [];
-        const set = new Set(fromStorage.map((s) => s.toString().toLowerCase()));
-
-        // Followed teams → sport names. Cheap: one RPC, also handles WC
-        // (the FIFA World Cup league joins to the 'Soccer' sport).
-        try {
-          const { data: { user } } = await getLocalUser();
-          if (user) {
-            const { data: follows } = await supabase.rpc('get_user_teams', {
-              p_user_id: user.id,
-            });
-            (follows || []).forEach((row: any) => {
-              if (row.sport_name) {
-                set.add(String(row.sport_name).toLowerCase());
-              }
-            });
-          }
-        } catch {
-          // Network failure — selected_sports alone is fine.
-        }
-
-        if (!cancelled) {
-          setInterestSports(set.size > 0 ? set : new Set());
-        }
-      } catch {
-        if (!cancelled) setInterestSports(new Set());
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Build 28 UAT: reload on every focus, not once on mount, so a change on
+  // My Sports is reflected when the user comes back to Home (the tab stays
+  // mounted, so a mount-only effect never re-ran). Same loader as Game
+  // Day; state only updates when the set actually changed.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        const set = await loadInterestSports();
+        if (cancelled) return;
+        setInterestSports((prev) => (sameStringSet(prev, set) ? prev : set));
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
 
   // v9.4.0 UAT Round 3 (#2): "Today's Games" carousel bled prior-day
   // finals into today because useGames returns anything within a 24h

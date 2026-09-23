@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { loadInterestSports, sameStringSet } from '@/lib/interestSports';
 import { Colors } from '@/constants/Colors';
 import { GameCard } from '@/components/GameCard';
 import { SportPillRow } from '@/components/SportPill';
@@ -19,7 +19,6 @@ import { subscribeToGames } from '@/lib/realtime';
 import { mapGameRealtimePatch, type GameDisplay } from '@/lib/mappers';
 import { useGames } from '@/hooks/useData';
 import { queryClient } from '@/hooks/useQueryClient';
-import { supabase, getLocalUser } from '@/lib/supabase';
 import { SPORTS, SPORT_BY_ID } from '@/constants/Sports';
 
 // Game Day (v9.0.1):
@@ -44,41 +43,23 @@ export default function GameDayScreen() {
   // Falls back to "no filter" if the user has no signals.
   const [interestSports, setInterestSports] = useState<Set<string> | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem('selected_sports');
-        const fromStorage: string[] = raw ? JSON.parse(raw) : [];
-        const set = new Set(fromStorage.map((s) => s.toString().toLowerCase()));
-
-        try {
-          const { data: { user } } = await getLocalUser();
-          if (user) {
-            const { data: follows } = await supabase.rpc('get_user_teams', {
-              p_user_id: user.id,
-            });
-            (follows || []).forEach((row: any) => {
-              if (row.sport_name) {
-                set.add(String(row.sport_name).toLowerCase());
-              }
-            });
-          }
-        } catch {
-          // Network failure — selected_sports alone is fine.
-        }
-
-        if (!cancelled) {
-          setInterestSports(set.size > 0 ? set : new Set());
-        }
-      } catch {
-        if (!cancelled) setInterestSports(new Set());
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Build 28 UAT: reload on every focus, not once on mount, so a change on
+  // My Sports is reflected when the user comes back to this tab (the tab
+  // stays mounted, so a mount-only effect never re-ran). State only
+  // updates when the set actually changed.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        const set = await loadInterestSports();
+        if (cancelled) return;
+        setInterestSports((prev) => (sameStringSet(prev, set) ? prev : set));
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
 
   // Realtime patch buffer — subscribeToGames delivers the raw DB row.
   // We patch by id into local overrides and merge over the react-query

@@ -64,6 +64,8 @@ interface Entry {
   closing: boolean;
   teardownTimer: ReturnType<typeof setTimeout> | null;
   reopenTimer: ReturnType<typeof setTimeout> | null;
+  /** Armed on a post-join error; fires if no SUBSCRIBED follows in time. */
+  rejoinWatchdog: ReturnType<typeof setTimeout> | null;
   reopenAttempts: number;
   errors: number;
   rejoins: number;
@@ -81,6 +83,23 @@ const TEARDOWN_GRACE_MS = 300;
 const REPORT_DEDUPE_MS = 60_000;
 const REOPEN_BASE_MS = 2_000;
 const REOPEN_MAX_ATTEMPTS = 5;
+// Build 28 UAT (2026-09-24): a dropped WebSocket makes Phoenix fire the
+// error event on EVERY joined channel (Socket.onConnClose ->
+// triggerChanError), which realtime-js surfaces as CHANNEL_ERROR -- the
+// same status a rejected join produces. Reporting both as
+// `realtime.channel_error` filled Sentry with reconnect noise carrying no
+// topic and hid the one case that matters. A post-join error is now only
+// a breadcrumb unless the channel has not re-subscribed within this
+// window; a pre-join error is reported at once as a rejected join.
+const REJOIN_WATCHDOG_MS = 60_000;
+
+function socketConnected(): boolean {
+  try {
+    return supabase.realtime.isConnected();
+  } catch {
+    return false;
+  }
+}
 
 function signatureOf(table: string, event: ChangeEvent, filter?: string): string {
   return `${table}|${event}|${filter ?? ''}`;
@@ -92,21 +111,37 @@ function shortHash(s: string): string {
   return (h >>> 0).toString(36);
 }
 
-function reportOnce(entry: Entry, kind: string, detail?: string): void {
+function reportOnce(entry: Entry, kind: string, detail?: string, level: 'warning' | 'error' = 'warning'): void {
   const now = Date.now();
   const last = entry.lastReportAt[kind] ?? 0;
   if (now - last < REPORT_DEDUPE_MS) return;
   entry.lastReportAt[kind] = now;
-  reportMessage(`realtime.${kind}`, 'warning', {
-    topic: entry.key,
-    table: entry.table,
-    event: entry.event,
-    filter: entry.filter ?? null,
-    subscribers: entry.subscribers.size,
-    errors: entry.errors,
-    rejoins: entry.rejoins,
-    detail: detail ?? null,
-  });
+  // Topic in the title so Sentry groups one issue per channel and the
+  // list view says which one; also a tag so it is filterable.
+  reportMessage(
+    `realtime.${kind} [${entry.key}]`,
+    level,
+    {
+      topic: entry.key,
+      table: entry.table,
+      event: entry.event,
+      filter: entry.filter ?? null,
+      phase: entry.subscribedOnce ? 'after-join' : 'initial-join',
+      socketConnected: socketConnected(),
+      subscribers: entry.subscribers.size,
+      errors: entry.errors,
+      rejoins: entry.rejoins,
+      detail: detail ?? null,
+    },
+    { realtime_topic: entry.key, realtime_table: entry.table },
+  );
+}
+
+function clearRejoinWatchdog(entry: Entry): void {
+  if (entry.rejoinWatchdog) {
+    clearTimeout(entry.rejoinWatchdog);
+    entry.rejoinWatchdog = null;
+  }
 }
 
 function fanout(entry: Entry, payload: RealtimePostgresChangesPayload<any>): void {
@@ -139,6 +174,7 @@ function onStatus(entry: Entry, channel: RealtimeChannel, status: string, err?: 
     case 'SUBSCRIBED': {
       entry.status = 'SUBSCRIBED';
       entry.reopenAttempts = 0;
+      clearRejoinWatchdog(entry);
       if (entry.subscribedOnce) {
         entry.rejoins += 1;
         addBreadcrumb('realtime', 'rejoined', { topic: entry.key, rejoins: entry.rejoins });
@@ -152,13 +188,33 @@ function onStatus(entry: Entry, channel: RealtimeChannel, status: string, err?: 
     case 'CHANNEL_ERROR':
     case 'TIMED_OUT': {
       // realtime-js schedules its own re-join for both of these; we only
-      // need to make the failure visible. A join the server refused (RLS
-      // on the table, a missing publication) shows up here as CHANNEL_ERROR
-      // on every attempt -- the report's `errors` count tells that apart
-      // from a one-off blip.
+      // need to make the failure visible -- and to say which kind it is.
       entry.status = status;
       entry.errors += 1;
-      reportOnce(entry, status.toLowerCase(), err?.message);
+      if (!entry.subscribedOnce) {
+        // Never joined: the server refused it (unsupported filter,
+        // unpublished table, RLS) or the join timed out. This is the case
+        // worth a warning every time, and it names the topic.
+        reportOnce(entry, 'join_rejected', `${status}: ${err?.message ?? 'no detail'}`);
+        return;
+      }
+      // Already joined once: this is almost always the socket dropping
+      // (background, network change) and Phoenix erroring every channel on
+      // the way down. It will rejoin when the socket returns. Breadcrumb
+      // now; warn only if the rejoin does not happen.
+      addBreadcrumb('realtime', 'channel_error.after_join', {
+        topic: entry.key,
+        status,
+        socketConnected: socketConnected(),
+        detail: err?.message ?? null,
+      });
+      if (!entry.rejoinWatchdog) {
+        entry.rejoinWatchdog = setTimeout(() => {
+          entry.rejoinWatchdog = null;
+          if (!registry.has(entry.key) || entry.status === 'SUBSCRIBED') return;
+          reportOnce(entry, 'rejoin_failed', `still ${entry.status} after ${REJOIN_WATCHDOG_MS / 1000}s`);
+        }, REJOIN_WATCHDOG_MS);
+      }
       return;
     }
     case 'CLOSED': {
@@ -208,10 +264,7 @@ function closeChannel(entry: Entry): void {
 function scheduleReopen(entry: Entry): void {
   if (entry.reopenTimer) return;
   if (entry.reopenAttempts >= REOPEN_MAX_ATTEMPTS) {
-    reportMessage('realtime.reopen_exhausted', 'error', {
-      topic: entry.key,
-      attempts: entry.reopenAttempts,
-    });
+    reportReopenExhausted(entry);
     return;
   }
   const delay = REOPEN_BASE_MS * 2 ** entry.reopenAttempts;
@@ -225,6 +278,15 @@ function scheduleReopen(entry: Entry): void {
   }, delay);
 }
 
+function reportReopenExhausted(entry: Entry): void {
+  reportMessage(
+    `realtime.reopen_exhausted [${entry.key}]`,
+    'error',
+    { topic: entry.key, table: entry.table, attempts: entry.reopenAttempts },
+    { realtime_topic: entry.key, realtime_table: entry.table },
+  );
+}
+
 function scheduleTeardown(entry: Entry): void {
   if (entry.teardownTimer) return;
   entry.teardownTimer = setTimeout(() => {
@@ -235,6 +297,7 @@ function scheduleTeardown(entry: Entry): void {
       clearTimeout(entry.reopenTimer);
       entry.reopenTimer = null;
     }
+    clearRejoinWatchdog(entry);
     closeChannel(entry);
     addBreadcrumb('realtime', 'left', { topic: entry.key });
   }, TEARDOWN_GRACE_MS);
@@ -279,6 +342,7 @@ export function subscribeToTable(
       closing: false,
       teardownTimer: null,
       reopenTimer: null,
+      rejoinWatchdog: null,
       reopenAttempts: 0,
       errors: 0,
       rejoins: 0,
@@ -325,6 +389,7 @@ export interface RealtimeTopicDiagnostics {
 export function getRealtimeDiagnostics(): {
   topics: RealtimeTopicDiagnostics[];
   socketChannels: number;
+  socketConnected: boolean;
 } {
   const topics = Array.from(registry.values()).map((e) => ({
     topic: e.key,
@@ -343,7 +408,7 @@ export function getRealtimeDiagnostics(): {
   } catch {
     /* getChannels is absent in some test doubles */
   }
-  return { topics, socketChannels };
+  return { topics, socketChannels, socketConnected: socketConnected() };
 }
 
 /** Test hook: drop every entry without touching the socket. */
@@ -351,6 +416,7 @@ export function _resetRealtimeRegistryForTests(): void {
   for (const e of registry.values()) {
     if (e.teardownTimer) clearTimeout(e.teardownTimer);
     if (e.reopenTimer) clearTimeout(e.reopenTimer);
+    if (e.rejoinWatchdog) clearTimeout(e.rejoinWatchdog);
   }
   registry.clear();
 }
@@ -441,10 +507,24 @@ export function subscribeToPresence(
             }
           }
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          reportMessage(`realtime.presence_${status.toLowerCase()}`, 'warning', {
-            topic: channelName,
-            detail: err?.message ?? null,
-          });
+          // Same split as the table channels: a failure before the first
+          // join is a rejected join and worth a warning; after a join it is
+          // the socket dropping, and the channel rejoins on its own.
+          if (!joinedOnce) {
+            reportMessage(
+              `realtime.presence_join_rejected [${channelName}]`,
+              'warning',
+              { topic: channelName, status, socketConnected: socketConnected(), detail: err?.message ?? null },
+              { realtime_topic: channelName },
+            );
+          } else {
+            addBreadcrumb('realtime', 'presence.channel_error.after_join', {
+              topic: channelName,
+              status,
+              socketConnected: socketConnected(),
+              detail: err?.message ?? null,
+            });
+          }
         }
       });
   } catch (e) {

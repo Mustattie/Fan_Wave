@@ -51,6 +51,7 @@ jest.mock('@/lib/supabase', () => ({
     }),
     removeChannel: (ch: FakeChannel) => mockRemoveChannel(ch),
     getChannels: () => Array.from(mockChannels.values()),
+    realtime: { isConnected: () => true },
   },
 }));
 
@@ -66,7 +67,7 @@ import {
   getRealtimeDiagnostics,
   _resetRealtimeRegistryForTests,
 } from '../lib/realtime';
-import { reportMessage } from '../lib/errorReporting';
+import { reportMessage, addBreadcrumb } from '../lib/errorReporting';
 
 function liveChannel(topic: string): FakeChannel {
   const ch = mockChannels.get(`realtime:${topic}`);
@@ -155,19 +156,61 @@ describe('realtime registry', () => {
     expect(topics.some((t) => t.startsWith('shared:'))).toBe(true);
   });
 
-  it('reports CHANNEL_ERROR and TIMED_OUT once per minute per topic', () => {
+  it('reports a rejected initial join at once, named by topic, once per minute', () => {
     subscribeToGames(jest.fn());
     const ch = liveChannel('games-realtime');
     ch.statusCb?.('CHANNEL_ERROR', new Error('boom'));
     ch.statusCb?.('CHANNEL_ERROR', new Error('boom again'));
     ch.statusCb?.('TIMED_OUT');
-    expect(reportMessage).toHaveBeenCalledTimes(2);
+    expect(reportMessage).toHaveBeenCalledTimes(1);
     expect(reportMessage).toHaveBeenCalledWith(
-      'realtime.channel_error',
+      'realtime.join_rejected [games-realtime]',
       'warning',
-      expect.objectContaining({ topic: 'games-realtime', errors: 1, detail: 'boom' }),
+      expect.objectContaining({
+        topic: 'games-realtime',
+        phase: 'initial-join',
+        errors: 1,
+        detail: 'CHANNEL_ERROR: boom',
+      }),
+      expect.objectContaining({ realtime_topic: 'games-realtime', realtime_table: 'games' }),
     );
     expect(getRealtimeDiagnostics().topics[0]!.errors).toBe(3);
+  });
+
+  it('treats a post-join CHANNEL_ERROR as a reconnect: breadcrumb only, warning only if no rejoin in 60 s', () => {
+    subscribeToGames(jest.fn());
+    const ch = liveChannel('games-realtime');
+    ch.statusCb?.('SUBSCRIBED');
+    (addBreadcrumb as jest.Mock).mockClear();
+
+    // Socket drop: Phoenix errors every joined channel.
+    ch.statusCb?.('CHANNEL_ERROR', new Error('socket closed'));
+    expect(reportMessage).not.toHaveBeenCalled();
+    expect(addBreadcrumb).toHaveBeenCalledWith(
+      'realtime',
+      'channel_error.after_join',
+      expect.objectContaining({ topic: 'games-realtime', status: 'CHANNEL_ERROR' }),
+    );
+
+    // Rejoined in time: the watchdog is cancelled, nothing reported.
+    jest.advanceTimersByTime(30_000);
+    ch.statusCb?.('SUBSCRIBED');
+    jest.advanceTimersByTime(60_000);
+    expect(reportMessage).not.toHaveBeenCalled();
+    expect(getRealtimeDiagnostics().topics[0]!.rejoins).toBe(1);
+
+    // Dropped again and never comes back: one warning after 60 s.
+    ch.statusCb?.('CHANNEL_ERROR', new Error('socket closed'));
+    jest.advanceTimersByTime(59_000);
+    expect(reportMessage).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(2_000);
+    expect(reportMessage).toHaveBeenCalledTimes(1);
+    expect(reportMessage).toHaveBeenCalledWith(
+      'realtime.rejoin_failed [games-realtime]',
+      'warning',
+      expect.objectContaining({ phase: 'after-join' }),
+      expect.anything(),
+    );
   });
 
   it('notifies onReconnect on a re-join but not on the first join', () => {
@@ -193,8 +236,9 @@ describe('realtime registry', () => {
     mockChannels.delete(first.topic);
     first.statusCb?.('CLOSED');
     expect(reportMessage).toHaveBeenCalledWith(
-      'realtime.closed_unexpectedly',
+      'realtime.closed_unexpectedly [games-realtime]',
       'warning',
+      expect.anything(),
       expect.anything(),
     );
 

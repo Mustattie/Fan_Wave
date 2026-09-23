@@ -5,6 +5,7 @@ import type { User } from '@supabase/supabase-js';
 import { reportError, addBreadcrumb } from '@/lib/errorReporting';
 import { createResilientFetch } from '@/lib/authFetch';
 import { claimAuthLink } from '@/lib/authLinkClaims';
+import { markRecoveryPending } from '@/lib/authRecovery';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
@@ -163,6 +164,11 @@ export function setupAuthDeepLinkHandler(): () => void {
  */
 export function routeAfterAuthLink(type: string | null | undefined): void {
   if (type !== 'recovery') return;
+  // Build 28 UAT: the replace below is only a fast path. NavigationGuard
+  // reads this flag and keeps the user on reset-password until the
+  // password is changed (lib/authRecovery.ts); without it the guard's
+  // signed-in branch replaced this route with the tabs.
+  markRecoveryPending();
   try {
     // require() to avoid a circular import at module-load time (the
     // router imports screens that import this module).
