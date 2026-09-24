@@ -14,7 +14,7 @@ import {
   FlatList,
   Modal,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Globe, Lock, UserPlus, X, Users, Search, MapPin, CheckCircle2, CalendarDays } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
@@ -35,6 +35,7 @@ import { PaywallGate } from '@/components/paywall/PaywallGate';
 import { supabase, getLocalUser } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mapGameToDisplay, type GameDisplay } from '@/lib/mappers';
+import { computeGameTimePresets } from '@/lib/partyTimePresets';
 import { reportError } from '@/lib/errorReporting';
 import { invalidateCache } from '@/lib/cache';
 import { queryClient } from '@/hooks/useQueryClient';
@@ -160,6 +161,10 @@ function computeTimePresets(): { label: string; value: string }[] {
 export default function CreateWatchPartyScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // v9.5.19: app/game/[id].tsx has always pushed here with { gameId } for
+  // "+ Host" / "Host one", but nothing read it, so the wizard opened with
+  // no game linked. Consumed once the games list is loaded (below).
+  const { gameId: gameIdParam } = useLocalSearchParams<{ gameId?: string }>();
   const [step, setStep] = useState(1);
 
   // Step 1 state
@@ -196,6 +201,19 @@ export default function CreateWatchPartyScreen() {
   // user who returned to a stale screen never picks a past preset.
   const TIME_PRESETS = React.useMemo(() => computeTimePresets(), []);
   const [selectedTime, setSelectedTime] = useState(TIME_PRESETS[0].value);
+  // v9.5.19 (Build 29 UAT): a linked game with a scheduled_at replaces the
+  // fixed Tonight/Tomorrow chips with chips derived from the game -- the
+  // game time (default), 30 min before, 1 hr before. Empty when the game
+  // is TBD or already started, in which case the general presets stay.
+  const gamePresets = React.useMemo(
+    () => computeGameTimePresets(selectedGame?.scheduledAt),
+    [selectedGame?.scheduledAt],
+  );
+  const activePresets = gamePresets.length > 0 ? gamePresets : TIME_PRESETS;
+  // True once the host has chosen a time themselves (tapped a chip or
+  // confirmed the picker). Until then the default follows the linked game,
+  // so changing the game in step 2 re-derives it; after, their choice wins.
+  const [timeTouched, setTimeTouched] = useState(false);
   // v9.4.0 UAT Round 3 (#4): custom date+time picker for hosts scheduling
   // 1-2+ weeks out. Presets stop at "This Weekend"; without a custom
   // path the wizard couldn't create an August 22nd party. `customTime`
@@ -216,6 +234,19 @@ export default function CreateWatchPartyScreen() {
     return d;
   });
   const effectiveStartTime = customTime ?? selectedTime;
+
+  // Re-derive the default whenever the linked game changes, unless the
+  // host has already picked a time. Runs once at mount too, where it is a
+  // no-op (general first preset -> the same value useState seeded). Also
+  // seeds the custom picker at the game time so "Choose date & time" opens
+  // near the game rather than at tomorrow 7 PM.
+  useEffect(() => {
+    if (timeTouched) return;
+    const next = gamePresets[0] ?? TIME_PRESETS[0]!;
+    setSelectedTime(next.value);
+    setCustomTime(null);
+    if (gamePresets[0]) setCustomPickerDraft(new Date(gamePresets[0].value));
+  }, [gamePresets, timeTouched, TIME_PRESETS]);
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [invitedFriends, setInvitedFriends] = useState<{ name: string; phone: string }[]>([]);
   const [friendName, setFriendName] = useState('');
@@ -393,6 +424,41 @@ export default function CreateWatchPartyScreen() {
       }
     })();
   }, []);
+
+  // v9.5.19: link the game the host arrived from (app/game/[id].tsx
+  // "+ Host"). Once, after the list loads, and only if they have not
+  // already chosen in step 2. The list is `scheduled_at > now`, so a game
+  // that has started is fetched by id instead; it still links, and its
+  // past game time simply leaves the general presets in place. The
+  // "General watch party" card and the list stay live, so the host can
+  // unlink or swap it as before.
+  const gameParamConsumed = useRef(false);
+  useEffect(() => {
+    if (gameParamConsumed.current || gamesLoading || !gameIdParam) return;
+    if (selectedGame || noGame) return;
+    gameParamConsumed.current = true;
+    const fromList = allGames.find((g) => g.id === gameIdParam);
+    if (fromList) {
+      setSelectedGame(fromList);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('games')
+          .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
+          .eq('id', gameIdParam)
+          .maybeSingle();
+        if (!cancelled && data) setSelectedGame(mapGameToDisplay(data));
+      } catch {
+        // Unknown id: the wizard behaves as if opened without a game.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gamesLoading, gameIdParam, allGames, selectedGame, noGame]);
 
   // -----------------------------------------------------------------------
   // Venue search
@@ -1234,7 +1300,11 @@ export default function CreateWatchPartyScreen() {
         <ActivityIndicator color={C.accent} style={{ marginVertical: 20 }} />
       )}
       {gamesByDay.map((day) => {
-        const expanded = expandedDays.has(day.key);
+        // v9.5.19: a game linked from its own screen must be visible as
+        // selected, even when it sits behind this day's "Show more".
+        const expanded =
+          expandedDays.has(day.key) ||
+          (!!selectedGame && day.games.slice(5).some((g) => g.id === selectedGame.id));
         const visible = expanded ? day.games : day.games.slice(0, 5);
         const hidden = day.games.length - visible.length;
         return (
@@ -1395,16 +1465,23 @@ export default function CreateWatchPartyScreen() {
           row, and a single summary line states the start time in full. The
           summary also answers the "did I choose this?" problem with the
           pre-selected 'Tonight 7PM' default: whatever is live is spelled
-          out, chosen or inherited. */}
+          out, chosen or inherited.
+
+          v9.5.19 (Build 29 UAT): with a game linked, the chips are the
+          game time, 30 min before and 1 hr before (lib/partyTimePresets);
+          the Tonight/Tomorrow set only appears without a usable game
+          time. Any tap here or in the picker marks the time as chosen,
+          which stops a later game change from replacing it. */}
       <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Start time</Text>
       <View style={styles.timeRow}>
-        {TIME_PRESETS.map((t) => {
+        {activePresets.map((t) => {
           const isActive = !customTime && selectedTime === t.value;
           return (
             <TouchableOpacity
               key={t.value}
               style={[styles.timeChip, isActive && styles.timeChipActive]}
               onPress={() => {
+                setTimeTouched(true);
                 setSelectedTime(t.value);
                 setCustomTime(null);
                 // BUG-16: the iOS pickers render INLINE (a compact
@@ -1442,7 +1519,7 @@ export default function CreateWatchPartyScreen() {
               !!customTime && styles.timeChipTextActive,
             ]}
           >
-            {customTime ? 'Change date & time…' : 'Pick another date…'}
+            {customTime ? 'Change date & time…' : 'Choose date & time…'}
           </Text>
         </TouchableOpacity>
         {customTime ? (
@@ -1490,6 +1567,7 @@ export default function CreateWatchPartyScreen() {
                 <Text style={styles.pickerPanelTitle}>Pick a date and time</Text>
                 <TouchableOpacity
                   onPress={() => {
+                    setTimeTouched(true);
                     setCustomTime(customPickerDraft.toISOString());
                     setShowDatePicker(false);
                   }}
@@ -1507,6 +1585,7 @@ export default function CreateWatchPartyScreen() {
                 maximumDate={new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)}
                 onChange={(_e: DateTimePickerEvent, d?: Date) => {
                   if (!d) return;
+                  setTimeTouched(true);
                   setCustomPickerDraft(d);
                   // Reflect the scroll immediately in the summary line so
                   // the value in play is never ambiguous.
@@ -1542,6 +1621,7 @@ export default function CreateWatchPartyScreen() {
                   if (e.type === 'dismissed' || !d) return;
                   const merged = new Date(customPickerDraft);
                   merged.setHours(d.getHours(), d.getMinutes(), 0, 0);
+                  setTimeTouched(true);
                   setCustomPickerDraft(merged);
                   setCustomTime(merged.toISOString());
                 }}
