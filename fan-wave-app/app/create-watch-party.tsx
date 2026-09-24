@@ -842,6 +842,14 @@ export default function CreateWatchPartyScreen() {
   // makes the common case fully readable. The venue-derived variants keep
   // their wording -- "Watch Party at Brass Tap" is short and reads as a
   // sentence rather than a fixture.
+  //
+  // v9.5.20 (Build 30 UAT): the title was only filled when EMPTY, so a
+  // host who linked game A, went back and picked game B reached Party
+  // Details with B's start time and A's title (game_id was already B --
+  // it reads selectedGame at create time). The last auto-generated title
+  // is remembered; a title that still equals it was never edited and
+  // follows the new game. A title the host typed themselves is kept.
+  const lastAutoTitle = useRef<string | null>(null);
   const goToStep3 = () => {
     let autoTitle = '';
     if (selectedGame) {
@@ -853,7 +861,11 @@ export default function CreateWatchPartyScreen() {
     } else {
       autoTitle = 'Watch Party';
     }
-    if (!title) setTitle(autoTitle);
+    const titleUntouched = !title.trim() || title === lastAutoTitle.current;
+    if (titleUntouched) {
+      setTitle(autoTitle);
+      lastAutoTitle.current = autoTitle;
+    }
     setStep(3);
   };
 
