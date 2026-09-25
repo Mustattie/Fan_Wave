@@ -77,6 +77,19 @@ Physical P3.6 UAT started 2026-09-25 on the S10+ (versionCode 31 confirmed).
   refresh clears the storage cache for every limit; Home's day/interest
   selection extracted to `lib/homeGames.ts` and covered by
   `__tests__/homeTodaysGames.test.tsx`, which rebuilds the prod dataset.
+- **Clips audio: DEFECT (discovered/confirmed during Build 31 physical
+  testing).** Clips play video but no audio; multiple clips tested; device
+  media audio works outside the app. The tester retrospectively recalls
+  the same on Build 30. Git history proves it predates Build 31: the shared
+  feed player has been created `muted = true` since 284eda4 (v8.7+ bundle,
+  2026-06-23) and no code path ever unmuted it, so every build since has
+  played clips silently on both platforms. Uploaded clips do carry an AAC
+  (`mp4a`) track (two recent public clips probed). Fixed in v9.5.38
+  (8b1ccba): the flag is owned by `lib/clipAudio.ts` (active card audible
+  while foregrounded and not user-muted; background silences before the
+  release; preference persisted), with a speaker toggle on the active
+  card. Only the active card has a player, so off-screen cards are silent
+  by construction. **Not device-verified.**
 - Remaining checklist rows were not run on Build 31; Build 32 restarts
   the P3.6 checklist from step 0.
 
@@ -102,6 +115,7 @@ and a clean `tsc`; that is all.
 | 6752df1 | v9.5.32 | Android jest preset config | none (test only) |
 | cb7de07 | v9.5.33 | iOS upload-error classification, 720p on chat/Moments capture, banner safe-area inset | Android: banner sits below the status bar under edge-to-edge; chat/Moments capture unchanged on Android |
 | ba024fd | v9.5.34 | Jest test pinning the k6 production guard | none (test only) |
+| 8b1ccba | v9.5.38 | Clips audio: shared feed player unmuted under a policy module; mute toggle on the active card; background silences first | Build 32: active clip has sound, speaker toggle mutes/unmutes and persists, scrolling A→B has no overlap, background stops audio, return comes back paused |
 | 15fa69b | v9.5.37 | Home Today's Games: two-leg games query, refresh bypasses the storage cache, selector extracted + regression test | Build 32: repeat the Build 31 scenario (NFL/NBA/WNBA → add MLB → Home shows today's MLB games; pull-to-refresh reaches the server) |
 | ce9a597 | v9.5.35 | P3.6 memory hygiene: 256 MB video disk-cache cap, buffer options on Moments and chat-preview players, stall-timer cleanup, bounded poster/telemetry maps, tracked reconnect timers, picker copy deleted after upload; explicit iOS usage strings; bottom-sheet insets; CI runs both presets | `qa/p3.6-android-memory-uat.md` rows R1–R8 |
 
