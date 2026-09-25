@@ -12,10 +12,31 @@
 //   setUserContext({...})      — tag subsequent reports with the user
 //   clearUserContext()         — clear after sign-out
 
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+
 type Sentry = typeof import('@sentry/react-native');
 
 let sentry: Sentry | null = null;
 let initialised = false;
+
+/**
+ * P3.1 (2026-09-25): tags that let the Sentry issue list be split by
+ * environment x platform x app version x build number without relying on
+ * the SDK's default `release` string. The native build number is what EAS
+ * remote auto-increment assigned (Build 26, 27, ... in UAT reports), so a
+ * regression can be pinned to the build that introduced it. The SDK's own
+ * release/dist are left at their defaults so future source-map uploads
+ * still associate.
+ */
+export function buildTags(): Record<string, string> {
+  const tags: Record<string, string> = { platform: Platform.OS };
+  const version = Constants.expoConfig?.version ?? (Constants as any).nativeAppVersion ?? null;
+  const build = (Constants as any).nativeBuildVersion ?? null;
+  if (version) tags.app_version = String(version);
+  if (build) tags.build_number = String(build);
+  return tags;
+}
 
 const DSN = process.env.EXPO_PUBLIC_SENTRY_DSN || '';
 // Only EXPO_PUBLIC_* variables are inlined into the JS bundle. The bare
@@ -65,6 +86,11 @@ export function initErrorReporting(): void {
       enableAutoSessionTracking: true,
       enabled: !__DEV__,
     });
+    try {
+      sentry.setTags(buildTags());
+    } catch {
+      /* tags are best-effort */
+    }
     // UAT verification (2026-09-22): one info event per cold start, staging
     // builds only, so "did Sentry come up in this build" is answerable from
     // the dashboard within a minute of install instead of by waiting for a

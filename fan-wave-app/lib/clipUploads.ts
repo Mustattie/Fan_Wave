@@ -36,7 +36,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
 import { supabase } from './supabase';
 import { uploadClip, deleteClipAssets, deleteLocalFile, fileExists } from './storage';
-import { addBreadcrumb, reportError } from './errorReporting';
+import { addBreadcrumb, reportError, reportMessage } from './errorReporting';
 import { withTimeout } from './withTimeout';
 import { trackEvent } from './analytics';
 import { isFeatureEnabled } from './killSwitches';
@@ -57,6 +57,9 @@ const FAILED_JOB_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 // could sit on "Posting..." forever (iOS UAT 2026-09-09, BUG-4). 30s is
 // generous for a single-row insert; past that the connection is gone.
 const INSERT_TIMEOUT_MS = 30_000;
+// P3.1: after this many failed attempts on one job the failure is reported
+// as its own Sentry event (clips.retry_exhausted).
+const RETRY_EXHAUSTED_AT_ATTEMPT = 3;
 
 export type UploadStatus = 'queued' | 'uploading' | 'inserting' | 'failed';
 
@@ -456,6 +459,17 @@ export async function initClipUploads(userId: string): Promise<void> {
       dropped,
       expired,
     });
+    // P3.1: recovery is an event, not only a breadcrumb -- a rising count
+    // of resumed/file-missing jobs across devices is the signal that
+    // uploads are dying mid-flight in the field.
+    if (resumed + restoredFailed + fileMissing > 0) {
+      reportMessage(
+        'clips.upload_recovered',
+        'info',
+        { found: persisted.length, resumed, restoredFailed, fileMissing, dropped, expired },
+        { clips_recovery: fileMissing > 0 ? 'file_missing' : resumed > 0 ? 'resumed' : 'restored_failed' },
+      );
+    }
   }
 
   await persistPending();
@@ -662,6 +676,17 @@ async function tryRun(): Promise<void> {
       duration_ms: Date.now() - startedAt,
     });
     addBreadcrumb('clips', 'upload.failed', { tempId: next.tempId, attempt, kind });
+    // P3.1: the outcome of retrying, as an event. Attempt 1 is already
+    // captured by reportError above; a job that keeps failing is what
+    // needs a human.
+    if (attempt >= RETRY_EXHAUSTED_AT_ATTEMPT) {
+      reportMessage(
+        'clips.retry_exhausted',
+        'warning',
+        { tempId: next.tempId, attempt, kind, recovered: !!next.recovered },
+        { clip_error_kind: kind },
+      );
+    }
     await persistPending();
   } finally {
     inFlight--;

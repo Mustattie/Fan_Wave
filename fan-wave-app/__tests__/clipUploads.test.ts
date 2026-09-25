@@ -15,9 +15,10 @@ jest.mock('@/lib/analytics', () => ({
   trackEvent: (...a: any[]) => mockTrackEvent(...a),
 }));
 
+const mockReportMessage = jest.fn();
 jest.mock('@/lib/errorReporting', () => ({
   reportError: jest.fn(),
-  reportMessage: jest.fn(),
+  reportMessage: (...a: any[]) => mockReportMessage(...a),
   addBreadcrumb: jest.fn(),
 }));
 
@@ -489,5 +490,52 @@ describe('clipUploads: clips_upload kill switch (P3.3)', () => {
     expect(rec.latest(a.tempId)!.realId).toBe('row-1');
     expect(mockUploadClip).toHaveBeenCalledTimes(1);
     rec.unsub();
+  });
+});
+
+describe('clipUploads: Sentry events (P3.1)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    _resetClipUploadsForTests();
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    mockFileExists.mockResolvedValue(true);
+    mockInsertSuccess();
+    for (const k of Object.keys(mockSwitches)) delete mockSwitches[k];
+  });
+
+  it('reports clips.retry_exhausted on the third failed attempt only', async () => {
+    mockUploadClip.mockRejectedValue(new Error('Upload failed (503): unavailable'));
+    const rec = recorder();
+    const j = job();
+    enqueueClipUpload(j);
+    await flush(); await flush();
+    retryClipUpload(j.tempId);
+    await flush(); await flush();
+    expect(mockReportMessage).not.toHaveBeenCalledWith('clips.retry_exhausted', expect.anything(), expect.anything(), expect.anything());
+    retryClipUpload(j.tempId);
+    await flush(); await flush();
+    expect(mockReportMessage).toHaveBeenCalledWith(
+      'clips.retry_exhausted',
+      'warning',
+      expect.objectContaining({ attempt: 3, kind: 'server' }),
+      { clip_error_kind: 'server' },
+    );
+    rec.unsub();
+  });
+
+  it('reports clips.upload_recovered when a restart resumes or restores jobs', async () => {
+    const j = job({ tempId: 'resume-me' });
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) =>
+      key === 'clipUploads.pending.v2' ? JSON.stringify([{ ...j, status: 'queued' }]) : null,
+    );
+    mockUploadClip.mockResolvedValue({ publicUrl: 'https://cdn/clips/u/1.mp4', provider: 'supabase' });
+    await initClipUploads('user-1');
+    await flush();
+    expect(mockReportMessage).toHaveBeenCalledWith(
+      'clips.upload_recovered',
+      'info',
+      expect.objectContaining({ found: 1, resumed: 1 }),
+      { clips_recovery: 'resumed' },
+    );
   });
 });

@@ -48,13 +48,37 @@ export function consumeIntentionalSignOut(): boolean {
   return at !== null && Date.now() - at <= INTENTIONAL_WINDOW_MS;
 }
 
+// P3.1 (2026-09-25): a refresh that fails is actionable on its own, not
+// only when it ends in a sign-out -- a 429 storm at a venue degrades every
+// PostgREST call for the window even though the session survives. One
+// event per code per minute per device keeps a flapping network from
+// flooding the project.
+const REFRESH_EVENT_DEDUPE_MS = 60_000;
+const lastRefreshEventAt = new Map<string, number>();
+
 export function recordAuthFailure(failure: Omit<AuthFailure, 'at'>): void {
   lastAuthFailure = { ...failure, at: new Date().toISOString() };
   addBreadcrumb('auth', `endpoint_failure.${failure.endpoint}`, {
     status: failure.status,
     errorCode: failure.errorCode,
   });
+  if (failure.endpoint !== 'token') return;
+  // Intermediate 429 retries are breadcrumbs; the final outcome is the event.
+  if (failure.errorCode === 'over_request_rate_limit') return;
+  const code = failure.errorCode ?? `http_${failure.status}`;
+  const now = Date.now();
+  const last = lastRefreshEventAt.get(code) ?? 0;
+  if (now - last < REFRESH_EVENT_DEDUPE_MS) return;
+  lastRefreshEventAt.set(code, now);
+  const rateLimited = failure.errorCode === 'over_request_rate_limit_final';
+  reportMessage(
+    rateLimited ? 'auth.refresh_rate_limited' : 'auth.refresh_failed',
+    'warning',
+    { status: failure.status, errorCode: failure.errorCode ?? null },
+    { auth_endpoint: 'token', auth_error_code: code },
+  );
 }
+
 
 export function getLastAuthFailure(): AuthFailure | null {
   return lastAuthFailure;
@@ -80,4 +104,5 @@ export function reportUnexpectedSignOut(): void {
 export function _resetAuthTelemetryForTests(): void {
   intentionalSignOutAt = null;
   lastAuthFailure = null;
+  lastRefreshEventAt.clear();
 }
