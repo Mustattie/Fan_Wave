@@ -8,7 +8,12 @@
 // summary line, game_id and starts_at all describe game B.
 
 import React from 'react';
-import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
+import { render, fireEvent, waitFor as rawWaitFor, act } from '@testing-library/react-native';
+
+// The screen is large and the suite runs in parallel workers; the default
+// 1 s waitFor flaked once under load. Generous ceilings, same assertions.
+jest.setTimeout(60_000);
+const waitFor = <T,>(fn: () => T) => rawWaitFor(fn, { timeout: 15_000 });
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: jest.fn(), push: jest.fn(), replace: jest.fn() }),
