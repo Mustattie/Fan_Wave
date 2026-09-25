@@ -73,8 +73,14 @@ and a clean `tsc`; that is all.
 | 13343a4 | v9.5.31 | k6 suite refresh | none until run |
 | 6752df1 | v9.5.32 | Android jest preset config | none (test only) |
 | cb7de07 | v9.5.33 | iOS upload-error classification, 720p on chat/Moments capture, banner safe-area inset | Android: banner sits below the status bar under edge-to-edge; chat/Moments capture unchanged on Android |
+| ba024fd | v9.5.34 | Jest test pinning the k6 production guard | none (test only) |
+| ce9a597 | v9.5.35 | P3.6 memory hygiene: 256 MB video disk-cache cap, buffer options on Moments and chat-preview players, stall-timer cleanup, bounded poster/telemetry maps, tracked reconnect timers, picker copy deleted after upload; explicit iOS usage strings; bottom-sheet insets; CI runs both presets | `qa/p3.6-android-memory-uat.md` rows R1–R8 |
 
-## P3.6 — Android regression planning
+## P3.6 — Android memory / OOM regression testing
+
+**Status: CODE/AUTOMATION READY — DEVICE VERIFICATION REQUIRED.** The final
+checklist is `qa/p3.6-android-memory-uat.md`; the iOS counterpart (P3.7,
+same status) is `qa/p3.7-ios-device-uat.md`.
 
 Baseline for the next Android regression round is **Build 30 (v9.5.19,
 ae9cded)**, not Build 28. The next preview build will carry v9.5.20 through
