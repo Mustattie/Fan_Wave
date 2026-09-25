@@ -92,16 +92,20 @@ export function ClipCommentsSheet({ visible, onClose, clipId, onCountChange }: P
       // Resolve display names in a single follow-up query so we don't need
       // a server-side FK join. clip_comments.user_id references auth.uid;
       // public.users.auth_id is the bridge column.
+      //
+      // 2026-09-25 audit: this read public.users directly, whose SELECT
+      // policy is own-row only (mig 001), so every other commenter
+      // resolved to 'fan'. get_public_profiles (mig 086/089) is the
+      // SECURITY DEFINER batch accessor the Clips feed already uses.
       const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
       const nameByAuthId = new Map<string, string>();
       if (userIds.length > 0) {
-        const { data: users } = await supabase
-          .from('users')
-          .select('auth_id, display_name')
-          .in('auth_id', userIds);
-        for (const u of users ?? []) {
-          if (u.auth_id) {
-            nameByAuthId.set(u.auth_id, u.display_name || 'fan');
+        const { data: profiles } = await supabase.rpc('get_public_profiles', {
+          p_user_ids: userIds,
+        });
+        for (const u of (profiles ?? []) as Array<{ user_id: string; display_name: string | null }>) {
+          if (u.user_id) {
+            nameByAuthId.set(u.user_id, u.display_name || 'fan');
           }
         }
       }

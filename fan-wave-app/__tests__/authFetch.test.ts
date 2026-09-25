@@ -43,13 +43,27 @@ describe('createResilientFetch', () => {
       .mockResolvedValueOnce(res(429, {}, { 'retry-after': '2' }))
       .mockResolvedValueOnce(res(429))
       .mockResolvedValueOnce(res(200, { access_token: 'x' }));
-    const f = createResilientFetch(base, { sleep, maxRetries: 3 });
+    const f = createResilientFetch(base, { sleep, maxRetries: 3, random: () => 0 });
     const r = await f(TOKEN_URL, { method: 'POST' });
     expect(r.status).toBe(200);
     expect(base).toHaveBeenCalledTimes(3);
     // First wait honours Retry-After (2 s), second falls back to backoff.
     expect(sleep).toHaveBeenNthCalledWith(1, 2000);
     expect(sleep).toHaveBeenNthCalledWith(2, 2000);
+  });
+
+  it('jitters the fallback backoff over [d, 1.5d) but never Retry-After (P2.12)', async () => {
+    const base = jest
+      .fn<Promise<Response>, any[]>()
+      .mockResolvedValueOnce(res(429, {}, { 'retry-after': '2' }))
+      .mockResolvedValueOnce(res(429))
+      .mockResolvedValueOnce(res(429))
+      .mockResolvedValueOnce(res(200, { access_token: 'x' }));
+    const f = createResilientFetch(base, { sleep, maxRetries: 3, random: () => 0.999 });
+    await f(TOKEN_URL, { method: 'POST' });
+    expect(sleep).toHaveBeenNthCalledWith(1, 2000); // server-chosen, as given
+    expect(sleep).toHaveBeenNthCalledWith(2, Math.floor(2000 * 1.4995)); // attempt 1: 2 s base
+    expect(sleep).toHaveBeenNthCalledWith(3, Math.floor(4000 * 1.4995)); // attempt 2: 4 s base
   });
 
   it('turns a persistent 429 into a 503 so auth-js keeps the session', async () => {

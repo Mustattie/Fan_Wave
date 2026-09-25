@@ -36,6 +36,8 @@ export interface ResilientFetchOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Injectable for tests. */
   now?: () => number;
+  /** Injectable for tests: [0, 1). Spreads the backoff over [d, 1.5d). */
+  random?: () => number;
 }
 
 const DEFAULTS: Required<ResilientFetchOptions> = {
@@ -43,6 +45,7 @@ const DEFAULTS: Required<ResilientFetchOptions> = {
   maxDelayMs: 10_000,
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   now: () => Date.now(),
+  random: () => Math.random(),
 };
 
 const AUTH_PATH = '/auth/v1/';
@@ -119,7 +122,13 @@ export function createResilientFetch(
     let res = await baseFetch(input, init);
 
     while (res.status === 429 && isTokenEndpoint && attempt < opts.maxRetries) {
-      const wait = retryAfterMs(res, opts.maxDelayMs) ?? Math.min(1000 * 2 ** attempt, opts.maxDelayMs);
+      // P2.12 (2026-09-25): thousands of phones behind one venue NAT are
+      // rate-limited together and used to retry on the same 1/2/4 s
+      // ladder, re-colliding every step. Retry-After is honoured as given
+      // (the server chose it); the fallback backoff is jittered.
+      const base = retryAfterMs(res, opts.maxDelayMs);
+      const wait =
+        base ?? Math.min(Math.floor(1000 * 2 ** attempt * (1 + opts.random() * 0.5)), opts.maxDelayMs);
       recordAuthFailure({ endpoint, status: 429, errorCode: 'over_request_rate_limit' });
       attempt += 1;
       await opts.sleep(wait);

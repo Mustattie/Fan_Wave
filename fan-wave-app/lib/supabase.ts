@@ -87,11 +87,28 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // resume instead of waiting for a timer that never fired; stopAutoRefresh()
 // on background stops it burning cycles and attempting refreshes that cannot
 // complete.
+// P2.12 (2026-09-25): startAutoRefresh() refreshes immediately when the
+// token is inside its expiry margin. At a kickoff, every phone that was
+// backgrounded through the pre-game comes back within the same seconds
+// and every one of them refreshes at once behind the venue's NAT (150
+// refreshes / 5 min / IP). Spread the resume refresh over 0-2 s. A
+// call that needs the session sooner still works: auth-js refreshes on
+// demand when getSession() sees an expired token.
+const RESUME_REFRESH_SPREAD_MS = 2_000;
+let resumeRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 if (Platform.OS !== 'web') {
   AppState.addEventListener('change', (state) => {
     if (state === 'active') {
-      supabase.auth.startAutoRefresh();
+      if (resumeRefreshTimer) clearTimeout(resumeRefreshTimer);
+      resumeRefreshTimer = setTimeout(() => {
+        resumeRefreshTimer = null;
+        supabase.auth.startAutoRefresh();
+      }, Math.floor(Math.random() * RESUME_REFRESH_SPREAD_MS));
     } else {
+      if (resumeRefreshTimer) {
+        clearTimeout(resumeRefreshTimer);
+        resumeRefreshTimer = null;
+      }
       supabase.auth.stopAutoRefresh();
     }
   });
