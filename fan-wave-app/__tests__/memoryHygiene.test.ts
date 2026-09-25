@@ -4,7 +4,22 @@
  * the code-side guarantees from silently regressing.
  */
 import { createPosterCache } from '../lib/clipsFeed';
-import { initVideoDiskCache, VIDEO_DISK_CACHE_BYTES } from '../lib/videoBuffer';
+import {
+  initVideoDiskCache,
+  VIDEO_DISK_CACHE_BYTES,
+  CLIP_FEED_BUFFER_OPTIONS,
+  CLIP_PREVIEW_BUFFER_OPTIONS,
+} from '../lib/videoBuffer';
+
+describe('player buffer limits (Phase 1 OOM fix) stay intact', () => {
+  it('feed and preview players keep the 5 s / 8 MB caps with size winning over time', () => {
+    for (const opts of [CLIP_FEED_BUFFER_OPTIONS, CLIP_PREVIEW_BUFFER_OPTIONS]) {
+      expect(opts.preferredForwardBufferDuration).toBe(5);
+      expect(opts.maxBufferBytes).toBe(8 * 1024 * 1024);
+      expect(opts.prioritizeTimeOverSizeThreshold).toBe(false);
+    }
+  });
+});
 
 describe('createPosterCache (bounded session cache)', () => {
   it('never exceeds its cap and keeps the newest entry', () => {

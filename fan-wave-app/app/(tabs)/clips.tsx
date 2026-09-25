@@ -15,7 +15,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { Heart, MessageCircle, Share2, UserPlus, Download, Plus, Trash2, Slash, Pause, Play } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, UserPlus, Download, Plus, Trash2, Slash, Pause, Play, Volume2, VolumeX } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { FeedAudioController, CLIPS_MUTED_KEY, parseMuted, serializeMuted } from '@/lib/clipAudio';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -102,6 +104,8 @@ const ClipCard = React.memo(function ClipCard({
   isPlaying,
   isReady,
   onTogglePlay,
+  isMuted,
+  onToggleMute,
 }: {
   clip: ClipDisplay;
   isLiked: boolean;
@@ -129,6 +133,9 @@ const ClipCard = React.memo(function ClipCard({
   isPlaying: boolean;
   isReady: boolean;
   onTogglePlay: () => void;
+  /** Build 31 UAT: feed audio preference; the active card shows the toggle. */
+  isMuted: boolean;
+  onToggleMute: () => void;
 }) {
   const lastTapRef = useRef<number>(0);
   const heartAnimOpacity = useRef(new Animated.Value(0)).current;
@@ -406,6 +413,27 @@ const ClipCard = React.memo(function ClipCard({
           </TouchableOpacity>
         )}
 
+        {/* Build 31 UAT (2026-09-25): the shared player had been created
+            muted since v8.7+ and nothing unmuted it -- Clips never had
+            sound. Audio belongs to the active card only (it is the only
+            card with a player); this is the user's mute preference. */}
+        {!isPending && !playerFailed && isActive && isReady && (
+          <TouchableOpacity
+            style={styles.muteButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              onToggleMute();
+            }}
+            hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={isMuted ? 'Unmute' : 'Mute'}
+            testID="clip-mute-toggle"
+          >
+            {isMuted ? <VolumeX size={16} color="#fff" /> : <Volume2 size={16} color="#fff" />}
+          </TouchableOpacity>
+        )}
+
         {displayViews > 0 && (
           <View style={styles.viewCountBadge}>
             <Text style={styles.viewCountText}>👁 {displayViews.toLocaleString()}</Text>
@@ -567,8 +595,41 @@ export default function ClipsScreen() {
     // honours it.
     p.bufferOptions = CLIP_FEED_BUFFER_OPTIONS;
     p.loop = true;
-    p.muted = true;
+    // Build 31 UAT: this was `muted = true` since v8.7+ (284eda4) with no
+    // path that ever unmuted it, so Clips played silently on every build.
+    // The flag is now owned by FeedAudioController (lib/clipAudio.ts):
+    // audible for the active card while foregrounded and not user-muted.
+    p.muted = false;
   });
+  // Feed audio policy bound to the one player. Preference persisted so a
+  // muted feed stays muted across launches.
+  const audioRef = useRef<FeedAudioController | null>(null);
+  if (sharedPlayer && audioRef.current === null) {
+    audioRef.current = new FeedAudioController(sharedPlayer);
+  }
+  const [feedMuted, setFeedMuted] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(CLIPS_MUTED_KEY)
+      .then((raw) => {
+        if (cancelled) return;
+        const muted = parseMuted(raw);
+        setFeedMuted(muted);
+        audioRef.current?.apply({ userMuted: muted });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const toggleFeedMute = useCallback(() => {
+    setFeedMuted((prev) => {
+      const next = !prev;
+      audioRef.current?.apply({ userMuted: next });
+      AsyncStorage.setItem(CLIPS_MUTED_KEY, serializeMuted(next)).catch(() => {});
+      return next;
+    });
+  }, []);
   // Stability fix 3: one loader per player instance owns the generation
   // token / same-uri dedupe / release rules (lib/sharedVideoSource.ts).
   const sourceRef = useRef<SharedVideoSource | null>(null);
@@ -674,6 +735,9 @@ export default function ClipsScreen() {
       resumePausedRef.current = false;
       try {
         if (autoplayEnabled && !forcePause) {
+          // Re-assert before play(): a foreground return or a source swap
+          // must not leave the player in the background-muted state.
+          audioRef.current?.apply({ appActive: true });
           sharedPlayer.play();
           setIsSharedPlaying(true);
         } else {
@@ -744,6 +808,8 @@ export default function ClipsScreen() {
     let released = false;
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
+        // Restore the user's preference; playback itself resumes paused.
+        audioRef.current?.apply({ appActive: true });
         if (released) {
           released = false;
           resumePausedRef.current = true;
@@ -751,6 +817,9 @@ export default function ClipsScreen() {
         }
         return;
       }
+      // Silence first, then pause/release: no audio can outlive the
+      // foreground even for the frames before the pause lands.
+      audioRef.current?.apply({ appActive: false });
       try { sharedPlayer.pause(); } catch { /* ignore */ }
       setIsSharedPlaying(false);
       if (state === 'background' && source.currentUri !== null) {
@@ -875,6 +944,7 @@ export default function ClipsScreen() {
       setIsSharedPlaying(false);
     } else {
       try {
+        audioRef.current?.apply({ appActive: true });
         sharedPlayer.play();
         setIsSharedPlaying(true);
         // First explicit play tap opts the session into autoplay so the
@@ -1518,10 +1588,12 @@ export default function ClipsScreen() {
           isPlaying={isActive ? isSharedPlaying : false}
           isReady={isActive ? isSharedReady : false}
           onTogglePlay={toggleSharedPlay}
+          isMuted={feedMuted}
+          onToggleMute={toggleFeedMute}
         />
       );
     },
-    [likedClipIds, handleLike, handleShare, handleComment, activeClipId, handleDelete, handleBlock, currentUserId, handleExport, handleFollow, followedUserIds, sharedPlayer, isSharedPlaying, isSharedReady, toggleSharedPlay, handleRetryUpload, handleCancelUpload, playerFailedFor, handleReloadPlayer]
+    [likedClipIds, handleLike, handleShare, handleComment, activeClipId, handleDelete, handleBlock, currentUserId, handleExport, handleFollow, followedUserIds, sharedPlayer, isSharedPlaying, isSharedReady, toggleSharedPlay, handleRetryUpload, handleCancelUpload, playerFailedFor, handleReloadPlayer, feedMuted, toggleFeedMute]
   );
 
   const renderFooter = useCallback(() => {
@@ -1815,6 +1887,17 @@ const styles = StyleSheet.create({
   pauseButton: {
     position: 'absolute',
     top: 8,
+    right: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  muteButton: {
+    position: 'absolute',
+    top: 52,
     right: 8,
     width: 36,
     height: 36,
