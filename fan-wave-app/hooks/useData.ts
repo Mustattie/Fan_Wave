@@ -1,7 +1,7 @@
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { supabase, getLocalUser } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { setCache, getCache, getStaleCache } from '@/lib/cache';
+import { setCache, getCache, getStaleCache, invalidateCache } from '@/lib/cache';
 const FETCH_TIMEOUT = 10_000; // 10 seconds
 
 /** Wrap any async call with a timeout that rejects after ms */
@@ -26,12 +26,47 @@ const PAGE_SIZE = 20;
 
 // ─── Games ──────────────────────────────────────────────────
 
+// Subkeys (per limit) that have been written to the AsyncStorage games
+// cache this session, so a manual refresh can drop all of them.
+const gamesCacheSubkeys = new Set<string>();
+
+/**
+ * Build 31 UAT (2026-09-25): pull-to-refresh on Home re-ran the query but
+ * the queryFn's AsyncStorage shortcut handed back the same rows for 30 s,
+ * so a refresh could never disagree with what was already on screen. The
+ * two refresh handlers call this first so a manual pull always reaches
+ * the server.
+ */
+export async function clearGamesCache(): Promise<void> {
+  await Promise.all(Array.from(gamesCacheSubkeys).map((k) => invalidateCache('games', k)));
+}
+
+/**
+ * Sort helper for the merged list: live first, then finals, then upcoming,
+ * chronological inside each group -- the order the old single query
+ * produced (status asc: 'in' < 'post' < 'scheduled'), kept so the Home
+ * carousel and Game Day sections read the same as before.
+ */
+function statusRank(status: string | undefined): number {
+  return status === 'live' ? 0 : status === 'final' ? 1 : 2;
+}
+export function mergeGameLegs(live: GameDisplay[], finals: GameDisplay[], upcoming: GameDisplay[]): GameDisplay[] {
+  const byId = new Map<string, GameDisplay>();
+  for (const g of [...live, ...finals, ...upcoming]) if (!byId.has(g.id)) byId.set(g.id, g);
+  return Array.from(byId.values()).sort((a, b) => {
+    const r = statusRank(a.status) - statusRank(b.status);
+    if (r !== 0) return r;
+    return (a.scheduledAt || '').localeCompare(b.scheduledAt || '');
+  });
+}
+
+const GAME_SELECT = '*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)';
+
 export function useGames(limit = 30) {
   // Subkey on the cache so a bumped limit doesn't return a stale shorter
-  // list. Filter out finished ('post') games — Today's Games should only
-  // surface live + upcoming, otherwise late-tipping NBA playoffs get
-  // pushed below the limit by all-day MLB schedules.
+  // list.
   const subkey = String(limit);
+  gamesCacheSubkeys.add(subkey);
   return useQuery<GameDisplay[]>({
     queryKey: ['games', limit],
     queryFn: async () => {
@@ -49,45 +84,59 @@ export function useGames(limit = 30) {
       if (cached && cached.length > 0) return cached;
 
       try {
-        // Carousel composition:
-        //   * status='in'        always show (live game)
-        //   * status='scheduled' show if not yet started; 4h grace covers
-        //     ESPN sync lag so a freshly-tipped game that's still 'scheduled'
-        //     in our DB still appears
-        //   * status='post'      show if it ended in the last ~24h — fans
-        //     check scores after the buzzer; ESPN itself keeps yesterday's
-        //     results visible into the next day
-        // Ordering: 'in' < 'post' < 'scheduled' alphabetically, so ASC puts
-        // live first, then today's finals, then upcoming. Within each group,
-        // chronological.
+        // Build 31 UAT (2026-09-25), Home "Today's Games" empty while Game
+        // Day showed the same day's MLB games: the old single query
+        // ordered `status asc` ('in' < 'post' < 'scheduled') and applied
+        // ONE limit across all three legs. With exactly 30 finals inside
+        // the 24 h window, Home's limit of 30 returned nothing but
+        // yesterday's finals, its local-day cut dropped them all, and
+        // pull-to-refresh re-fetched the identical 30 rows. Game Day asks
+        // for 50 and happened to get 20 scheduled rows.
+        //
+        // Two legs, each with its own limit, so finals can never starve
+        // upcoming games (or the reverse):
+        //   * live + scheduled  -- status 'in' always; 'scheduled' if not
+        //     yet started, 4 h grace for ESPN sync lag; earliest first, so
+        //     today's slate is always at the front of the window
+        //   * finals            -- 'post' that ended in the last ~24 h,
+        //     most recent first
+        // Orphaned rows (a null team FK) are dropped on both legs
+        // (v9.4.2 UAT).
         const upcomingCutoff = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
         const finishedCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const { data, error } = await withTimeout(
-          () => supabase
-            .from('games')
-            .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*)')
-            // v9.4.2 UAT: drop orphaned games where the team FK is null
-            // (historical seed rows + a handful of ESPN sync writes where
-            // the payload landed before the team row upserted). Without
-            // these filters, cards render as generic ⚾ + "Home"/"Away"
-            // placeholders on Home / Game Day. Real ESPN-synced games all
-            // have both FKs populated (sync skips otherwise, see
-            // supabase/functions/sync-game-schedules/index.ts:475-480).
-            .not('home_team_id', 'is', null)
-            .not('away_team_id', 'is', null)
-            .or(
-              `status.eq.in,` +
-              `and(status.eq.scheduled,scheduled_at.gte.${upcomingCutoff}),` +
-              `and(status.eq.post,scheduled_at.gte.${finishedCutoff})`,
-            )
-            .order('status', { ascending: true })
-            .order('scheduled_at', { ascending: true })
-            .limit(limit),
+        const [ahead, finals] = await withTimeout(
+          () =>
+            Promise.all([
+              supabase
+                .from('games')
+                .select(GAME_SELECT)
+                .not('home_team_id', 'is', null)
+                .not('away_team_id', 'is', null)
+                .in('status', ['in', 'scheduled'])
+                .gte('scheduled_at', upcomingCutoff)
+                .order('scheduled_at', { ascending: true })
+                .limit(limit),
+              supabase
+                .from('games')
+                .select(GAME_SELECT)
+                .not('home_team_id', 'is', null)
+                .not('away_team_id', 'is', null)
+                .eq('status', 'post')
+                .gte('scheduled_at', finishedCutoff)
+                .order('scheduled_at', { ascending: false })
+                .limit(limit),
+            ]),
           FETCH_TIMEOUT
         );
 
-        if (error) throw error;
-        const mapped = (data || []).map(mapGameToDisplay);
+        if (ahead.error) throw ahead.error;
+        if (finals.error) throw finals.error;
+        const aheadMapped = (ahead.data || []).map(mapGameToDisplay);
+        const mapped = mergeGameLegs(
+          aheadMapped.filter((g) => g.status === 'live'),
+          (finals.data || []).map(mapGameToDisplay),
+          aheadMapped.filter((g) => g.status !== 'live'),
+        );
         // v9.4.0 UAT Round 3: only cache non-empty results. Storing []
         // would re-poison the `cached && cached.length > 0` shortcut on
         // the next call and re-open the cold-load empty race.

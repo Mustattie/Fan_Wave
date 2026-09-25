@@ -21,7 +21,8 @@ import { GroupCard } from '@/components/GroupCard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { subscribeToWatchParties } from '@/lib/realtime';
 import { mapGameToDisplay, mapWatchPartyToDisplay } from '@/lib/mappers';
-import { useGames, useWatchParties, useMyGroups, useUserCity } from '@/hooks/useData';
+import { useGames, useWatchParties, useMyGroups, useUserCity, clearGamesCache } from '@/hooks/useData';
+import { selectTodaysGames } from '@/lib/homeGames';
 import { queryClient } from '@/hooks/useQueryClient';
 import { supabase, getLocalUser } from '@/lib/supabase';
 
@@ -145,34 +146,10 @@ export default function HomeScreen() {
   // from either day intentionally.
   const [dayFilter, setDayFilter] = useState<'today' | 'yesterday'>('today');
 
-  const filteredGames = useMemo(() => {
-    // Local-day boundaries relative to the client's TZ.
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const startOfTomorrow = startOfToday + 24 * 60 * 60 * 1000;
-    const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
-
-    const [lo, hi] = dayFilter === 'today'
-      ? [startOfToday, startOfTomorrow]
-      : [startOfYesterday, startOfToday];
-
-    const withinDay = games.filter((g) => {
-      if (!g.scheduledAt) return false;
-      const t = new Date(g.scheduledAt).getTime();
-      return t >= lo && t < hi;
-    });
-
-    if (!interestSports || interestSports.size === 0) return withinDay;
-    const filtered = withinDay.filter((g) => {
-      const sport = (g.sport || '').toLowerCase();
-      if (!sport) return false;
-      return interestSports.has(sport);
-    });
-    // Don't hide everything if the interest filter would empty the
-    // carousel — probably a user who picked an off-season sport. Fall
-    // back to all of the day-scoped set.
-    return filtered.length > 0 ? filtered : withinDay;
-  }, [games, interestSports, dayFilter]);
+  const filteredGames = useMemo(
+    () => selectTodaysGames(games, interestSports, dayFilter),
+    [games, interestSports, dayFilter],
+  );
 
   const loading = gamesLoading || partiesLoading || groupsLoading;
 
@@ -226,6 +203,9 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    // Build 31 UAT: a manual pull must reach the server, not the 30 s
+    // AsyncStorage shortcut that returns the rows already on screen.
+    await clearGamesCache();
     await queryClient.invalidateQueries({ queryKey: ['games'] });
     await queryClient.invalidateQueries({ queryKey: ['watchParties'] });
     await queryClient.invalidateQueries({ queryKey: ['myGroups'] });

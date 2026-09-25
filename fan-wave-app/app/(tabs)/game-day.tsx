@@ -17,7 +17,7 @@ import { GameCard } from '@/components/GameCard';
 import { SportPillRow } from '@/components/SportPill';
 import { subscribeToGames } from '@/lib/realtime';
 import { mapGameRealtimePatch, type GameDisplay } from '@/lib/mappers';
-import { useGames } from '@/hooks/useData';
+import { useGames, clearGamesCache } from '@/hooks/useData';
 import { queryClient } from '@/hooks/useQueryClient';
 import { SPORTS, SPORT_BY_ID } from '@/constants/Sports';
 
@@ -222,6 +222,7 @@ export default function GameDayScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     setLiveOverrides({}); // stale patches get flushed on manual refresh
+    await clearGamesCache(); // Build 31 UAT: bypass the 30 s storage shortcut
     await queryClient.invalidateQueries({ queryKey: ['games'] });
     setRefreshing(false);
   }, []);
