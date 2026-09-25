@@ -29,6 +29,12 @@ import { deleteClipAssets } from '@/lib/storage';
 import { subscribeToClips } from '@/lib/realtime';
 import { mapClipToDisplay, type ClipDisplay } from '@/lib/mappers';
 import {
+  hydrationKey,
+  mergeClipPage,
+  applyClipUpdate,
+  prependRealtimeClip,
+} from '@/lib/clipsFeed';
+import {
   subscribeToClipUploads,
   retryClipUpload,
   cancelClipUpload,
@@ -893,42 +899,56 @@ export default function ClipsScreen() {
   // SECURITY DEFINER batch accessor; one call per page, same shape as the
   // follow-state batch below. Silent-fail keeps the feed rendering with the
   // '@unknown' fallback if the RPC is unavailable.
+  // v9.5.22 (P2.5): posters already resolved this session are not asked
+  // for again -- a creator seen on page 1 used to be re-queried on every
+  // later page and never resolved at all for realtime inserts.
+  const posterCacheRef = useRef(new Map<string, { name?: string; tier?: string }>());
   const hydratePosters = useCallback(async (mapped: ClipDisplay[]) => {
+    const cache = posterCacheRef.current;
     const ids = Array.from(
-      new Set(mapped.map((c) => c.userId).filter(Boolean))
+      new Set(mapped.map((c) => c.userId).filter((id) => id && !cache.has(id)))
     );
-    if (ids.length === 0) return mapped;
-    try {
-      const { data, error } = await supabase.rpc('get_public_profiles', {
-        p_user_ids: ids,
-      });
-      if (error || !data) return mapped;
-      const names = new Map<string, string>(
-        (data as any[])
-          .filter((r) => r.display_name)
-          .map((r) => [r.user_id as string, r.display_name as string])
-      );
-      // v9.5: same batch now carries the poster's tier (mig 089) so the
-      // card can show a badge other fans actually see. Kept in its own map
-      // because a poster can have a tier without a display_name.
-      const tiers = new Map<string, string>(
-        (data as any[])
-          .filter((r) => r.subscription_tier)
-          .map((r) => [r.user_id as string, r.subscription_tier as string])
-      );
-      if (names.size === 0 && tiers.size === 0) return mapped;
-      return mapped.map((c) => ({
-        ...c,
-        ...(names.has(c.userId) ? { poster: `@${names.get(c.userId)}` } : {}),
-        ...(tiers.has(c.userId) ? { posterTier: tiers.get(c.userId) } : {}),
-      }));
-    } catch {
-      return mapped;
+    if (ids.length > 0) {
+      try {
+        const { data, error } = await supabase.rpc('get_public_profiles', {
+          p_user_ids: ids,
+        });
+        if (!error && data) {
+          for (const r of data as any[]) {
+            // v9.5: the batch also carries the poster's tier (mig 089) so
+            // the card can show a badge other fans actually see. A poster
+            // can have a tier without a display_name, so both are optional.
+            cache.set(r.user_id as string, {
+              ...(r.display_name ? { name: r.display_name as string } : {}),
+              ...(r.subscription_tier ? { tier: r.subscription_tier as string } : {}),
+            });
+          }
+          // Remember misses too, so an unknown id is not re-asked per page.
+          for (const id of ids) if (!cache.has(id)) cache.set(id, {});
+        }
+      } catch {
+        // Silent-fail keeps the feed rendering with the '@unknown' fallback.
+      }
     }
+    return mapped.map((c) => {
+      const hit = cache.get(c.userId);
+      if (!hit || (!hit.name && !hit.tier)) return c;
+      return {
+        ...c,
+        ...(hit.name ? { poster: `@${hit.name}` } : {}),
+        ...(hit.tier ? { posterTier: hit.tier } : {}),
+      };
+    });
   }, []);
+
+  // v9.5.22 (P2.6): a filter change or refresh bumps this; a page that
+  // was in flight for the previous filter is discarded when it lands
+  // instead of being appended to the new list.
+  const fetchGenRef = useRef(0);
 
   const fetchClips = useCallback(
     async (pageNum: number, filter: string, replace: boolean = false) => {
+      const gen = replace ? ++fetchGenRef.current : fetchGenRef.current;
       try {
         // v9.2.0: Following is now a proper SECURITY DEFINER RPC that
         // JOINs user_follows. Previous code just did .order('created_at')
@@ -941,8 +961,9 @@ export default function ClipsScreen() {
           });
           if (error) throw error;
           const mapped = await hydratePosters((data ?? []).map(mapClipToDisplay));
+          if (gen !== fetchGenRef.current) return;
           if (replace) setClips(mapped);
-          else setClips((prev) => [...prev, ...mapped].slice(0, MAX_LOADED_CLIPS));
+          else setClips((prev) => mergeClipPage(prev, mapped, MAX_LOADED_CLIPS));
           setHasMore(mapped.length === PAGE_SIZE && (pageNum + 1) * PAGE_SIZE < MAX_LOADED_CLIPS);
           return;
         }
@@ -960,9 +981,12 @@ export default function ClipsScreen() {
           const sevenDaysAgo = new Date(
             Date.now() - 7 * 24 * 60 * 60 * 1000
           ).toISOString();
+          // v9.5.22: id tiebreak -- like_count ties made offset pages
+          // interleave and repeat rows.
           query = query
             .gte('created_at', sevenDaysAgo)
-            .order('like_count', { ascending: false });
+            .order('like_count', { ascending: false })
+            .order('id', { ascending: false });
         } else {
           // For You (v9.4.0 UAT Round 3 #18): scrolling the feed showed
           // clips jumping 47d -> 20d -> 32d ago because ordering was
@@ -980,22 +1004,26 @@ export default function ClipsScreen() {
           ).toISOString();
           query = query
             .gte('created_at', thirtyDaysAgo)
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false });
         }
 
         const { data, error } = await query;
         if (error) throw error;
+        if (gen !== fetchGenRef.current) return;
 
         if (data && data.length > 0) {
           const mapped = await hydratePosters(data.map(mapClipToDisplay));
+          if (gen !== fetchGenRef.current) return;
           if (replace) setClips(mapped);
-          else setClips((prev) => [...prev, ...mapped].slice(0, MAX_LOADED_CLIPS));
+          else setClips((prev) => mergeClipPage(prev, mapped, MAX_LOADED_CLIPS));
           setHasMore(data.length === PAGE_SIZE && (pageNum + 1) * PAGE_SIZE < MAX_LOADED_CLIPS);
         } else {
           if (replace) setClips([]);
           setHasMore(false);
         }
       } catch {
+        if (gen !== fetchGenRef.current) return;
         if (replace) setClips([]);
         setHasMore(false);
       }
@@ -1009,17 +1037,24 @@ export default function ClipsScreen() {
   // even for creators they already followed. Optimistic toggling would
   // then send toggle_clip_like which would flip an already-liked row
   // OFF -- silently un-liking things the user thought they were liking.
+  //
+  // v9.5.22 (P2.5): keyed on the set of live clip ids, not the array
+  // reference. A like tap, an upload progress tick (~every 256 KB) and a
+  // realtime counter bump from any other user all call setClips; each used
+  // to re-run both batch queries over the whole list. Placeholders
+  // ('temp-' ids) are excluded: passing them to `.in('clip_id', ...)` fails
+  // the uuid cast and silently emptied the like hydration for as long as a
+  // failed upload sat on the feed.
+  const clipsHydrationKey = hydrationKey(clips);
   useEffect(() => {
-    if (clips.length === 0) return;
+    const [idPart, posterPart] = clipsHydrationKey.split('|');
+    const clipIds = idPart ? idPart.split(',') : [];
+    const posterIds = posterPart ? posterPart.split(',') : [];
+    if (clipIds.length === 0) return;
     let cancelled = false;
     (async () => {
       const { data: { user } } = await getLocalUser();
       if (!user || cancelled) return;
-
-      const clipIds = clips.map((c) => c.id);
-      const posterIds = Array.from(
-        new Set(clips.map((c) => c.userId).filter(Boolean))
-      );
 
       // Batch-fetch which of the visible clips this user has already liked.
       const { data: likedRows } = await supabase
@@ -1056,7 +1091,7 @@ export default function ClipsScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [clips]);
+  }, [clipsHydrationKey]);
 
   // Initial load
   useEffect(() => {
@@ -1076,29 +1111,32 @@ export default function ClipsScreen() {
     useCallback(() => {
       const unsub = subscribeToClips(
         (newClip) => {
-          setClips((prev) => {
-            if (prev.some((c) => c.id === newClip.id)) return prev;
-            if (
-              prev.some(
-                (c) =>
-                  c.status === 'uploading' &&
-                  !!c.pendingMediaUrl &&
-                  c.pendingMediaUrl === newClip.media_url,
-              )
-            ) {
-              return prev;
-            }
-            return [mapClipToDisplay(newClip), ...prev].slice(0, 200);
+          // v9.5.22: resolve the poster before it lands so the card does
+          // not read '@unknown' until the next page load.
+          void hydratePosters([mapClipToDisplay(newClip)]).then(([clip]) => {
+            if (!clip) return;
+            setClips((prev) =>
+              prependRealtimeClip(prev, clip, newClip.media_url, MAX_LOADED_CLIPS)
+            );
           });
         },
         (updatedClip) => {
-          setClips((prev) =>
-            prev.map((c) => (c.id === updatedClip.id ? mapClipToDisplay(updatedClip) : c))
-          );
+          // v9.5.22: merge counters only; replacing the card dropped the
+          // hydrated poster and re-keyed the hydration effect.
+          setClips((prev) => {
+            let changed = false;
+            const next = prev.map((c) => {
+              if (c.id !== updatedClip.id) return c;
+              const merged = applyClipUpdate(c, updatedClip);
+              if (merged !== c) changed = true;
+              return merged;
+            });
+            return changed ? next : prev;
+          });
         },
       );
       return unsub;
-    }, [])
+    }, [hydratePosters])
   );
 
   // Bridge the upload queue into the feed so the clip appears the instant
