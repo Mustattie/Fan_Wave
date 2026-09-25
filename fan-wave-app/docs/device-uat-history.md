@@ -2,8 +2,9 @@
 
 Physical-device baseline for the v9.5 stability program. **Build 30 is the
 most recent physically TESTED Android build.** Build 31 (v9.5.36, e59a65f)
-was cut on 2026-09-25 and carries everything after Build 30; it has not been
-tested yet. Jest/TypeScript green is not device verification.
+was cut on 2026-09-25 and carries everything after Build 30. Its P3.6 UAT
+found a Home "Today's Games" regression (fixed in v9.5.37, awaiting Build
+32); P3.6 is NOT PASS. Jest/TypeScript green is not device verification.
 
 Device: Samsung Galaxy S10+ / Android 12, package `org.fansphere.app`,
 app version 1.0.0 throughout. Builds are EAS `preview` (staging profile,
@@ -17,7 +18,7 @@ prod Supabase). No iOS build has been cut in this program.
 | 28 | 28 | 91fac18 | v9.5.17 | Phase 1 fixes 5–10 | Yes, S10+ | Password-recovery link bounced to the tabs; My Sports change never reached Game Day / Home; realtime `channel_error` warnings on every socket drop; Clips memory question (no incorrect retention found) → fixed in v9.5.18 |
 | 29 | 29 | f5207c8 | v9.5.18 | Build 28 UAT fixes | Yes, S10+ | Linked-game party time stayed "Tonight 7PM" (Pirates vs Cardinals 11:35 AM CDT) → fixed in v9.5.19. Sentry: `realtime.rejoin_failed [games-realtime]` |
 | 30 | 30 | ae9cded | v9.5.19 | Build 29 UAT fix | Yes, S10+ (`adb shell dumpsys package org.fansphere.app` confirmed versionCode=30) | Stale auto-title after changing the linked game (Lynx vs Fever → Canucks vs Oilers kept the Lynx title while the time moved 7:00 → 8:00 PM) → fixed in v9.5.20, **not yet device-verified** |
-| 31 | 31 | e59a65f | v9.5.36 | v9.5.20–v9.5.36 (all post-Build-30 work) | **Built 2026-09-25, NOT YET TESTED.** EAS build d035de6b, APK https://expo.dev/artifacts/eas/37AkR6L5fCZEazBpyrVa8SsveFHVJDkJlK69m_7fLHQ.apk | P3.6 device UAT pending (`qa/p3.6-android-memory-uat.md`); P3.6 stays CODE/AUTOMATION READY until it passes on the S10+ |
+| 31 | 31 | e59a65f | v9.5.36 | v9.5.20–v9.5.36 (all post-Build-30 work) | Yes, S10+ (versionCode 31 confirmed). Memory baseline on Home fine: Java Heap 12,524 KB, Native Heap 31,252 KB, TOTAL PSS 136,586 KB, TOTAL RSS 246,176 KB | **FAIL — Home "Today's Games"**: with NFL/NBA/WNBA selected Home showed "No games on deck today"; adding MLB in My Sports updated Game Day (MLB under Upcoming) but Home stayed empty, also after pull-to-refresh → fixed in v9.5.37 (15fa69b), **not yet device-verified**. P3.6 NOT PASS; the rest of the checklist was not run on this build |
 
 ## Build 28 coverage (v9.5.15–v9.5.17)
 
@@ -53,6 +54,32 @@ Fever to Vancouver Canucks vs Edmonton Oilers moved the time 7:00 → 8:00 PM
 but the title stayed "Minnesota Lynx vs Indiana Fever" → fixed in v9.5.20
 (7abeaa9), **awaiting device verification**.
 
+## Build 31 coverage (v9.5.36) — FAILED
+
+Physical P3.6 UAT started 2026-09-25 on the S10+ (versionCode 31 confirmed).
+
+- Install: OK. Home memory baseline: Java Heap 12,524 KB, Native Heap
+  31,252 KB, TOTAL PSS 136,586 KB, TOTAL RSS 246,176 KB (within gate).
+- **Home → Today's Games: FAIL.** Selected sports NFL, NBA, WNBA → "No games
+  on deck today — check back tomorrow!". Added MLB in My Sports → Game Day
+  correctly listed MLB under Upcoming Games → back on Home: still the
+  empty state, also after a manual pull-to-refresh.
+- Root cause (verified against prod read-only at 09:31 UTC: 0 live, exactly
+  30 finals in the 24 h window, 887 future scheduled): `useGames` ran one
+  query ordered `status asc` ('in' < 'post' < 'scheduled') with a single
+  limit. Home's limit 30 returned only yesterday's 30 finals, its local-day
+  cut dropped them all, and the 30 s AsyncStorage shortcut made
+  pull-to-refresh return the same rows. Game Day's limit 50 got 20
+  scheduled rows on top, hence MLB. Not a My Sports propagation bug: the
+  interest set reached both tabs; Home simply had no rows for today.
+- Fix v9.5.37 (15fa69b): two independently bounded legs (live+scheduled
+  earliest-first, finals most-recent-first) merged client-side; manual
+  refresh clears the storage cache for every limit; Home's day/interest
+  selection extracted to `lib/homeGames.ts` and covered by
+  `__tests__/homeTodaysGames.test.tsx`, which rebuilds the prod dataset.
+- Remaining checklist rows were not run on Build 31; Build 32 restarts
+  the P3.6 checklist from step 0.
+
 ## Changes after Build 30 awaiting physical-device verification
 
 None of the following has been in any device build. Each has unit tests
@@ -75,6 +102,7 @@ and a clean `tsc`; that is all.
 | 6752df1 | v9.5.32 | Android jest preset config | none (test only) |
 | cb7de07 | v9.5.33 | iOS upload-error classification, 720p on chat/Moments capture, banner safe-area inset | Android: banner sits below the status bar under edge-to-edge; chat/Moments capture unchanged on Android |
 | ba024fd | v9.5.34 | Jest test pinning the k6 production guard | none (test only) |
+| 15fa69b | v9.5.37 | Home Today's Games: two-leg games query, refresh bypasses the storage cache, selector extracted + regression test | Build 32: repeat the Build 31 scenario (NFL/NBA/WNBA → add MLB → Home shows today's MLB games; pull-to-refresh reaches the server) |
 | ce9a597 | v9.5.35 | P3.6 memory hygiene: 256 MB video disk-cache cap, buffer options on Moments and chat-preview players, stall-timer cleanup, bounded poster/telemetry maps, tracked reconnect timers, picker copy deleted after upload; explicit iOS usage strings; bottom-sheet insets; CI runs both presets | `qa/p3.6-android-memory-uat.md` rows R1–R8 |
 
 ## P3.6 — Android memory / OOM regression testing
