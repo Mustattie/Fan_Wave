@@ -181,6 +181,11 @@ async function uploadToSupabase(
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': contentType,
         'x-upsert': 'false',
+        // P2.10 (2026-09-25): every object path is timestamp-unique and
+        // never overwritten (x-upsert false), so the public URL is
+        // immutable. Storage served the default max-age=3600, which made
+        // the CDN re-validate every hour for every viewer.
+        'cache-control': 'max-age=31536000',
       },
     },
     (p) => {

@@ -24,7 +24,7 @@
 // __tests__/sharedVideoSource.test.ts with a fake player.
 
 export interface SourcePlayerLike {
-  replaceAsync(source: { uri: string } | null): Promise<void>;
+  replaceAsync(source: { uri: string; useCaching?: boolean } | null): Promise<void>;
 }
 
 export type LoadOutcome = 'same' | 'loaded' | 'stale' | 'error';
@@ -57,7 +57,12 @@ export class SharedVideoSource {
     const generation = ++this.generation;
     this.inFlightUri = uri;
     try {
-      await this.player.replaceAsync({ uri });
+      // P2.10 (2026-09-25): let expo-video keep a disk copy (LRU, default
+      // 1 GB). A looping card re-downloaded the whole file on every loop
+      // and A -> B -> A scrolling fetched A twice; with caching each clip
+      // costs its size once per device. MP4 only in this app (caching is
+      // unsupported for HLS, which we do not serve).
+      await this.player.replaceAsync({ uri, useCaching: true });
       if (generation !== this.generation) return { outcome: 'stale' };
       this.loadedUri = uri;
       this.inFlightUri = null;

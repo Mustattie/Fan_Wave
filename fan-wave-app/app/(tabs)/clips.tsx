@@ -1561,6 +1561,11 @@ export default function ClipsScreen() {
               mediaTypes: ['videos'] as any,
               videoMaxDuration: 30,
               quality: 0.8,
+              // P2.10 (2026-09-25): same 720p cap as create-clip's
+              // re-record path. iOS-only knob (Android keeps the device
+              // default until a transcoder lands); without it a 30 s
+              // iPhone clip came off the camera at 1080p/4K.
+              videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720,
             });
             if (!result.canceled && result.assets[0]?.uri) {
               const asset = result.assets[0];
@@ -1590,6 +1595,8 @@ export default function ClipsScreen() {
               // returned empty assets on expo-image-picker@17 / Android.
               mediaTypes: ['videos'] as any,
               quality: 0.8,
+              // P2.10: library picks are transcoded to 720p on iOS too.
+              videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720,
             });
             if (!result.canceled && result.assets[0]?.uri) {
               const asset = result.assets[0];
