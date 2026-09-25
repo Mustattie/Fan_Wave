@@ -11,7 +11,11 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:ci": "jest --ci --maxWorkers=2",
-    "check": "npm run typecheck && npm run test:ci"
+    "check": "npm run typecheck && npm run test:ci",
+    "test:android": "jest -c jest.android.config.js",
+    "load:seed": "node scripts/load/seed-users.mjs",
+    "load:mint": "node scripts/load/mint-tokens.mjs",
+    "load:cleanup": "node scripts/load/cleanup-users.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

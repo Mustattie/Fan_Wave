@@ -6,6 +6,11 @@
 - Uptime: 99.9% (max ~43 min downtime/month)
 - Error rate: < 0.1% of requests
 
+**Capacity evidence:** staged k6 load tests (100 → 10 000 VUs, gate rules and
+thresholds) live in `tests/load/README.md`. They target a staging project
+only; the scripts refuse the production ref. As of 2026-09-25 no stage has
+been run because no staging project exists.
+
 ---
 
 ## 1. Database Connection Exhaustion

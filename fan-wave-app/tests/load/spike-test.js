@@ -1,83 +1,114 @@
-import http from 'k6/http';
-import { check, sleep } from 'k6';
-import { Rate, Trend } from 'k6/metrics';
-
 /**
- * k6 Spike Test: Simulates World Cup match day traffic
+ * k6 — Kickoff spike: baseline → stage peak in 10 s, hold, cool down.
  *
- * Pattern: Sudden 50x traffic spike (e.g., USA vs Mexico kickoff)
- * Tests: Connection pooling, query performance, error rates under load
+ * The pre-v9.5 version of this script ramped to 50 000 anon VUs, which no
+ * single machine can generate and which measured only the anon path. This
+ * one spikes to the selected STAGE's VU count with signed-in sessions and
+ * the same read mix the app produces around a kickoff:
+ *   40 % live games      20 % watch parties    20 % trending clips
+ *   10 % browse groups   10 % my RSVPs
  *
- * Run: k6 run --env SUPABASE_URL=xxx --env SUPABASE_KEY=xxx spike-test.js
+ * Usage:
+ *   k6 run --env SUPABASE_URL=... --env SUPABASE_ANON_KEY=... --env STAGE=2 \
+ *          [--env LOAD_TOKENS_FILE=/abs/tokens.json] tests/load/spike-test.js
+ *
+ * Gate: feed p95 < 800 ms on the sustained plateau (the 10 s spike itself is
+ * reported but not gated: `http_req_duration{phase:spike}` vs `{phase:hold}`),
+ * errors < 1 % overall.
  */
+import { check, sleep } from 'k6';
+import { Trend } from 'k6/metrics';
+import {
+  REST_URL,
+  HOME_CITY,
+  STAGE,
+  PROFILE,
+  THRESHOLDS,
+  mergeThresholds,
+  SUMMARY_TREND_STATS,
+} from './lib/config.js';
+import { acquireSessions, sessionForVu, authHeaders } from './lib/auth.js';
+import { timedGet, timedPost, think } from './lib/http.js';
 
-const SUPABASE_URL = __ENV.SUPABASE_URL;
-const SUPABASE_KEY = __ENV.SUPABASE_KEY;
-
-const errorRate = new Rate('errors');
-const responseTime = new Trend('response_time', true);
+const feedLatency = new Trend('feed_latency', true);
+const BASELINE = Math.max(10, Math.round(PROFILE.vus / 20));
 
 export const options = {
   scenarios: {
-    spike: {
+    kickoff: {
       executor: 'ramping-vus',
-      startVUs: 100,
+      startVUs: BASELINE,
       stages: [
-        { duration: '30s', target: 100 },    // Baseline
-        { duration: '10s', target: 5000 },   // Spike!
-        { duration: '3m', target: 5000 },    // Sustain spike
-        { duration: '10s', target: 50000 },  // Mega spike
-        { duration: '2m', target: 50000 },   // Sustain mega
-        { duration: '1m', target: 100 },     // Cool down
+        { duration: '30s', target: BASELINE },
+        { duration: '10s', target: PROFILE.vus },
+        { duration: PROFILE.hold, target: PROFILE.vus },
+        { duration: '1m', target: BASELINE },
       ],
+      gracefulRampDown: '15s',
     },
   },
-  thresholds: {
-    http_req_duration: ['p(99)<5000'],  // Relaxed for spike
-    errors: ['rate<0.1'],                // Allow up to 10% errors during spike
-  },
+  setupTimeout: '15m',
+  summaryTrendStats: SUMMARY_TREND_STATS,
+  thresholds: mergeThresholds(THRESHOLDS.feed, THRESHOLDS.errors, {
+    'http_req_duration{phase:hold}': ['p(95)<800'],
+    'http_req_duration{phase:spike}': ['p(99)<5000'],
+  }),
+  tags: { script: 'spike-test', stage: String(STAGE) },
 };
 
-const headers = {
-  'apikey': SUPABASE_KEY,
-  'Authorization': `Bearer ${SUPABASE_KEY}`,
-  'Content-Type': 'application/json',
-};
+let spikeEndsAt = 0;
 
-export default function () {
-  // Mix of read operations simulating real usage
-  const rand = Math.random();
+export function setup() {
+  console.log(`[spike-test] stage ${STAGE}: ${BASELINE} → ${PROFILE.vus} VUs in 10 s`);
+  return { sessions: acquireSessions(), startedAt: Date.now() };
+}
 
+export default function (data) {
+  if (!spikeEndsAt) spikeEndsAt = data.startedAt + 40 * 1000; // 30 s baseline + 10 s spike
+  const phase = Date.now() < spikeEndsAt ? 'spike' : 'hold';
+  const session = sessionForVu(data.sessions);
+  const headers = authHeaders(session.jwt);
+  const city = HOME_CITY.split(',')[0].trim();
+
+  const roll = Math.random();
   let res;
-  if (rand < 0.4) {
-    // 40% — fetch games (most common)
-    res = http.get(
-      `${SUPABASE_URL}/rest/v1/games?select=id,home_score,away_score,status&status=eq.live&limit=20`,
-      { headers }
+  if (roll < 0.4) {
+    res = timedGet(
+      `${REST_URL}/games?select=id,home_score,away_score,status,scheduled_at&status=eq.in&limit=20`,
+      headers,
+      feedLatency,
+      'games:live',
+      { phase }
     );
-  } else if (rand < 0.7) {
-    // 30% — fetch watch parties
-    res = http.get(
-      `${SUPABASE_URL}/rest/v1/watch_parties?select=id,title,rsvp_count&starts_at=gt.${new Date().toISOString()}&limit=10`,
-      { headers }
+  } else if (roll < 0.6) {
+    res = timedGet(
+      `${REST_URL}/watch_parties?select=id,title,rsvp_count,starts_at&starts_at=gt.${new Date().toISOString()}&order=starts_at.asc&limit=10`,
+      headers,
+      feedLatency,
+      'watch_parties:upcoming',
+      { phase }
     );
-  } else if (rand < 0.9) {
-    // 20% — fetch trending clips
-    res = http.get(
-      `${SUPABASE_URL}/rest/v1/trending_clips?limit=20`,
-      { headers }
+  } else if (roll < 0.8) {
+    res = timedGet(`${REST_URL}/trending_clips?select=*&limit=20`, headers, feedLatency, 'trending_clips', { phase });
+  } else if (roll < 0.9) {
+    res = timedPost(
+      `${REST_URL}/rpc/browse_public_groups`,
+      { p_city: city, p_limit: 10 },
+      headers,
+      feedLatency,
+      'rpc:browse_public_groups',
+      { phase }
     );
   } else {
-    // 10% — browse groups
-    res = http.post(
-      `${SUPABASE_URL}/rest/v1/rpc/browse_public_groups`,
-      JSON.stringify({ p_city: 'Chicago', p_limit: 10 }),
-      { headers }
+    res = timedGet(
+      `${REST_URL}/watch_party_rsvps?select=watch_party_id,status&user_id=eq.${session.userId}&limit=20`,
+      headers,
+      feedLatency,
+      'watch_party_rsvps:mine',
+      { phase }
     );
   }
+  check(res, { 'status 2xx': (r) => r.status >= 200 && r.status < 300 });
 
-  responseTime.add(res.timings.duration);
-  check(res, { 'status ok': (r) => r.status >= 200 && r.status < 300 }) || errorRate.add(1);
-
-  sleep(0.2 + Math.random() * 0.5); // 200-700ms between requests
+  sleep(think(0.5, 0.3));
 }

@@ -55,3 +55,8 @@ credentials/
 
 # Holds the .p12 password in clear text.
 credentials.json
+
+# k6 load-test credentials and minted sessions (scripts/load/*.mjs)
+tests/load/users.json
+tests/load/tokens.json
+tests/load/results/
