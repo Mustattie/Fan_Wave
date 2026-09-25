@@ -33,6 +33,7 @@ import { useAppStateFocus } from '@/lib/appState';
 import { queryClient } from '@/hooks/useQueryClient';
 import { consumeIntentionalSignOut, reportUnexpectedSignOut } from '@/lib/authTelemetry';
 import { initClipUploads } from '@/lib/clipUploads';
+import { initKillSwitches } from '@/lib/killSwitches';
 import { useRecoveryPending, markRecoveryPending, clearRecoveryPending } from '@/lib/authRecovery';
 
 // Custom ErrorBoundary so React render-tree crashes (the "Something went
@@ -85,6 +86,8 @@ export const unstable_settings = {
 
 SplashScreen.preventAutoHideAsync();
 initErrorReporting();
+// P3.3: operational kill switches (feature_flags rows) polled from boot.
+initKillSwitches();
 
 const FanSphereDarkTheme = {
   ...DarkTheme,

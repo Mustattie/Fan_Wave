@@ -61,9 +61,16 @@ jest.mock('@/lib/errorReporting', () => ({
   addBreadcrumb: jest.fn(),
 }));
 
+const mockSwitches: Record<string, boolean> = {};
+jest.mock('@/lib/killSwitches', () => ({
+  isFeatureEnabled: (key: string) => mockSwitches[key] !== false,
+  useKillSwitch: (key: string) => mockSwitches[key] !== false,
+}));
+
 import {
   subscribeToTable,
   subscribeToGames,
+  subscribeToPresence,
   getRealtimeDiagnostics,
   jitter,
   _resetRealtimeRegistryForTests,
@@ -284,6 +291,34 @@ describe('realtime registry', () => {
     jest.advanceTimersByTime(1_000);
     expect(getRealtimeDiagnostics().topics[0]!.subscribers).toBe(1);
     expect(mockRemoveChannel).not.toHaveBeenCalled();
+  });
+});
+
+describe('kill switches (P3.3)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockChannels.clear();
+    _resetRealtimeRegistryForTests();
+    for (const k of Object.keys(mockSwitches)) delete mockSwitches[k];
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('games_realtime off: subscribeToGames joins nothing and returns a no-op', () => {
+    mockSwitches.games_realtime = false;
+    const leave = subscribeToGames(jest.fn());
+    expect(mockChannels.size).toBe(0);
+    expect(getRealtimeDiagnostics().topics).toHaveLength(0);
+    expect(() => leave()).not.toThrow();
+    // Other topics are unaffected.
+    subscribeToTable('shared', 'games', 'UPDATE', jest.fn());
+    expect(mockChannels.size).toBe(1);
+  });
+
+  it('presence off: subscribeToPresence opens no channel', () => {
+    mockSwitches.presence = false;
+    const leave = subscribeToPresence('presence-room-1', jest.fn(), { user_id: 'u1' });
+    expect(mockChannels.size).toBe(0);
+    expect(() => leave()).not.toThrow();
   });
 });
 

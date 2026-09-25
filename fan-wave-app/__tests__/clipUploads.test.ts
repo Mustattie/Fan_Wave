@@ -21,6 +21,11 @@ jest.mock('@/lib/errorReporting', () => ({
   addBreadcrumb: jest.fn(),
 }));
 
+const mockSwitches: Record<string, boolean> = {};
+jest.mock('@/lib/killSwitches', () => ({
+  isFeatureEnabled: (key: string) => mockSwitches[key] !== false,
+}));
+
 import { supabase } from '../lib/supabase';
 import {
   enqueueClipUpload,
@@ -427,6 +432,62 @@ describe('clipUploads: recovery guards (v9.5.23)', () => {
     expect(mockUploadClip).not.toHaveBeenCalled();
     expect(rec.latest('restored')).toMatchObject({ realId: 'row-old', progress: 100 });
     expect(mockTrackEvent).toHaveBeenCalledWith('clip_upload_reconciled', 'clips', expect.objectContaining({ found: true }));
+    rec.unsub();
+  });
+});
+
+describe('clipUploads: clips_upload kill switch (P3.3)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    _resetClipUploadsForTests();
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    mockFileExists.mockResolvedValue(true);
+    mockInsertSuccess();
+    for (const k of Object.keys(mockSwitches)) delete mockSwitches[k];
+  });
+
+  it('parks a new upload as a retryable failure and runs it once the switch is back on', async () => {
+    mockSwitches.clips_upload = false;
+    mockUploadClip.mockResolvedValue({ publicUrl: 'https://cdn/clips/u/1.mp4', provider: 'supabase' });
+    const rec = recorder();
+    const j = job();
+    enqueueClipUpload(j);
+    await flush();
+    expect(mockUploadClip).not.toHaveBeenCalled();
+    expect(rec.latest(j.tempId)).toMatchObject({ status: 'failed', errorKind: 'paused' });
+    expect(rec.latest(j.tempId)!.error).toMatch(/paused/);
+
+    mockSwitches.clips_upload = true;
+    retryClipUpload(j.tempId);
+    await flush();
+    await flush();
+    expect(mockUploadClip).toHaveBeenCalledTimes(1);
+    expect(rec.latest(j.tempId)!.realId).toBe('row-1');
+    rec.unsub();
+  });
+
+  it('holds queued jobs while the switch is off', async () => {
+    mockSwitches.clips_upload = true;
+    let release!: () => void;
+    mockUploadClip.mockImplementation(
+      () => new Promise((resolve) => { release = () => resolve({ publicUrl: 'https://cdn/clips/u/1.mp4', provider: 'supabase' }); }),
+    );
+    const rec = recorder();
+    const a = job();
+    enqueueClipUpload(a);
+    await flush();
+    // Switch flips while a is uploading; b is enqueued after the flip.
+    mockSwitches.clips_upload = false;
+    const b = job();
+    enqueueClipUpload(b);
+    await flush();
+    expect(rec.latest(b.tempId)!.status).toBe('failed');
+    release();
+    await flush();
+    await flush();
+    // a finished normally; nothing else started.
+    expect(rec.latest(a.tempId)!.realId).toBe('row-1');
+    expect(mockUploadClip).toHaveBeenCalledTimes(1);
     rec.unsub();
   });
 });

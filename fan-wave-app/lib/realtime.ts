@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
+import { isFeatureEnabled, useKillSwitch } from './killSwitches';
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { addBreadcrumb, reportError, reportMessage } from './errorReporting';
 
@@ -473,6 +474,9 @@ export function subscribeToPresence(
   onSync: (presenceState: Record<string, any[]>) => void,
   trackPayload?: Record<string, any>,
 ): () => void {
+  // P3.3 kill switch: presence is O(n^2) on join churn; off means the
+  // "online now" count simply stays absent.
+  if (!isFeatureEnabled('presence')) return () => {};
   // (a) Force-cleanup any leftover channel with this topic. Supabase
   // topics are prefixed with 'realtime:'. Cleanup is fire-and-forget
   // -- the underlying socket unsubscribe completes before the new
@@ -569,6 +573,9 @@ export function subscribeToGames(
   onUpdate: (game: any) => void,
   onReconnect?: () => void,
 ): () => void {
+  // P3.3 kill switch: with games_realtime off the screens keep their REST
+  // reads (60 s stale-time, focus refetch) and simply do not join.
+  if (!isFeatureEnabled('games_realtime')) return () => {};
   return subscribeToTable(
     'games-realtime',
     'games',
@@ -710,8 +717,10 @@ const GAMES_INVALIDATION_DEBOUNCE_MS = 500;
  */
 export function useGamesRealtime() {
   const queryClient = useQueryClient();
+  const enabled = useKillSwitch('games_realtime');
 
   useEffect(() => {
+    if (!enabled) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const invalidateSoon = () => {
@@ -730,5 +739,5 @@ export function useGamesRealtime() {
       if (timer) clearTimeout(timer);
       unsubscribe();
     };
-  }, [queryClient]);
+  }, [queryClient, enabled]);
 }

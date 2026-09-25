@@ -35,6 +35,7 @@ import {
   buildGroupInviteBody,
 } from '@/lib/inviteContacts';
 import { X as XIcon, Users as UsersIcon } from 'lucide-react-native';
+import { isFeatureEnabled } from '@/lib/killSwitches';
 import {
   mapChatRoomToDisplay,
   mapMessageToDisplay,
@@ -428,6 +429,11 @@ export default function FanGroupDetailScreen() {
   // Send message
   const handleSend = async () => {
     if (!message.trim() || !id) return;
+    // P3.3 kill switch.
+    if (!isFeatureEnabled('chat_send')) {
+      Alert.alert('Chat is paused', 'Sending is paused for a moment while we handle a surge. Try again shortly.');
+      return;
+    }
 
     // v9.2.5 UAT 2026-07-28: emoji picker used to stay pinned open after
     // send, forcing an extra tap on the smile button to dismiss. Close
@@ -531,6 +537,10 @@ export default function FanGroupDetailScreen() {
   // same CDN path.
   const handleAttachMedia = useCallback(() => {
     if (attaching || !id || !currentUserId) return;
+    if (!isFeatureEnabled('chat_send')) {
+      Alert.alert('Chat is paused', 'Sending is paused for a moment while we handle a surge. Try again shortly.');
+      return;
+    }
     Alert.alert('Capture the moment', 'Add a photo or video from the game.', [
       { text: 'Take photo', onPress: () => pickMedia('camera-photo') },
       { text: 'Record video', onPress: () => pickMedia('camera-video') },

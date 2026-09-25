@@ -39,6 +39,7 @@ import { uploadClip, deleteClipAssets, deleteLocalFile, fileExists } from './sto
 import { addBreadcrumb, reportError } from './errorReporting';
 import { withTimeout } from './withTimeout';
 import { trackEvent } from './analytics';
+import { isFeatureEnabled } from './killSwitches';
 
 const PENDING_KEY_V1 = 'clipUploads.pending.v1';
 const PENDING_KEY = 'clipUploads.pending.v2';
@@ -67,6 +68,7 @@ export type UploadErrorKind =
   | 'auth'
   | 'client'
   | 'file_missing'
+  | 'paused'
   | 'unknown';
 
 export interface PendingClipJob {
@@ -295,12 +297,30 @@ function friendlyMessage(kind: UploadErrorKind, raw: string): string {
       return 'Your session needed a refresh. Tap Retry to post this clip.';
     case 'file_missing':
       return 'The original video is no longer on this device, so this upload cannot be resumed.';
+    case 'paused':
+      return 'Clip uploads are paused for a moment while we handle a surge. Your clip is saved here; tap Retry soon.';
     default:
       return raw || 'Upload failed.';
   }
 }
 
 export function enqueueClipUpload(job: PendingClipJob): JobState {
+  // P3.3 kill switch: the recording is kept as a failed job with Retry,
+  // so nothing the user made is lost while uploads are paused.
+  if (!isFeatureEnabled('clips_upload')) {
+    const paused: JobState = {
+      ...job,
+      status: 'failed',
+      progress: 0,
+      attempt: 0,
+      errorKind: 'paused',
+      error: friendlyMessage('paused', ''),
+    };
+    emit(paused);
+    addBreadcrumb('clips', 'upload.paused_by_switch', { tempId: job.tempId });
+    void persistPending();
+    return paused;
+  }
   const initial: JobState = { ...job, status: 'queued', progress: 0, attempt: 0 };
   emit(initial);
   addBreadcrumb('clips', 'upload.enqueued', { tempId: job.tempId });
@@ -464,6 +484,9 @@ export function resumeAfterForeground(): void {
 
 async function tryRun(): Promise<void> {
   if (inFlight >= MAX_CONCURRENT) return;
+  // P3.3: restored/queued jobs wait while the switch is off; the next
+  // foreground or manual Retry runs them once it is back on.
+  if (!isFeatureEnabled('clips_upload')) return;
   const next = Array.from(jobs.values()).find((j) => j.status === 'queued');
   if (!next) return;
 
