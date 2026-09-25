@@ -113,6 +113,11 @@ interface PersistedJob extends PendingClipJob {
   errorKind?: UploadErrorKind;
   attempt?: number;
   autoRetried?: boolean;
+  /** v9.5.23: the blob URL of an attempt that reached the row insert. On
+   *  the next run the server is asked whether that row exists before
+   *  anything is uploaded or inserted again (see reconcileByMediaUrl). */
+  mediaUrl?: string;
+  thumbnailUrl?: string | null;
 }
 
 type Listener = (state: JobState) => void;
@@ -179,7 +184,32 @@ function toPersisted(j: JobState): PersistedJob {
     errorKind: j.errorKind,
     attempt: j.attempt,
     autoRetried: j.autoRetried,
+    mediaUrl: j.mediaUrl,
+    thumbnailUrl: j.thumbnailUrl ?? null,
   };
+}
+
+/**
+ * v9.5.23 (P3.5): the two duplicate paths -- an insert whose response was
+ * lost after it committed, and a process killed between the insert and
+ * the job's removal -- both end with a row on the server the client does
+ * not know about. media_url is unique per attempt (timestamped subpath),
+ * so asking for it settles the question. Returns the row id when the
+ * clip already exists, null when it does not, and undefined when the
+ * server could not be asked (the caller then keeps the conservative
+ * path: treat the attempt as failed, do not delete the blob).
+ */
+async function reconcileByMediaUrl(mediaUrl: string): Promise<string | null | undefined> {
+  try {
+    const { data, error } = await withTimeout(
+      () => supabase.from('media_clips').select('id').eq('media_url', mediaUrl).maybeSingle(),
+      10_000,
+    );
+    if (error) return undefined;
+    return data?.id ?? null;
+  } catch {
+    return undefined;
+  }
 }
 
 async function persistPending(): Promise<void> {
@@ -282,6 +312,11 @@ export function enqueueClipUpload(job: PendingClipJob): JobState {
 export function retryClipUpload(tempId: string, source: 'manual' | 'auto' = 'manual'): void {
   const existing = jobs.get(tempId);
   if (!existing) return;
+  // v9.5.23: only a failed job can be retried. A second call while the
+  // job is queued/uploading/inserting (double tap, or the foreground
+  // resume racing a manual tap) used to reset it to 'queued' and start a
+  // second concurrent upload of the same recording -- two blobs, two rows.
+  if (existing.status !== 'failed') return;
   // Fresh path every time: the previous attempt may have completed on the
   // server after our timeout fired, and x-upsert:false would 409 on it.
   emit({
@@ -443,6 +478,36 @@ async function tryRun(): Promise<void> {
   addBreadcrumb('clips', 'upload.started', { tempId: next.tempId, attempt });
 
   try {
+    // v9.5.23: a previous attempt got as far as the insert. If its row is
+    // on the server this job is already done; do not upload a second blob
+    // or insert a second row. If it is not, the old blob is dropped so it
+    // does not become an orphan under the fresh subpath below.
+    if (next.mediaUrl) {
+      const existingId = await reconcileByMediaUrl(next.mediaUrl);
+      if (existingId) {
+        emit({
+          ...(jobs.get(next.tempId) || next),
+          status: 'inserting',
+          progress: 100,
+          realId: existingId,
+          mediaUrl: next.mediaUrl,
+          thumbnailUrl: next.thumbnailUrl ?? null,
+        });
+        jobs.delete(next.tempId);
+        await persistPending();
+        addBreadcrumb('clips', 'upload.reconciled', { tempId: next.tempId, found: true });
+        void trackEvent('clip_upload_reconciled', 'clips', { found: true, attempt });
+        return;
+      }
+      if (existingId === null) {
+        await deleteClipAssets([next.mediaUrl, next.thumbnailUrl ?? null]);
+        addBreadcrumb('clips', 'upload.reconciled', { tempId: next.tempId, found: false });
+      }
+      // undefined: could not ask; fall through and let the fresh attempt
+      // (new subpath) decide. The stale blob is cleaned by the next
+      // reconcile or the storage sweep.
+    }
+
     const { publicUrl } = await uploadClip(next.localUri, {
       contentType: next.contentType,
       subpath: next.subpath,
@@ -480,25 +545,47 @@ async function tryRun(): Promise<void> {
       thumbnailUrl,
     });
 
-    const { data: row, error } = await withTimeout(
-      () => supabase
-        .from('media_clips')
-        .insert({
-          user_id: next.userId,
-          title: next.title,
-          description: next.description,
-          media_url: publicUrl,
-          thumbnail_url: thumbnailUrl,
-          media_type: 'video',
-          duration_seconds: next.durationSeconds,
-          sport_id: next.sportId,
-          moment_type: next.momentType,
-        })
-        .select('*')
-        .single(),
-      INSERT_TIMEOUT_MS,
-    );
-    if (error) {
+    // The job is persisted with mediaUrl from here on, so a kill during
+    // the insert is reconciled on the next launch instead of re-run.
+    await persistPending();
+
+    let row: { id: string } | null = null;
+    let error: any = null;
+    try {
+      const res = await withTimeout(
+        () => supabase
+          .from('media_clips')
+          .insert({
+            user_id: next.userId,
+            title: next.title,
+            description: next.description,
+            media_url: publicUrl,
+            thumbnail_url: thumbnailUrl,
+            media_type: 'video',
+            duration_seconds: next.durationSeconds,
+            sport_id: next.sportId,
+            moment_type: next.momentType,
+          })
+          .select('*')
+          .single(),
+        INSERT_TIMEOUT_MS,
+      );
+      row = res.data as any;
+      error = res.error;
+    } catch (timeoutOrNetwork) {
+      // v9.5.23: the insert may have committed even though the response
+      // never arrived. Before this, the timeout skipped the cleanup below
+      // (blob orphaned) and the retry inserted a second row.
+      const existingId = await reconcileByMediaUrl(publicUrl);
+      if (existingId) {
+        row = { id: existingId };
+        addBreadcrumb('clips', 'upload.insert_reconciled', { tempId: next.tempId });
+      } else {
+        if (existingId === null) await deleteClipAssets([publicUrl, thumbnailUrl]);
+        throw timeoutOrNetwork;
+      }
+    }
+    if (error || !row) {
       // v9.4.4: the blob is already in the bucket at this point. Before
       // this, a failed insert left it there forever AND a retry uploaded a
       // second copy under a fresh subpath -- that is where prod's 26

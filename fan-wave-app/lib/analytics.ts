@@ -11,7 +11,7 @@ type EventName =
   // the product event (a clip exists); these are the pipeline's own
   // started / succeeded / failed / retried / recovered signals.
   | 'clip_upload_started' | 'clip_upload_succeeded' | 'clip_upload_failed'
-  | 'clip_upload_retried' | 'clip_upload_recovered';
+  | 'clip_upload_retried' | 'clip_upload_recovered' | 'clip_upload_reconciled';
 
 interface EventMetadata {
   [key: string]: string | number | boolean | null;

@@ -318,3 +318,115 @@ describe('clipUploads', () => {
     });
   });
 });
+
+// v9.5.23 (P3.5): duplicate and orphan paths.
+describe('clipUploads: recovery guards (v9.5.23)', () => {
+  const { deleteClipAssets } = jest.requireMock('@/lib/storage') as { deleteClipAssets: jest.Mock };
+
+  function mockTable(handlers: { insert?: () => Promise<any>; selectByUrl?: () => Promise<any> }) {
+    (supabase.from as jest.Mock).mockImplementation(() => {
+      const chain: any = {};
+      chain.insert = jest.fn(() => chain);
+      chain.select = jest.fn(() => chain);
+      chain.eq = jest.fn(() => chain);
+      chain.single = jest.fn(() => (handlers.insert ? handlers.insert() : Promise.resolve({ data: { id: 'row-1' }, error: null })));
+      chain.maybeSingle = jest.fn(() => (handlers.selectByUrl ? handlers.selectByUrl() : Promise.resolve({ data: null, error: null })));
+      return chain;
+    });
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    _resetClipUploadsForTests();
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    mockFileExists.mockResolvedValue(true);
+  });
+
+  it('ignores a retry while the job is still in flight (no second upload)', async () => {
+    let release!: () => void;
+    mockUploadClip.mockImplementation(
+      () => new Promise((resolve) => { release = () => resolve({ publicUrl: 'https://cdn/clips/u/1.mp4', provider: 'supabase' }); }),
+    );
+    mockTable({});
+    const rec = recorder();
+    const j = job();
+    enqueueClipUpload(j);
+    await flush();
+    expect(rec.latest(j.tempId)!.status).toBe('uploading');
+
+    retryClipUpload(j.tempId);
+    retryClipUpload(j.tempId);
+    await flush();
+    expect(mockUploadClip).toHaveBeenCalledTimes(1);
+    expect(mockTrackEvent).not.toHaveBeenCalledWith('clip_upload_retried', 'clips', expect.anything());
+
+    release();
+    await flush();
+    await flush();
+    expect(rec.latest(j.tempId)!.realId).toBe('row-1');
+    rec.unsub();
+  });
+
+  it('treats an insert timeout as success when the row exists on the server, and never orphans the blob otherwise', async () => {
+    mockUploadClip.mockResolvedValue({ publicUrl: 'https://cdn/clips/u/1.mp4', provider: 'supabase' });
+    // First run: insert hangs past the timeout; the server does have the row.
+    mockTable({
+      insert: () => new Promise(() => {}),
+      selectByUrl: () => Promise.resolve({ data: { id: 'row-committed' }, error: null }),
+    });
+    jest.useFakeTimers();
+    const rec = recorder();
+    const j = job();
+    enqueueClipUpload(j);
+    await Promise.resolve();
+    await jest.advanceTimersByTimeAsync(31_000);
+    await jest.advanceTimersByTimeAsync(1);
+    jest.useRealTimers();
+    await flush();
+    await flush();
+    expect(rec.latest(j.tempId)!.realId).toBe('row-committed');
+    expect(deleteClipAssets).not.toHaveBeenCalled();
+    expect(mockUploadClip).toHaveBeenCalledTimes(1);
+
+    // Second run: insert hangs and the row is NOT there -> blob removed, job failed.
+    rec.unsub();
+    _resetClipUploadsForTests();
+    const rec2 = recorder();
+    mockTable({
+      insert: () => new Promise(() => {}),
+      selectByUrl: () => Promise.resolve({ data: null, error: null }),
+    });
+    jest.useFakeTimers();
+    const j2 = job();
+    enqueueClipUpload(j2);
+    await Promise.resolve();
+    await jest.advanceTimersByTimeAsync(31_000);
+    await jest.advanceTimersByTimeAsync(1);
+    jest.useRealTimers();
+    await flush();
+    await flush();
+    expect(rec2.latest(j2.tempId)!.status).toBe('failed');
+    expect(deleteClipAssets).toHaveBeenCalledWith(['https://cdn/clips/u/1.mp4', null]);
+    rec2.unsub();
+  });
+
+  it('reconciles a restored job that had reached the insert instead of uploading again', async () => {
+    const j = job({ tempId: 'restored' });
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) =>
+      key === 'clipUploads.pending.v2'
+        ? JSON.stringify([{ ...j, status: 'queued', mediaUrl: 'https://cdn/clips/u/old.mp4', thumbnailUrl: null }])
+        : null,
+    );
+    mockTable({ selectByUrl: () => Promise.resolve({ data: { id: 'row-old' }, error: null }) });
+    const rec = recorder();
+
+    await initClipUploads('user-1');
+    await flush();
+    await flush();
+
+    expect(mockUploadClip).not.toHaveBeenCalled();
+    expect(rec.latest('restored')).toMatchObject({ realId: 'row-old', progress: 100 });
+    expect(mockTrackEvent).toHaveBeenCalledWith('clip_upload_reconciled', 'clips', expect.objectContaining({ found: true }));
+    rec.unsub();
+  });
+});
