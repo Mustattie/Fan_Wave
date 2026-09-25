@@ -343,7 +343,11 @@ export default function FanGroupDetailScreen() {
         // Avoid duplicating our own optimistic messages
         const incoming = mapMessageToDisplay(newRow, currentUserIdRef.current || undefined);
         if (!incoming.isMe) {
-          setMessages((prev) => [...prev, incoming]);
+          // P2.2 (2026-09-25): a re-join replays recent inserts and the
+          // catch-up fetch can overlap them; the id decides, not arrival.
+          setMessages((prev) =>
+            prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming],
+          );
         }
       },
       catchUpMessages,

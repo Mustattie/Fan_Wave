@@ -3,6 +3,13 @@ import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { getOfflineQueue, clearOfflineQueue } from '@/lib/cache';
 import { supabase } from '@/lib/supabase';
+import { getRealtimeDiagnostics } from '@/lib/realtime';
+
+// P3.4 (2026-09-25): how long live channels may sit disconnected before
+// the banner says so. Short blips (a tab switch, a cell handoff) recover
+// inside this window and never show anything.
+const REALTIME_DEGRADED_AFTER_MS = 20_000;
+const REALTIME_POLL_MS = 5_000;
 
 /**
  * Lightweight offline banner using basic navigator.onLine / NetInfo pattern.
@@ -11,6 +18,41 @@ import { supabase } from '@/lib/supabase';
 export function OfflineBanner() {
   const [isOffline, setIsOffline] = useState(false);
   const wasOffline = useRef(false);
+  // P3.4: realtime degraded = the app holds live channels but the socket
+  // has been down (or a joined channel has not re-joined) for a while.
+  // REST keeps working; the user just is not getting live pushes.
+  const [realtimeDegraded, setRealtimeDegraded] = useState(false);
+  const degradedSinceRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const poll = () => {
+      if (!mounted) return;
+      let degraded = false;
+      try {
+        const d = getRealtimeDiagnostics();
+        const wanted = d.topics.filter((t) => t.subscribers > 0);
+        const stuck = wanted.some((t) => t.subscribedOnce && t.status !== 'SUBSCRIBED');
+        degraded = wanted.length > 0 && (!d.socketConnected || stuck);
+      } catch {
+        degraded = false;
+      }
+      const now = Date.now();
+      if (!degraded) {
+        degradedSinceRef.current = null;
+        setRealtimeDegraded(false);
+        return;
+      }
+      if (degradedSinceRef.current === null) degradedSinceRef.current = now;
+      setRealtimeDegraded(now - degradedSinceRef.current >= REALTIME_DEGRADED_AFTER_MS);
+    };
+    poll();
+    const interval = setInterval(poll, REALTIME_POLL_MS);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   // Process offline queue when coming back online
   useEffect(() => {
@@ -77,13 +119,21 @@ export function OfflineBanner() {
     };
   }, []);
 
-  if (!isOffline) return null;
-
-  return (
-    <View style={styles.banner}>
-      <Text style={styles.text}>No internet connection</Text>
-    </View>
-  );
+  if (isOffline) {
+    return (
+      <View style={styles.banner}>
+        <Text style={styles.text}>No internet connection</Text>
+      </View>
+    );
+  }
+  if (realtimeDegraded) {
+    return (
+      <View style={[styles.banner, styles.bannerDegraded]}>
+        <Text style={styles.text}>Live updates paused — reconnecting…</Text>
+      </View>
+    );
+  }
+  return null;
 }
 
 const styles = StyleSheet.create({
@@ -91,6 +141,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#ff4444',
     paddingVertical: 6,
     alignItems: 'center',
+  },
+  bannerDegraded: {
+    backgroundColor: Colors.dark.warning,
   },
   text: {
     fontSize: 12,

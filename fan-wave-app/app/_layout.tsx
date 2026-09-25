@@ -100,8 +100,8 @@ const FanSphereDarkTheme = {
 
 // Subscribes to Realtime UPDATEs on the current user's row so entitlement
 // state flips in-app within ~1 second of a RevenueCat webhook write.
-function EntitlementsRealtimeBridge() {
-  useEntitlementsRealtime();
+function EntitlementsRealtimeBridge({ userId }: { userId: string | null | undefined }) {
+  useEntitlementsRealtime(userId);
   return null;
 }
 
@@ -554,8 +554,10 @@ export default function RootLayout() {
       <ThemeProvider value={FanSphereDarkTheme}>
         <StatusBar style="light" />
         <OfflineBanner />
-        <EntitlementsRealtimeBridge />
-        <GamesRealtimeBridge />
+        {/* P2.1 (2026-09-25): a signed-out app held a games socket and a
+            channel for the whole session; only signed-in users get one. */}
+        <EntitlementsRealtimeBridge userId={session?.user?.id ?? null} />
+        {session ? <GamesRealtimeBridge /> : null}
         <AppStateFocusBridge />
         <NavigationGuard session={session} sessionResolved={initialized} onboardingComplete={onboardingComplete} hasSeenWelcome={hasSeenWelcome} />
         {/* v9.5.8 (iOS UAT UX-22): My Sports and the Notifications inbox

@@ -65,6 +65,7 @@ import {
   subscribeToTable,
   subscribeToGames,
   getRealtimeDiagnostics,
+  jitter,
   _resetRealtimeRegistryForTests,
 } from '../lib/realtime';
 import { reportMessage, addBreadcrumb } from '../lib/errorReporting';
@@ -223,8 +224,30 @@ describe('realtime registry', () => {
 
     ch.statusCb?.('CHANNEL_ERROR');
     ch.statusCb?.('SUBSCRIBED');
+    // P2.3: the callback is spread over a 3 s window, not fired inline.
+    expect(onReconnect).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(3_000);
     expect(onReconnect).toHaveBeenCalledTimes(1);
     expect(getRealtimeDiagnostics().topics[0]!.rejoins).toBe(1);
+  });
+
+  it('does not run a reconnect callback for a subscriber that left during the spread', () => {
+    const onReconnect = jest.fn();
+    const leave = subscribeToGames(jest.fn(), onReconnect);
+    subscribeToGames(jest.fn());
+    const ch = liveChannel('games-realtime');
+    ch.statusCb?.('SUBSCRIBED');
+    ch.statusCb?.('CHANNEL_ERROR');
+    ch.statusCb?.('SUBSCRIBED');
+    leave();
+    jest.advanceTimersByTime(3_000);
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
+  it('jitter spreads a delay over [d, 1.5d)', () => {
+    expect(jitter(2000, () => 0)).toBe(2000);
+    expect(jitter(2000, () => 0.999)).toBe(2999);
+    expect(jitter(2000, () => 0.5)).toBe(2500);
   });
 
   it('re-opens a channel the server closed unexpectedly', () => {
@@ -242,7 +265,8 @@ describe('realtime registry', () => {
       expect.anything(),
     );
 
-    jest.advanceTimersByTime(2_100);
+    // Reopen delay is jittered over [2 s, 3 s).
+    jest.advanceTimersByTime(3_100);
     const second = liveChannel('games-realtime');
     expect(second).not.toBe(first);
     expect(second.subscribe).toHaveBeenCalledTimes(1);

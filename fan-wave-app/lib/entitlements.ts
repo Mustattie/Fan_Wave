@@ -275,36 +275,31 @@ export function useHasWCAccess(): boolean {
 // flip the cache so the UI sees the new entitlement state without a refresh.
 // Subscribe at the root (app/_layout.tsx) by calling this hook once.
 // ---------------------------------------------------------------------------
-export function useEntitlementsRealtime() {
+// P2.1 (2026-09-25): takes the signed-in user id from the root layout's
+// session state. The previous version read getLocalUser() once at mount,
+// so an app that booted signed-out and then signed in never opened this
+// channel until the next cold start, and a sign-out left it open.
+export function useEntitlementsRealtime(userId: string | null | undefined) {
   const queryClient = useQueryClient();
   useEffect(() => {
-    let mounted = true;
-    let unsub: (() => void) | null = null;
-
-    getLocalUser().then(({ data: { user } }) => {
-      if (!mounted || !user) return;
-      const invalidate = () => {
-        queryClient.invalidateQueries({ queryKey: ['entitlements'] });
-      };
-      // Phase 1 (2026-09-16): through the shared registry so this join is
-      // status-checked and re-joins invalidate the cache (a webhook write
-      // that landed while the socket was down would otherwise be missed
-      // until the next cold start).
-      unsub = subscribeToTable(
-        `entitlements-${user.id}`,
-        'users',
-        'UPDATE',
-        invalidate,
-        `auth_id=eq.${user.id}`,
-        { onReconnect: invalidate },
-      );
-    });
-
-    return () => {
-      mounted = false;
-      unsub?.();
+    if (!userId) return;
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: ['entitlements'] });
     };
-  }, [queryClient]);
+    // Phase 1 (2026-09-16): through the shared registry so this join is
+    // status-checked and re-joins invalidate the cache (a webhook write
+    // that landed while the socket was down would otherwise be missed
+    // until the next cold start).
+    const unsub = subscribeToTable(
+      `entitlements-${userId}`,
+      'users',
+      'UPDATE',
+      invalidate,
+      `auth_id=eq.${userId}`,
+      { onReconnect: invalidate },
+    );
+    return unsub;
+  }, [queryClient, userId]);
 }
 
 // ---------------------------------------------------------------------------

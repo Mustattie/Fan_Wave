@@ -59,6 +59,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     // fetch is looked up at call time, not at module load.
     fetch: createResilientFetch((input, init) => fetch(input, init)),
   },
+  realtime: {
+    // P2.3 (2026-09-25): realtime-js reconnects on a fixed 1/2/5/10 s
+    // ladder, so every device that lost the same socket re-joins in the
+    // same second. Same ladder, spread over [step, 1.5 x step).
+    reconnectAfterMs: (tries: number) => {
+      const step = [1000, 2000, 5000, 10000][tries - 1] ?? 10000;
+      return Math.floor(step + Math.random() * step * 0.5);
+    },
+  },
 });
 
 // v9.5.5: bridge AppState into the auth auto-refresh timer.

@@ -83,6 +83,17 @@ const TEARDOWN_GRACE_MS = 300;
 const REPORT_DEDUPE_MS = 60_000;
 const REOPEN_BASE_MS = 2_000;
 const REOPEN_MAX_ATTEMPTS = 5;
+// P2.3 (2026-09-25): after a shared outage every device re-joins and
+// refetches on the same schedule. Re-opens are spread over [delay, 1.5x
+// delay) and the per-subscriber onReconnect work (games invalidation, chat
+// catch-up, entitlements) over [0, RECONNECT_SPREAD_MS) so a stadium's
+// worth of phones does not hit PostgREST in the same second.
+const RECONNECT_SPREAD_MS = 3_000;
+
+/** [ms, 1.5 * ms). Exposed for tests. */
+export function jitter(ms: number, random: () => number = Math.random): number {
+  return Math.floor(ms + random() * ms * 0.5);
+}
 // Build 28 UAT (2026-09-24): a dropped WebSocket makes Phoenix fire the
 // error event on EVERY joined channel (Socket.onConnClose ->
 // triggerChanError), which realtime-js surfaces as CHANNEL_ERROR -- the
@@ -157,11 +168,16 @@ function fanout(entry: Entry, payload: RealtimePostgresChangesPayload<any>): voi
 function notifyReconnect(entry: Entry): void {
   for (const sub of entry.subscribers) {
     if (!sub.onReconnect) continue;
-    try {
-      sub.onReconnect();
-    } catch (e) {
-      reportError(e, { source: 'realtime:onReconnect', topic: entry.key });
-    }
+    const cb = sub.onReconnect;
+    setTimeout(() => {
+      // The subscriber may have left during the spread window.
+      if (!entry.subscribers.has(sub)) return;
+      try {
+        cb();
+      } catch (e) {
+        reportError(e, { source: 'realtime:onReconnect', topic: entry.key });
+      }
+    }, Math.floor(Math.random() * RECONNECT_SPREAD_MS));
   }
 }
 
@@ -267,7 +283,7 @@ function scheduleReopen(entry: Entry): void {
     reportReopenExhausted(entry);
     return;
   }
-  const delay = REOPEN_BASE_MS * 2 ** entry.reopenAttempts;
+  const delay = jitter(REOPEN_BASE_MS * 2 ** entry.reopenAttempts);
   entry.reopenAttempts += 1;
   entry.reopenTimer = setTimeout(() => {
     entry.reopenTimer = null;

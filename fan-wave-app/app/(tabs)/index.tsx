@@ -19,7 +19,7 @@ import { GameCard } from '@/components/GameCard';
 import { WatchPartyCard } from '@/components/WatchPartyCard';
 import { GroupCard } from '@/components/GroupCard';
 import { SectionHeader } from '@/components/SectionHeader';
-import { subscribeToGames, subscribeToWatchParties } from '@/lib/realtime';
+import { subscribeToWatchParties } from '@/lib/realtime';
 import { mapGameToDisplay, mapWatchPartyToDisplay } from '@/lib/mappers';
 import { useGames, useWatchParties, useMyGroups, useUserCity } from '@/hooks/useData';
 import { queryClient } from '@/hooks/useQueryClient';
@@ -188,12 +188,13 @@ export default function HomeScreen() {
   const cityRef = useRef(city);
   cityRef.current = city;
 
+  // P2.1 (2026-09-25): Home no longer subscribes to games itself. The root
+  // GamesRealtimeBridge already invalidates ['games'] (debounced 500 ms)
+  // for every consumer; this screen's own handler invalidated once PER
+  // ROW, which under a sync that rewrites a few hundred rows a minute
+  // meant a few hundred invalidations a minute while Home was focused.
   useFocusEffect(
     useCallback(() => {
-      const unsubGames = subscribeToGames((_updatedGame) => {
-        queryClient.invalidateQueries({ queryKey: ['games'] });
-      });
-
       let unsubParties: (() => void) | undefined;
       if (city) {
         unsubParties = subscribeToWatchParties(
@@ -218,7 +219,6 @@ export default function HomeScreen() {
       }
 
       return () => {
-        unsubGames();
         unsubParties?.();
       };
     }, [city])
