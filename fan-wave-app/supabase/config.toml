@@ -372,6 +372,15 @@ verify_jwt = false
 [functions.process-notification-queue]
 verify_jwt = false
 
+# health-check (v9.5.30 rewrite, NOT YET DEPLOYED) authenticates for itself:
+# it requires the x-health-secret header (CRON_SHARED_SECRET) or the
+# service-role bearer, and its callers (a monitor, the ops cron) send a
+# non-JWT secret. Gateway validation would 401 every call before the body
+# runs -- the same v8.2 regression documented above -- so it is pinned here
+# rather than left to a manual --no-verify-jwt flag at deploy time.
+[functions.health-check]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

@@ -636,6 +636,18 @@ async function tryRun(): Promise<void> {
         throw timeoutOrNetwork;
       }
     }
+    if (error && (error as any).code === '23505') {
+      // Migration 102 adds UNIQUE(media_url): a duplicate-key error means a
+      // row for this exact upload already committed (a retry that raced a
+      // slow response). Treat it as the timeout path does -- find the row
+      // and succeed -- instead of deleting the blob that row points at.
+      const existingId = await reconcileByMediaUrl(publicUrl);
+      if (existingId) {
+        row = { id: existingId };
+        error = null;
+        addBreadcrumb('clips', 'upload.insert_reconciled', { tempId: next.tempId, via: '23505' });
+      }
+    }
     if (error || !row) {
       // v9.4.4: the blob is already in the bucket at this point. Before
       // this, a failed insert left it there forever AND a retry uploaded a

@@ -30,6 +30,12 @@ import {
 
 const BATCH_SIZE = 100;
 const MAX_BATCHES_PER_RUN = 10; // Process up to 1000 messages per invocation
+// Migration 104's reaper hands back rows that have sat in 'sending' for more
+// than 5 minutes. A run that outlives that lease would have its in-flight
+// rows re-claimed by the next cron tick and pushed twice -- the exact
+// duplicate this claiming scheme exists to prevent. Stop claiming new
+// batches well inside the lease; whatever is left waits for the next tick.
+const RUN_BUDGET_MS = 3 * 60 * 1000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -73,8 +79,10 @@ Deno.serve(async (req: Request) => {
     let totalFailed = 0;
     let totalDead = 0;
     let batchesProcessed = 0;
+    const runStartedAt = Date.now();
 
     while (batchesProcessed < MAX_BATCHES_PER_RUN) {
+      if (Date.now() - runStartedAt > RUN_BUDGET_MS) break;
       // Atomically claim the next batch (status -> 'sending', claimed_at set).
       const { data: batch, error } = await supabase.rpc(
         "claim_notification_batch",

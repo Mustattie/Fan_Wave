@@ -166,6 +166,10 @@ async function checkStorage(supabase: any): Promise<Check> {
  * `phx_reply` within the timeout. Anything else is an error.
  */
 function checkRealtime(supabaseUrl: string, apiKey: string): Promise<Check> {
+  // The key rides in the socket URL, which proxies and logs can see. Only
+  // the anon key may go there; without it the probe reports itself
+  // unconfigured rather than borrowing the service-role key.
+  if (!apiKey) return Promise.resolve({ status: "error", code: "anon_key_missing" });
   const start = Date.now();
   const wsUrl =
     `${supabaseUrl.replace(/^https/, "wss")}/realtime/v1/websocket?apikey=${
@@ -361,12 +365,14 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? serviceKey;
+  // Auth health is a header, so the service key is an acceptable fallback
+  // there; the realtime probe is URL-borne and gets the anon key or nothing.
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const supabase = createClient(supabaseUrl, serviceKey);
 
   const [database, auth, storage, realtime, sync_freshness, queueChecks] = await Promise.all([
     checkDatabase(supabase),
-    checkAuth(supabaseUrl, anonKey),
+    checkAuth(supabaseUrl, anonKey || serviceKey),
     checkStorage(supabase),
     checkRealtime(supabaseUrl, anonKey),
     checkSyncFreshness(supabase),

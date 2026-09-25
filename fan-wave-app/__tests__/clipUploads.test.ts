@@ -426,6 +426,23 @@ describe('clipUploads: recovery guards (v9.5.23)', () => {
     rec2.unsub();
   });
 
+  it('treats a duplicate-key insert (mig 102 UNIQUE media_url) as success via reconcile, never deleting the blob', async () => {
+    mockUploadClip.mockResolvedValue({ publicUrl: 'https://cdn/clips/u/dup.mp4', provider: 'supabase' });
+    mockTable({
+      insert: () => Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key' } }),
+      selectByUrl: () => Promise.resolve({ data: { id: 'row-existing' }, error: null }),
+    });
+    const rec = recorder();
+    const j = job();
+    enqueueClipUpload(j);
+    await flush();
+    await flush();
+    await flush();
+    expect(rec.latest(j.tempId)!.realId).toBe('row-existing');
+    expect(deleteClipAssets).not.toHaveBeenCalled();
+    rec.unsub();
+  });
+
   it('reconciles a restored job that had reached the insert instead of uploading again', async () => {
     const j = job({ tempId: 'restored' });
     (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) =>
