@@ -1,4 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  backoffSeconds,
+  classifyExpoTickets,
+  type ExpoTicket,
+  type QueueRowForTicket,
+} from "../_shared/expoTickets.ts";
 
 /**
  * Process Notification Queue
@@ -6,7 +12,19 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * Called every 30 seconds by pg_cron. Picks up pending/failed notifications
  * and sends them to Expo Push API in batches of 100.
  *
- * Retry strategy: exponential backoff (30s, 120s, 480s) with max 3 retries.
+ * Claiming (migration 104): batches are claimed atomically through the
+ * `claim_notification_batch(p_limit int) RETURNS SETOF notification_queue`
+ * RPC, which reaps stale 'sending' rows, then locks up to p_limit
+ * pending / retry-due rows with FOR UPDATE SKIP LOCKED, sets
+ * status='sending', claimed_at=now() and returns them. Two overlapping
+ * worker invocations can no longer send the same row twice.
+ *
+ * Delivery: Expo's response is parsed per ticket (same order as the
+ * messages sent). 'ok' rows are marked sent; DeviceNotRegistered rows are
+ * dead-lettered AND the token is cleared from users.push_token so we stop
+ * queueing for it; MessageRateExceeded and other errors retry with backoff.
+ *
+ * Retry strategy: exponential backoff (30s, 60s, 120s) with max 3 retries.
  * After max retries, messages are marked as 'dead' for manual inspection.
  */
 
@@ -57,26 +75,14 @@ Deno.serve(async (req: Request) => {
     let batchesProcessed = 0;
 
     while (batchesProcessed < MAX_BATCHES_PER_RUN) {
-      // Fetch next batch of pending or retryable messages
-      const { data: batch, error } = await supabase
-        .from("notification_queue")
-        .select("*")
-        .or(
-          "status.eq.pending," +
-          "and(status.eq.failed,next_retry_at.lte." + new Date().toISOString() + ")"
-        )
-        .order("created_at", { ascending: true })
-        .limit(BATCH_SIZE);
+      // Atomically claim the next batch (status -> 'sending', claimed_at set).
+      const { data: batch, error } = await supabase.rpc(
+        "claim_notification_batch",
+        { p_limit: BATCH_SIZE },
+      );
 
       if (error) throw error;
       if (!batch || batch.length === 0) break;
-
-      // Mark as sending (claim the batch)
-      const batchIds = batch.map((m: any) => m.id);
-      await supabase
-        .from("notification_queue")
-        .update({ status: "sending" })
-        .in("id", batchIds);
 
       // Build Expo push messages
       const expoMessages = batch.map((m: any) => ({
@@ -90,21 +96,33 @@ Deno.serve(async (req: Request) => {
       try {
         const res = await fetch("https://exp.host/--/api/v2/push/send", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
           body: JSON.stringify(expoMessages),
         });
 
         if (res.ok) {
-          // Mark all as sent
-          await supabase
-            .from("notification_queue")
-            .update({ status: "sent", sent_at: new Date().toISOString() })
-            .in("id", batchIds);
-          totalSent += batch.length;
+          const tickets = await parseExpoTickets(res);
+          if (!tickets) {
+            // 2xx but unparseable body: treat as a transient batch failure.
+            await handleBatchFailure(supabase, batch, "Expo response unparseable");
+            totalFailed += batch.length;
+          } else {
+            const outcome = await handleBatchTickets(supabase, batch, tickets);
+            totalSent += outcome.sent;
+            totalFailed += outcome.failed;
+            totalDead += outcome.dead;
+          }
         } else {
           const errorText = await res.text().catch(() => "Unknown error");
-          // Handle individual failures — mark for retry
-          await handleBatchFailure(supabase, batch, errorText);
+          // Non-2xx: whole batch retries with backoff
+          await handleBatchFailure(
+            supabase,
+            batch,
+            `Expo HTTP ${res.status}: ${errorText.slice(0, 500)}`,
+          );
           totalFailed += batch.length;
         }
       } catch (fetchErr) {
@@ -122,14 +140,14 @@ Deno.serve(async (req: Request) => {
       .from("notification_queue")
       .select("id", { count: "exact", head: true })
       .eq("status", "dead");
-    totalDead = deadCount ?? 0;
 
     return new Response(
       JSON.stringify({
         success: true,
         sent: totalSent,
         failed: totalFailed,
-        deadLetters: totalDead,
+        dead: totalDead,
+        deadLetters: deadCount ?? 0,
         batchesProcessed,
       }),
       {
@@ -138,6 +156,7 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (err) {
+    console.error("process-notification-queue crashed:", err);
     return new Response(
       JSON.stringify({ success: false, error: "Internal server error" }),
       {
@@ -149,43 +168,157 @@ Deno.serve(async (req: Request) => {
 });
 
 /**
- * Handle a failed batch — increment retry count or mark as dead.
- * Exponential backoff: 30s * 2^retry_count (30s, 60s, 120s)
+ * Parse Expo's `{ data: ExpoTicket[] }` envelope. Returns null when the body
+ * is not the shape we expect so the caller can fall back to a batch retry.
+ */
+async function parseExpoTickets(res: Response): Promise<ExpoTicket[] | null> {
+  try {
+    const json = await res.json();
+    const data = json?.data;
+    if (!Array.isArray(data)) return null;
+    return data as ExpoTicket[];
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Apply per-ticket outcomes with one UPDATE per outcome group:
+ *   sent   -> status='sent', sent_at=now()
+ *   dead   -> status='dead', retry_count+1, error_message
+ *   failed -> status='failed', retry_count+1, next_retry_at (backoff), error_message
+ * plus one UPDATE on users to null push_token for DeviceNotRegistered tokens.
+ *
+ * Rows within a group can carry different retry_count values, so the
+ * retry-bearing groups are bucketed by (retry_count, reason): a handful of
+ * distinct buckets per batch, never one UPDATE per row.
+ */
+async function handleBatchTickets(
+  supabase: any,
+  batch: any[],
+  tickets: ExpoTicket[],
+): Promise<{ sent: number; failed: number; dead: number }> {
+  const rows: QueueRowForTicket[] = batch.map((m: any) => ({
+    id: m.id,
+    push_token: m.push_token,
+    retry_count: m.retry_count || 0,
+    max_retries: m.max_retries || 3,
+  }));
+  const byId = new Map<string, QueueRowForTicket>(rows.map((r) => [r.id, r]));
+  const outcome = classifyExpoTickets(rows, tickets);
+  const nowIso = new Date().toISOString();
+
+  if (outcome.sent.length > 0) {
+    const { error } = await supabase
+      .from("notification_queue")
+      .update({ status: "sent", sent_at: nowIso })
+      .in("id", outcome.sent);
+    if (error) console.error("nq: mark sent failed:", error.message);
+  }
+
+  if (outcome.dead.length > 0) {
+    await updateGroupedByRetry(supabase, outcome.dead, byId, (newRetryCount, reason) => ({
+      status: "dead",
+      retry_count: newRetryCount,
+      error_message: reason,
+    }));
+  }
+
+  if (outcome.failed.length > 0) {
+    await updateGroupedByRetry(supabase, outcome.failed, byId, (newRetryCount, reason) => ({
+      status: "failed",
+      retry_count: newRetryCount,
+      next_retry_at: new Date(Date.now() + backoffSeconds(newRetryCount) * 1000).toISOString(),
+      error_message: reason,
+    }));
+  }
+
+  if (outcome.deadTokens.length > 0) {
+    // Stop queueing for devices Expo says are gone. Other pending rows for
+    // the same token are dead-lettered by Expo on their own send.
+    const { error } = await supabase
+      .from("users")
+      .update({ push_token: null })
+      .in("push_token", outcome.deadTokens);
+    if (error) console.error("nq: clearing dead push tokens failed:", error.message);
+  }
+
+  return {
+    sent: outcome.sent.length,
+    failed: outcome.failed.length,
+    dead: outcome.dead.length,
+  };
+}
+
+/**
+ * Group `items` by (new retry_count, reason) so each group is a single
+ * UPDATE ... WHERE id IN (...).
+ */
+async function updateGroupedByRetry(
+  supabase: any,
+  items: Array<{ id: string; reason: string }>,
+  byId: Map<string, QueueRowForTicket>,
+  build: (newRetryCount: number, reason: string) => Record<string, unknown>,
+) {
+  const groups = new Map<string, { ids: string[]; retry: number; reason: string }>();
+  for (const item of items) {
+    const row = byId.get(item.id);
+    const newRetryCount = (row?.retry_count ?? 0) + 1;
+    const reason = item.reason.slice(0, 500);
+    const key = `${newRetryCount}|${reason}`;
+    const g = groups.get(key);
+    if (g) g.ids.push(item.id);
+    else groups.set(key, { ids: [item.id], retry: newRetryCount, reason });
+  }
+  for (const g of groups.values()) {
+    const { error } = await supabase
+      .from("notification_queue")
+      .update(build(g.retry, g.reason))
+      .in("id", g.ids);
+    if (error) console.error("nq: grouped update failed:", error.message);
+  }
+}
+
+/**
+ * Handle a failed batch (non-2xx from Expo, network error, unparseable
+ * body) — increment retry count or mark as dead, one UPDATE per
+ * retry_count bucket. Exponential backoff: 30s * 2^(retry-1) (30s, 60s, 120s).
  */
 async function handleBatchFailure(
   supabase: any,
   batch: any[],
-  errorMessage: string
+  errorMessage: string,
 ) {
+  const byId = new Map<string, QueueRowForTicket>();
+  const dead: Array<{ id: string; reason: string }> = [];
+  const failed: Array<{ id: string; reason: string }> = [];
+
   for (const msg of batch) {
-    const newRetryCount = (msg.retry_count || 0) + 1;
+    const row: QueueRowForTicket = {
+      id: msg.id,
+      push_token: msg.push_token,
+      retry_count: msg.retry_count || 0,
+      max_retries: msg.max_retries || 3,
+    };
+    byId.set(row.id, row);
+    const newRetryCount = row.retry_count + 1;
+    if (newRetryCount >= row.max_retries) dead.push({ id: row.id, reason: errorMessage });
+    else failed.push({ id: row.id, reason: errorMessage });
+  }
 
-    if (newRetryCount >= (msg.max_retries || 3)) {
-      // Dead letter
-      await supabase
-        .from("notification_queue")
-        .update({
-          status: "dead",
-          retry_count: newRetryCount,
-          error_message: errorMessage,
-        })
-        .eq("id", msg.id);
-    } else {
-      // Schedule retry with exponential backoff
-      const backoffSeconds = 30 * Math.pow(2, newRetryCount - 1);
-      const nextRetry = new Date(
-        Date.now() + backoffSeconds * 1000
-      ).toISOString();
-
-      await supabase
-        .from("notification_queue")
-        .update({
-          status: "failed",
-          retry_count: newRetryCount,
-          next_retry_at: nextRetry,
-          error_message: errorMessage,
-        })
-        .eq("id", msg.id);
-    }
+  if (dead.length > 0) {
+    await updateGroupedByRetry(supabase, dead, byId, (newRetryCount, reason) => ({
+      status: "dead",
+      retry_count: newRetryCount,
+      error_message: reason,
+    }));
+  }
+  if (failed.length > 0) {
+    await updateGroupedByRetry(supabase, failed, byId, (newRetryCount, reason) => ({
+      status: "failed",
+      retry_count: newRetryCount,
+      next_retry_at: new Date(Date.now() + backoffSeconds(newRetryCount) * 1000).toISOString(),
+      error_message: reason,
+    }));
   }
 }

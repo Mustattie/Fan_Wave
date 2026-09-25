@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { gameChanged } from "../_shared/gameDiff.ts";
 
 // ---------------------------------------------------------------------------
 // CORS headers
@@ -323,12 +324,69 @@ class ESPNAdapter implements SportsDataProvider {
 }
 
 // ---------------------------------------------------------------------------
+// sync_runs bookkeeping (migration 107). Best-effort: a missing table or a
+// failed write must never fail the sync itself, so every call is wrapped.
+//
+//   public.sync_runs(id uuid pk, source text, started_at timestamptz,
+//                    finished_at timestamptz, ok boolean, games_seen int,
+//                    games_written int, games_skipped int, error text)
+// ---------------------------------------------------------------------------
+async function startSyncRun(supabase: any): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from("sync_runs")
+      .insert({ source: "espn", started_at: new Date().toISOString() })
+      .select("id")
+      .single();
+    if (error) {
+      console.warn("sync_runs insert failed (ignored):", error.message);
+      return null;
+    }
+    return data?.id ?? null;
+  } catch (e) {
+    console.warn("sync_runs insert threw (ignored):", e);
+    return null;
+  }
+}
+
+async function finishSyncRun(
+  supabase: any,
+  runId: string | null,
+  patch: {
+    ok: boolean;
+    games_seen: number;
+    games_written: number;
+    games_skipped: number;
+    error: string | null;
+  },
+) {
+  if (!runId) return;
+  try {
+    const { error } = await supabase
+      .from("sync_runs")
+      .update({ finished_at: new Date().toISOString(), ...patch })
+      .eq("id", runId);
+    if (error) console.warn("sync_runs update failed (ignored):", error.message);
+  } catch (e) {
+    console.warn("sync_runs update threw (ignored):", e);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+
+  // Populated once the request is authorised; read by the catch block so a
+  // crash still closes the sync_runs row with ok=false.
+  let runSupabase: any = null;
+  let runId: string | null = null;
+  let gamesSeen = 0;
+  let gamesWritten = 0;
+  let gamesSkipped = 0;
 
   try {
     // ---- Authentication: accept either CRON_SHARED_SECRET (the explicit
@@ -361,6 +419,7 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    runSupabase = supabase;
 
     // ---- Query params with validation ----
     const url = new URL(req.url);
@@ -376,16 +435,25 @@ Deno.serve(async (req: Request) => {
 
     const sports = sportParam ? [sportParam] : ALL_SPORTS;
 
+    runId = await startSyncRun(supabase);
+
     const provider: SportsDataProvider = new ESPNAdapter();
     const syncResults: Record<
       string,
-      { upserted: number; unmatched_teams: string[]; errors: string[] }
+      { upserted: number; skipped: number; unmatched_teams: string[]; errors: string[] }
     > = {};
     let totalSynced = 0;
+    let totalSkipped = 0;
 
     for (const sport of sports) {
       const games = await provider.getUpcomingGames(sport, daysParam);
-      const result = { upserted: 0, unmatched_teams: [] as string[], errors: [] as string[] };
+      gamesSeen += games.length;
+      const result = {
+        upserted: 0,
+        skipped: 0,
+        unmatched_teams: [] as string[],
+        errors: [] as string[],
+      };
       // Drain before the early return: a sport that fetched nothing BECAUSE
       // every request 403'd is the case worth reporting, and it is the one
       // that used to exit here silently.
@@ -490,18 +558,27 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // Batch-fetch existing metadata for all the games we're about to
-      // upsert so we can merge ESPN keys onto any pre-existing data
-      // (WC seed rows etc.) without clobbering. One query instead of N.
+      // Batch-fetch existing rows for all the games we're about to upsert:
+      // (a) to merge ESPN metadata keys onto any pre-existing data (WC seed
+      // rows etc.) without clobbering, and (b) to skip the upsert entirely
+      // when nothing changed. Every UPDATE on games fans out as a Realtime
+      // event to every connected client, so a no-op rewrite of ~all fetched
+      // games per run was pure broadcast noise. The select must cover every
+      // column gameRow writes (see gameChanged). One query instead of N.
       const espnIds = games.map((g) => g.espnId);
       const { data: existingRows } = await supabase
         .from("games")
-        .select("espn_id, metadata")
+        .select(
+          "espn_id, home_team_id, away_team_id, home_score, away_score, " +
+            "venue_name, scheduled_at, status, sport_id, event_id, metadata",
+        )
         .in("espn_id", espnIds);
 
+      const existingByEspnId = new Map<string, Record<string, unknown>>();
       const existingMeta = new Map<string, Record<string, unknown>>();
       for (const row of existingRows ?? []) {
         if (row.espn_id) {
+          existingByEspnId.set(row.espn_id, row as Record<string, unknown>);
           existingMeta.set(
             row.espn_id,
             (row.metadata && typeof row.metadata === "object")
@@ -556,6 +633,12 @@ Deno.serve(async (req: Request) => {
           ...(eventId ? { event_id: eventId } : {}),
         };
 
+        // Skip when the stored row already matches what we would write.
+        if (!gameChanged(existingByEspnId.get(game.espnId), gameRow)) {
+          result.skipped++;
+          continue;
+        }
+
         // Single atomic upsert keyed on espn_id (UNIQUE constraint from
         // migration 044). Replaces the old SELECT-then-INSERT/UPDATE which
         // could silently fail and create duplicates when the multi-column
@@ -573,7 +656,10 @@ Deno.serve(async (req: Request) => {
 
       syncResults[sport] = result;
       totalSynced += result.upserted;
+      totalSkipped += result.skipped;
     }
+    gamesWritten = totalSynced;
+    gamesSkipped = totalSkipped;
 
     // On 2026-08-27 ESPN began 403ing this function and nobody noticed for
     // four days: pg_cron logged "succeeded", pg_net logged HTTP 200, the body
@@ -585,10 +671,21 @@ Deno.serve(async (req: Request) => {
       .length;
     const totalFetchFailure = sportsWithFetchErrors === sports.length && totalSynced === 0;
 
+    await finishSyncRun(supabase, runId, {
+      ok: !totalFetchFailure,
+      games_seen: gamesSeen,
+      games_written: gamesWritten,
+      games_skipped: gamesSkipped,
+      error: totalFetchFailure
+        ? `every ESPN request failed (${sportsWithFetchErrors}/${sports.length} sports)`
+        : null,
+    });
+
     return new Response(
       JSON.stringify({
         success: !totalFetchFailure,
         totalSynced,
+        totalSkipped,
         sportsWithFetchErrors,
         ...(totalFetchFailure
           ? { error: "every ESPN request failed — upstream block or outage, not an empty schedule" }
@@ -610,6 +707,15 @@ Deno.serve(async (req: Request) => {
     const errorMessage = err instanceof Error ? err.message : String(err);
     const errorStack = err instanceof Error ? err.stack : undefined;
     console.error("sync-game-schedules crashed:", err);
+    if (runSupabase) {
+      await finishSyncRun(runSupabase, runId, {
+        ok: false,
+        games_seen: gamesSeen,
+        games_written: gamesWritten,
+        games_skipped: gamesSkipped,
+        error: errorMessage.slice(0, 1000),
+      });
+    }
     return new Response(
       JSON.stringify({
         success: false,
