@@ -52,8 +52,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
+      - name: Run tests (iOS preset)
         run: npx jest --passWithNoTests --ci
+
+      - name: Run tests (Android preset)
+        run: npx jest -c jest.android.config.js --passWithNoTests --ci
 
   eas-preview:
     name: EAS Preview Build

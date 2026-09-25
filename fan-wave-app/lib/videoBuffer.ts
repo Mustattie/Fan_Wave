@@ -48,3 +48,26 @@ export const CLIP_PREVIEW_BUFFER_OPTIONS: BufferOptions = {
   maxBufferBytes: 8 * MB,
   prioritizeTimeOverSizeThreshold: false,
 };
+
+/**
+ * P3.6 (2026-09-25): P2.10 turned on expo-video's disk cache
+ * (`useCaching: true` in lib/sharedVideoSource.ts) and nothing capped it,
+ * so the SDK default (1 GB LRU) applied on a path that has never run on a
+ * device. 256 MB holds ~20 clips at the 12 MB Android camera output and
+ * far more once 720p lands; a card scrolled back to within a session is
+ * still a hit, and the cache can never crowd the app's own files.
+ */
+export const VIDEO_DISK_CACHE_BYTES = 256 * MB;
+
+/**
+ * Call once at boot with expo-video's setVideoCacheSizeAsync (injected so
+ * this constants module stays free of the native runtime and unit-testable).
+ * Best-effort: Expo Go / web may not implement it.
+ */
+export function initVideoDiskCache(setSize: (bytes: number) => Promise<void>): void {
+  try {
+    void setSize(VIDEO_DISK_CACHE_BYTES).catch(() => {});
+  } catch {
+    /* module not available in this runtime */
+  }
+}

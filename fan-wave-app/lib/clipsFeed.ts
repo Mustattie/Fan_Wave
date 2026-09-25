@@ -103,3 +103,38 @@ export function prependRealtimeClip(
   }
   return [clip, ...prev].slice(0, cap);
 }
+
+// ─── P3.6: bounded poster cache ───────────────────────────────────────
+
+export interface PosterInfo {
+  name?: string;
+  tier?: string;
+}
+
+export interface PosterCache {
+  has(id: string): boolean;
+  get(id: string): PosterInfo | undefined;
+  set(id: string, info: PosterInfo): void;
+  readonly size: number;
+}
+
+/**
+ * Session cache of poster display names/tiers keyed by user id. Misses are
+ * stored too (as {}), so an unknown id is not re-asked per page -- which is
+ * exactly why it must be bounded: an id flood would otherwise grow it for
+ * the life of the screen. Clear-on-overflow keeps the newest entry.
+ */
+export function createPosterCache(max = 500): PosterCache {
+  const map = new Map<string, PosterInfo>();
+  return {
+    has: (id) => map.has(id),
+    get: (id) => map.get(id),
+    set: (id, info) => {
+      if (!map.has(id) && map.size >= max) map.clear();
+      map.set(id, info);
+    },
+    get size() {
+      return map.size;
+    },
+  };
+}

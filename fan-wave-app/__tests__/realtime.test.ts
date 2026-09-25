@@ -320,6 +320,35 @@ describe('kill switches (P3.3)', () => {
     expect(mockChannels.size).toBe(0);
     expect(() => leave()).not.toThrow();
   });
+
+  // P3.6 (2026-09-25): the 0-3 s onReconnect spread timers used to be
+  // untracked, so a teardown (or the test reset) left them holding the
+  // entry and its React closures for up to 3 s.
+  it('teardown clears every timer the entry owns, including the reconnect spread', () => {
+    const leaves = [1, 2, 3].map(() => subscribeToGames(jest.fn(), jest.fn()));
+    const ch = liveChannel('games-realtime');
+    ch.statusCb?.('SUBSCRIBED');
+    ch.statusCb?.('CHANNEL_ERROR'); // arms the rejoin watchdog
+    ch.statusCb?.('SUBSCRIBED'); // arms three spread timers
+    expect(jest.getTimerCount()).toBeGreaterThan(0);
+
+    leaves.forEach((leave) => leave());
+    jest.advanceTimersByTime(400); // past the 300 ms teardown grace
+
+    expect(getRealtimeDiagnostics().topics).toEqual([]);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('the test reset also leaves no timers behind', () => {
+    subscribeToGames(jest.fn(), jest.fn());
+    const ch = liveChannel('games-realtime');
+    ch.statusCb?.('SUBSCRIBED');
+    ch.statusCb?.('CHANNEL_ERROR');
+    ch.statusCb?.('SUBSCRIBED');
+    expect(jest.getTimerCount()).toBeGreaterThan(0);
+    _resetRealtimeRegistryForTests();
+    expect(jest.getTimerCount()).toBe(0);
+  });
 });
 
 describe('watchPartyMatchesCity', () => {

@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { Share2, Music2, Camera, Link as LinkIcon, X } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
 import { trackEvent } from '@/lib/analytics';
 import { deleteLocalFile } from '@/lib/storage';
@@ -86,6 +87,7 @@ async function saveClipToGallery(clip: { id: string; mediaUrl?: string }): Promi
 }
 
 export function ClipShareSheet({ visible, onClose, clip }: ClipShareSheetProps) {
+  const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState<null | 'tiktok' | 'instagram' | 'more' | 'copy'>(null);
 
   const deepLink = `${DEEP_LINK_BASE}/clip/${clip.id}`;
@@ -259,7 +261,7 @@ export function ClipShareSheet({ visible, onClose, clip }: ClipShareSheetProps) 
     >
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: 12 + insets.bottom }]}>
           <View style={styles.header}>
             <Text style={styles.title}>Share clip</Text>
             <TouchableOpacity onPress={onClose} hitSlop={10}>

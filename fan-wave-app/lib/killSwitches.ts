@@ -64,16 +64,24 @@ export function isFeatureEnabled(key: KillSwitchKey): boolean {
   return state[key] !== false;
 }
 
+// P3.6: module-scope so its identity is stable. An inline arrow made
+// useSyncExternalStore unsubscribe + resubscribe on every commit of every
+// consumer -- churn, not a leak, but pointless work on the render path.
+function subscribe(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+
 /** Reactive read for UI (buttons, banners). */
 export function useKillSwitch(key: KillSwitchKey): boolean {
-  return useSyncExternalStore(
-    (cb) => {
-      listeners.add(cb);
-      return () => listeners.delete(cb);
-    },
-    () => isFeatureEnabled(key),
-    () => true,
-  );
+  return useSyncExternalStore(subscribe, () => isFeatureEnabled(key), () => true);
+}
+
+/** Test hook: how many components are currently subscribed. */
+export function _killSwitchListenerCount(): number {
+  return listeners.size;
 }
 
 function rowIsEnabled(row: FlagRow, now: Date): boolean {

@@ -34,6 +34,8 @@ import { queryClient } from '@/hooks/useQueryClient';
 import { consumeIntentionalSignOut, reportUnexpectedSignOut } from '@/lib/authTelemetry';
 import { initClipUploads } from '@/lib/clipUploads';
 import { initKillSwitches } from '@/lib/killSwitches';
+import { initVideoDiskCache } from '@/lib/videoBuffer';
+import { setVideoCacheSizeAsync } from 'expo-video';
 import { useRecoveryPending, markRecoveryPending, clearRecoveryPending } from '@/lib/authRecovery';
 
 // Custom ErrorBoundary so React render-tree crashes (the "Something went
@@ -88,6 +90,8 @@ SplashScreen.preventAutoHideAsync();
 initErrorReporting();
 // P3.3: operational kill switches (feature_flags rows) polled from boot.
 initKillSwitches();
+// P3.6: bound the expo-video disk cache that P2.10 enabled (default 1 GB).
+initVideoDiskCache(setVideoCacheSizeAsync);
 
 const FanSphereDarkTheme = {
   ...DarkTheme,

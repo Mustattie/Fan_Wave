@@ -95,12 +95,14 @@ async function flushEvents() {
 }
 
 // Start periodic flush timer
+let appStateSub: { remove: () => void } | null = null;
+
 export function startAnalyticsFlush() {
   if (flushTimer) return;
   flushTimer = setInterval(flushEvents, FLUSH_INTERVAL);
 
-  // Flush when app goes to background
-  AppState.addEventListener('change', (state: AppStateStatus) => {
+  // Flush when app goes to background. P3.6: kept so stop() can remove it.
+  appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
     if (state === 'background' || state === 'inactive') {
       flushEvents();
     }
@@ -109,6 +111,8 @@ export function startAnalyticsFlush() {
 
 // Stop periodic flush and send remaining events
 export function stopAnalyticsFlush() {
+  appStateSub?.remove();
+  appStateSub = null;
   if (flushTimer) {
     clearInterval(flushTimer);
     flushTimer = null;

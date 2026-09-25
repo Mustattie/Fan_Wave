@@ -656,6 +656,10 @@ async function tryRun(): Promise<void> {
     });
     jobs.delete(next.tempId);
     await persistPending();
+    // P3.6: the recording is a picker copy in the app cache dir (never the
+    // user's library asset); once the row exists nothing reads it again,
+    // and each posted clip otherwise left up to 25 MB on disk for good.
+    void deleteLocalFile(next.localUri);
 
     const durationMs = Date.now() - startedAt;
     void trackEvent('clip_upload_succeeded', 'clips', {

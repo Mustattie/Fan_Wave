@@ -10,6 +10,7 @@ import {
   Platform,
   KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
 import { WC_TEAMS, getTeamsByGroup, WCTeam } from '@/constants/WorldCupData';
 import { supabase, getLocalUser } from '@/lib/supabase';
@@ -35,6 +36,7 @@ interface GroupSection {
 }
 
 export function WCTeamFollowModal({ visible, onClose, onUpdate }: WCTeamFollowModalProps) {
+  const insets = useSafeAreaInsets();
   const [followedCodes, setFollowedCodes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   // Surface WCPassPaywall when a free user taps Follow — the
@@ -248,7 +250,7 @@ export function WCTeamFollowModal({ visible, onClose, onUpdate }: WCTeamFollowMo
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: 16 + insets.bottom }]}>
           {/* Handle bar */}
           <View style={styles.handleBar} />
 
@@ -313,7 +315,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '85%',
-    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
+    paddingBottom: 16,
   },
   handleBar: {
     width: 40,

@@ -67,6 +67,8 @@ interface Entry {
   reopenTimer: ReturnType<typeof setTimeout> | null;
   /** Armed on a post-join error; fires if no SUBSCRIBED follows in time. */
   rejoinWatchdog: ReturnType<typeof setTimeout> | null;
+  /** P3.6: the 0-3 s onReconnect spread timers, cleared with the entry. */
+  reconnectTimers: Set<ReturnType<typeof setTimeout>>;
   reopenAttempts: number;
   errors: number;
   rejoins: number;
@@ -170,7 +172,8 @@ function notifyReconnect(entry: Entry): void {
   for (const sub of entry.subscribers) {
     if (!sub.onReconnect) continue;
     const cb = sub.onReconnect;
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      entry.reconnectTimers.delete(timer);
       // The subscriber may have left during the spread window.
       if (!entry.subscribers.has(sub)) return;
       try {
@@ -179,7 +182,13 @@ function notifyReconnect(entry: Entry): void {
         reportError(e, { source: 'realtime:onReconnect', topic: entry.key });
       }
     }, Math.floor(Math.random() * RECONNECT_SPREAD_MS));
+    entry.reconnectTimers.add(timer);
   }
+}
+
+function clearReconnectTimers(entry: Entry): void {
+  for (const t of entry.reconnectTimers) clearTimeout(t);
+  entry.reconnectTimers.clear();
 }
 
 function onStatus(entry: Entry, channel: RealtimeChannel, status: string, err?: Error): void {
@@ -315,6 +324,7 @@ function scheduleTeardown(entry: Entry): void {
       entry.reopenTimer = null;
     }
     clearRejoinWatchdog(entry);
+    clearReconnectTimers(entry);
     closeChannel(entry);
     addBreadcrumb('realtime', 'left', { topic: entry.key });
   }, TEARDOWN_GRACE_MS);
@@ -359,6 +369,7 @@ export function subscribeToTable(
       closing: false,
       teardownTimer: null,
       reopenTimer: null,
+      reconnectTimers: new Set(),
       rejoinWatchdog: null,
       reopenAttempts: 0,
       errors: 0,
@@ -434,6 +445,7 @@ export function _resetRealtimeRegistryForTests(): void {
     if (e.teardownTimer) clearTimeout(e.teardownTimer);
     if (e.reopenTimer) clearTimeout(e.reopenTimer);
     if (e.rejoinWatchdog) clearTimeout(e.rejoinWatchdog);
+    clearReconnectTimers(e);
   }
   registry.clear();
 }

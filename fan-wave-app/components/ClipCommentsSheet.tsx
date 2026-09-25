@@ -13,6 +13,7 @@ import {
   Alert,
 } from 'react-native';
 import { X, Send, Trash2 } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
 import { supabase, getLocalUser } from '@/lib/supabase';
 import { reportError } from '@/lib/errorReporting';
@@ -52,6 +53,8 @@ function formatRelativeTime(iso: string): string {
 }
 
 export function ClipCommentsSheet({ visible, onClose, clipId, onCountChange }: Props) {
+  // P3.7 parity: the composer sat in the iPhone home-indicator zone.
+  const insets = useSafeAreaInsets();
   const [comments, setComments] = useState<ClipCommentRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState('');
@@ -286,7 +289,7 @@ export function ClipCommentsSheet({ visible, onClose, clipId, onCountChange }: P
             />
           )}
 
-          <View style={styles.composer}>
+          <View style={[styles.composer, { paddingBottom: 10 + insets.bottom }]}>
             <TextInput
               style={styles.input}
               placeholder="Add a comment..."

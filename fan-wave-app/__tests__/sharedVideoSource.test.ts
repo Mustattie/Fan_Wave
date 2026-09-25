@@ -143,4 +143,24 @@ describe('SharedVideoSource', () => {
     await expect(rel).resolves.toBeUndefined();
     await tick();
   });
+
+
+  // P2.10 opted every feed load into expo-video's disk cache; P3.6 capped
+  // that cache at boot. Pin the opt-in so a revert (or an accidental spread
+  // to local file:// previews) is caught.
+  it('loads with useCaching and releases with a single null replace', async () => {
+    const p = fakePlayer();
+    const s = new SharedVideoSource(p);
+    const load = s.load('https://cdn/a.mp4');
+    p.settle(0);
+    await load;
+    expect(p.replaceAsync).toHaveBeenCalledWith({ uri: 'https://cdn/a.mp4', useCaching: true });
+
+    const rel = s.release();
+    p.settle(1);
+    await rel;
+    const nullCalls = p.calls.filter((c: any) => c === null);
+    expect(nullCalls).toHaveLength(1);
+    expect(s.currentUri).toBeNull();
+  });
 });

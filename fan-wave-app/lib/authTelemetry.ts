@@ -69,6 +69,11 @@ export function recordAuthFailure(failure: Omit<AuthFailure, 'at'>): void {
   const now = Date.now();
   const last = lastRefreshEventAt.get(code) ?? 0;
   if (now - last < REFRESH_EVENT_DEDUPE_MS) return;
+  // P3.6: keys are server-supplied codes; drop anything outside the dedupe
+  // window so the map is bounded by codes seen in the last minute.
+  for (const [k, at] of lastRefreshEventAt) {
+    if (now - at >= REFRESH_EVENT_DEDUPE_MS) lastRefreshEventAt.delete(k);
+  }
   lastRefreshEventAt.set(code, now);
   const rateLimited = failure.errorCode === 'over_request_rate_limit_final';
   reportMessage(

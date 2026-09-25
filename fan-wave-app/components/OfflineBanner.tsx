@@ -99,17 +99,20 @@ export function OfflineBanner() {
     // (full NetInfo would be better but avoids adding a dependency)
     let mounted = true;
     const check = async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
         await fetch('https://clients3.google.com/generate_204', {
           method: 'HEAD',
           signal: controller.signal,
         });
-        clearTimeout(timeout);
         if (mounted) setIsOffline(false);
       } catch {
         if (mounted) setIsOffline(true);
+      } finally {
+        // P3.6: previously cleared only on success; every failed probe
+        // left a self-expiring 5 s timer behind.
+        clearTimeout(timeout);
       }
     };
 

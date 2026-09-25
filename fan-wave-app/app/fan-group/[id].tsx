@@ -49,6 +49,7 @@ import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
 import { getVideoContentType, getImageContentType } from '@/lib/mediaContentType';
 import { withTimeout } from '@/lib/withTimeout';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { CLIP_PREVIEW_BUFFER_OPTIONS } from '@/lib/videoBuffer';
 import { Image as RNImage } from 'react-native';
 
 const PAGE_SIZE = 20;
@@ -775,6 +776,9 @@ export default function FanGroupDetailScreen() {
   // Fullscreen video preview modal — separate <VideoView> so the inline
   // poster in the feed doesn't hold a codec slot per bubble.
   const previewPlayer = useVideoPlayer(previewMediaUrl, (p) => {
+    // P3.6: same buffer cap as the New Clip preview; this player lives for
+    // the whole chat screen and had ExoPlayer's default budget.
+    p.bufferOptions = CLIP_PREVIEW_BUFFER_OPTIONS;
     p.loop = false;
     p.muted = false;
     p.play();

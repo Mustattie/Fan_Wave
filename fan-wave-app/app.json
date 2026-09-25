@@ -24,6 +24,8 @@
         "NSPhotoLibraryUsageDescription": "Fan Sphere needs photo access to share highlights and set your profile photo.",
         "NSLocationWhenInUseUsageDescription": "Fan Sphere uses your location to find watch parties and fan groups near you.",
         "NSContactsUsageDescription": "Fan Sphere uses your contacts so you can quickly invite friends to private watch parties.",
+        "NSMicrophoneUsageDescription": "Fan Sphere records audio with your clips and chat videos.",
+        "NSPhotoLibraryAddUsageDescription": "Fan Sphere saves clips you export to your photo library.",
         "LSApplicationQueriesSchemes": [
           "instagram",
           "instagram-stories",

@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
+import { renderHook } from '@testing-library/react-native';
 
 jest.mock('@/lib/errorReporting', () => ({
   reportError: jest.fn(),
@@ -11,6 +13,8 @@ import {
   refreshKillSwitches,
   applyKillSwitchRows,
   initKillSwitches,
+  useKillSwitch,
+  _killSwitchListenerCount,
   _resetKillSwitchesForTests,
 } from '../lib/killSwitches';
 
@@ -102,5 +106,40 @@ describe('killSwitches (P3.3)', () => {
     jest.advanceTimersByTime(5 * 60 * 1000);
     expect(calls).toBe(2);
     jest.useRealTimers();
+  });
+
+
+  // P3.6: initKillSwitches runs at module scope in app/_layout.tsx; a
+  // double call must not double the process-lifetime interval and listener,
+  // and the reset hook must drain both.
+  it('initKillSwitches is a singleton and the reset hook drains its timer and listener', () => {
+    jest.useFakeTimers();
+    const remove = jest.fn();
+    const addSpy = jest
+      .spyOn(AppState, 'addEventListener')
+      .mockImplementation((() => ({ remove })) as any);
+    mockFlags({ data: [], error: null });
+
+    initKillSwitches();
+    initKillSwitches();
+    expect(addSpy).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(1);
+
+    _resetKillSwitchesForTests();
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+
+    addSpy.mockRestore();
+    jest.useRealTimers();
+  });
+
+  it('useKillSwitch keeps one store listener across re-renders', () => {
+    mockFlags({ data: [], error: null });
+    const { result, rerender, unmount } = renderHook(() => useKillSwitch('chat_send'));
+    expect(result.current).toBe(true);
+    for (let i = 0; i < 5; i++) rerender({});
+    expect(_killSwitchListenerCount()).toBe(1);
+    unmount();
+    expect(_killSwitchListenerCount()).toBe(0);
   });
 });

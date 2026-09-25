@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -32,8 +32,7 @@ import {
   hydrationKey,
   mergeClipPage,
   applyClipUpdate,
-  prependRealtimeClip,
-} from '@/lib/clipsFeed';
+  prependRealtimeClip, createPosterCache } from '@/lib/clipsFeed';
 import {
   subscribeToClipUploads,
   retryClipUpload,
@@ -717,6 +716,13 @@ export default function ClipsScreen() {
 
     return () => {
       cancelled = true;
+      // P3.6: a stall timer armed for the previous source must not outlive
+      // it. Scrolling B -> A where A was still loaded skipped the re-arm
+      // above and left B's 15 s timer to fail a healthy card.
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = null;
+      }
     };
     // We intentionally do not depend on `clips` array reference here
     // because every Realtime patch produces a new reference and would
@@ -902,7 +908,9 @@ export default function ClipsScreen() {
   // v9.5.22 (P2.5): posters already resolved this session are not asked
   // for again -- a creator seen on page 1 used to be re-queried on every
   // later page and never resolved at all for realtime inserts.
-  const posterCacheRef = useRef(new Map<string, { name?: string; tier?: string }>());
+  // P3.6: bounded (500 posters, clear-on-overflow like recordedViewsRef) so
+  // a long session of filter switching cannot grow it without limit.
+  const posterCacheRef = useRef(createPosterCache());
   const hydratePosters = useCallback(async (mapped: ClipDisplay[]) => {
     const cache = posterCacheRef.current;
     const ids = Array.from(
@@ -1045,7 +1053,9 @@ export default function ClipsScreen() {
   // ('temp-' ids) are excluded: passing them to `.in('clip_id', ...)` fails
   // the uuid cast and silently emptied the like hydration for as long as a
   // failed upload sat on the feed.
-  const clipsHydrationKey = hydrationKey(clips);
+  // P3.6: memoised -- the key is a ~7 KB string over 200 clips and this
+  // screen re-renders on every upload progress tick.
+  const clipsHydrationKey = useMemo(() => hydrationKey(clips), [clips]);
   useEffect(() => {
     const [idPart, posterPart] = clipsHydrationKey.split('|');
     const clipIds = idPart ? idPart.split(',') : [];

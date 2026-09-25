@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { CLIP_FEED_BUFFER_OPTIONS } from '@/lib/videoBuffer';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
 import { getVideoContentType, getImageContentType } from '@/lib/mediaContentType';
@@ -73,6 +74,10 @@ function MomentClipVideo({ uri }: { uri: string }) {
   // keep them stable here and rely on FlatList virtualization
   // (windowSize / removeClippedSubviews) to cap how many are alive.
   const player = useVideoPlayer(uri, (p) => {
+    // P3.6: this per-card player never received the Phase 1 buffer cap, so
+    // 3-5 live cards could each hold ExoPlayer's 50 s default in the Java
+    // heap -- the exact mechanism behind the S10+ OOM. Set before load.
+    p.bufferOptions = CLIP_FEED_BUFFER_OPTIONS;
     p.loop = false;
     // Muted preview — matches feed convention and prevents multiple
     // audio streams from playing simultaneously if more than one clip
