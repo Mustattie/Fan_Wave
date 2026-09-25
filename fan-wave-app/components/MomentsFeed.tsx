@@ -182,6 +182,8 @@ export default function MomentsFeed({
       allowsEditing: true,
       quality: 0.8,
       videoMaxDuration: 30,
+      // P2.10 parity: iOS-only knob; caps library picks at 720p on iPhone.
+      videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720,
     });
 
     if (!result.canceled && result.assets[0]) {
@@ -203,6 +205,7 @@ export default function MomentsFeed({
       allowsEditing: true,
       quality: 0.8,
       videoMaxDuration: 30,
+      videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720,
     });
 
     if (!result.canceled && result.assets[0]) {

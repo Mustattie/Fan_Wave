@@ -30,8 +30,11 @@ export const CLIP_FEED_BUFFER_OPTIONS: BufferOptions = {
   preferredForwardBufferDuration: 5,
   maxBufferBytes: 8 * MB,
   // Stop buffering when either the 5 s or the 8 MB limit is hit, whichever
-  // comes first. The default (`true`) lets time win and would let a
-  // high-bitrate clip blow through the byte cap.
+  // comes first. Set explicitly so a preset change cannot let time win and
+  // blow through the byte cap (expo-video SDK 54 typings: default false).
+  // Android only, like maxBufferBytes: on iOS only the 5 s forward-buffer
+  // duration applies, so the heap cap is an Android fix and iOS memory
+  // must be measured separately (Instruments), not inferred from the S10+.
   prioritizeTimeOverSizeThreshold: false,
 };
 

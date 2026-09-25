@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/Colors';
 import { getOfflineQueue, clearOfflineQueue } from '@/lib/cache';
 import { supabase } from '@/lib/supabase';
@@ -16,6 +17,7 @@ const REALTIME_POLL_MS = 5_000;
  * Shows a banner at the top of the screen when the device goes offline.
  */
 export function OfflineBanner() {
+  const insets = useSafeAreaInsets();
   const [isOffline, setIsOffline] = useState(false);
   const wasOffline = useRef(false);
   // P3.4: realtime degraded = the app holds live channels but the socket
@@ -119,16 +121,21 @@ export function OfflineBanner() {
     };
   }, []);
 
+  // The banner is the first child above <Stack> in the root layout with
+  // nothing applying insets, so on a notched / Dynamic Island iPhone (and
+  // Android edge-to-edge) it drew under the status bar. The degraded
+  // variant shows on any 20 s socket blip, so this was going to be seen.
+  const insetStyle = { paddingTop: insets.top + 6 };
   if (isOffline) {
     return (
-      <View style={styles.banner}>
+      <View style={[styles.banner, insetStyle]}>
         <Text style={styles.text}>No internet connection</Text>
       </View>
     );
   }
   if (realtimeDegraded) {
     return (
-      <View style={[styles.banner, styles.bannerDegraded]}>
+      <View style={[styles.banner, styles.bannerDegraded, insetStyle]}>
         <Text style={styles.text}>Live updates paused — reconnecting…</Text>
       </View>
     );

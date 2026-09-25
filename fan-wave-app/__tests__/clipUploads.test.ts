@@ -102,6 +102,16 @@ describe('clipUploads', () => {
     expect(classifyUploadError(new Error('Upload timed out. Check your connection'))).toBe('timeout');
     expect(classifyUploadError(new Error('Upload failed (409): Duplicate'))).toBe('client');
     expect(classifyUploadError(new Error('Upload failed (401): jwt expired'))).toBe('auth');
+    // iOS NSURLError localizedDescriptions and Android OkHttp strings arrive
+    // verbatim from createUploadTask; they must be transient so the foreground
+    // auto-retry fires and the user sees the friendly copy, not the raw string.
+    expect(classifyUploadError(new Error('The network connection was lost.'))).toBe('network');
+    expect(classifyUploadError(new Error('The request timed out.'))).toBe('network');
+    expect(classifyUploadError(new Error('The Internet connection appears to be offline.'))).toBe('network');
+    expect(classifyUploadError(new Error('A data connection is not currently allowed.'))).toBe('network');
+    expect(classifyUploadError(new Error('Unable to resolve host "x.supabase.co"'))).toBe('network');
+    expect(classifyUploadError(new Error('Failed to connect to x.supabase.co/1.2.3.4:443'))).toBe('network');
+    expect(classifyUploadError(new Error('Something else entirely'))).toBe('unknown');
     expect(classifyUploadError(new Error('Upload failed (503): unavailable'))).toBe('server');
     expect(classifyUploadError(new Error('Network request failed'))).toBe('network');
     expect(classifyUploadError(new Error('Not signed in'))).toBe('auth');

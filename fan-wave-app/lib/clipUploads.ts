@@ -282,6 +282,20 @@ export function classifyUploadError(e: unknown): UploadErrorKind {
   if (/network request failed|network error|failed to fetch|econn|socket|unreachable/i.test(msg)) {
     return 'network';
   }
+  // iOS surfaces NSURLError localizedDescriptions verbatim ("The network
+  // connection was lost.", "The request timed out.", "The Internet
+  // connection appears to be offline.", "A data connection is not
+  // currently allowed."); Android's OkHttp says "Unable to resolve host"
+  // / "Failed to connect to". None matched the line above, so a backgrounded
+  // camera trip on iOS -- the case this module was written for -- landed as
+  // 'unknown', was never auto-retried, and showed the raw Apple string.
+  if (
+    /connection (was )?lost|appears to be offline|not connected to the internet|data connection|request timed out|unable to resolve host|failed to connect|connection reset|host (is )?unreachable|software caused connection abort/i.test(
+      msg,
+    )
+  ) {
+    return 'network';
+  }
   return 'unknown';
 }
 

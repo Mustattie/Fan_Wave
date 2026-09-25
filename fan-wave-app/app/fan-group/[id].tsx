@@ -562,6 +562,9 @@ export default function FanGroupDetailScreen() {
         mediaTypes: (source === 'camera-video' ? ['videos'] : ['images']) as any,
         quality: 0.8,
         videoMaxDuration: 30,
+        // P2.10 parity: iOS-only knob (no-op on Android); without it an
+        // iPhone records chat video at device default (1080p/4K).
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720,
       };
       // v9.4.0 UAT Round 3 (#15): both photo + video paths open the
       // native camera. launchImageLibraryAsync is intentionally NOT
