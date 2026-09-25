@@ -90,6 +90,40 @@ Physical P3.6 UAT started 2026-09-25 on the S10+ (versionCode 31 confirmed).
   release; preference persisted), with a speaker toggle on the active
   card. Only the active card has a player, so off-screen cards are silent
   by construction. **Not device-verified.**
+- **Clips memory gate: FAIL** (controlled stress test, separate from the
+  audio defect). Playback stayed functional: no OutOfMemoryError, FATAL
+  EXCEPTION or ANR in logcat; Fan Sphere GC lines only ("Explicit
+  concurrent copying GC freed ~15 MB, heap ~96 MB / 120 MB"). Sample 5
+  crossed the P3.6 gate (Java Heap < 120 MB at every sample) and idle
+  reclaimed little.
+
+| Sample | Java Heap | Native Heap | TOTAL PSS | TOTAL RSS | Swap PSS |
+| --- | --- | --- | --- | --- | --- |
+| 1. Home baseline | 12,524 KB | 31,252 KB | 136,586 KB | 246,176 KB | |
+| 2. Initial Clips playback | 39,060 KB | 113,120 KB | 335,725 KB | 438,748 KB | |
+| 3. After stress round 1 (~5 min, ~15–20 clips) | 65,784 KB | 232,620 KB | 538,664 KB | 627,324 KB | 16,487 KB |
+| 4. After 2–3 min idle | 74,732 KB | 232,628 KB | 543,368 KB | 632,416 KB | 16,595 KB |
+| 5. After stress round 2 (~5 min, ~15–20 more clips) | **123,484 KB** | 308,376 KB | 672,578 KB | 760,572 KB | 17,719 KB |
+| 6. After 5 min idle, no scrolling | 117,860 KB | 303,512 KB | 661,688 KB | 750,044 KB | 17,720 KB |
+
+  Trend: Java 12 → 38 → 64 → 73 → 121 → 115 MB; Native 31 → 111 → 227 →
+  227 → 301 → 296 MB; PSS 133 → 328 → 526 → 531 → 657 → 646 MB.
+
+  Root-cause analysis (source + native module review, no heap dump yet):
+  the Phase 1 ExoPlayer byte cap IS applied on Android (expo-video's
+  vendored DefaultLoadControl uses the 8 MB override on every prepare and
+  resets the allocator on stop), so ExoPlayer's Java sample pool is not the
+  96 MB live set; per-card VideoViews are unregistered on destroy. The one
+  retention provable from source: every card poster is decoded to the
+  1440x3040 viewport (~17.5 MB, native heap) and `cachePolicy="memory-disk"`
+  kept decoded posters in Glide's in-memory LRU after their cards
+  unmounted. Fixed in v9.5.39 (e737031): posters are disk-cached only, keyed
+  by clip for Fabric recycling. Verdict: a combination -- expected native
+  buffering (decoder, surface, 8 MB sample pool, Hermes heap) plus
+  excessive poster retention; a Java-heap leak is neither confirmed nor
+  excluded, so Build 32's run captures an hprof at the first sample over
+  60 MB (steps in `qa/p3.6-android-memory-uat.md`). **Not device-verified;
+  the gate is unchanged.**
 - Remaining checklist rows were not run on Build 31; Build 32 restarts
   the P3.6 checklist from step 0.
 
@@ -115,6 +149,7 @@ and a clean `tsc`; that is all.
 | 6752df1 | v9.5.32 | Android jest preset config | none (test only) |
 | cb7de07 | v9.5.33 | iOS upload-error classification, 720p on chat/Moments capture, banner safe-area inset | Android: banner sits below the status bar under edge-to-edge; chat/Moments capture unchanged on Android |
 | ba024fd | v9.5.34 | Jest test pinning the k6 production guard | none (test only) |
+| e737031 | v9.5.39 | Clips posters disk-cached only + recyclingKey (Build 31 memory gate) | Build 32: repeat the two 5-min stress rounds with the six samples; Java Heap < 120 MB at every sample; hprof at the first sample over 60 MB |
 | 8b1ccba | v9.5.38 | Clips audio: shared feed player unmuted under a policy module; mute toggle on the active card; background silences first | Build 32: active clip has sound, speaker toggle mutes/unmutes and persists, scrolling A→B has no overlap, background stops audio, return comes back paused |
 | 15fa69b | v9.5.37 | Home Today's Games: two-leg games query, refresh bypasses the storage cache, selector extracted + regression test | Build 32: repeat the Build 31 scenario (NFL/NBA/WNBA → add MLB → Home shows today's MLB games; pull-to-refresh reaches the server) |
 | ce9a597 | v9.5.35 | P3.6 memory hygiene: 256 MB video disk-cache cap, buffer options on Moments and chat-preview players, stall-timer cleanup, bounded poster/telemetry maps, tracked reconnect timers, picker copy deleted after upload; explicit iOS usage strings; bottom-sheet insets; CI runs both presets | `qa/p3.6-android-memory-uat.md` rows R1–R8 |
