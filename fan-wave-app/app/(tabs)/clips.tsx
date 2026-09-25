@@ -34,7 +34,7 @@ import {
   hydrationKey,
   mergeClipPage,
   applyClipUpdate,
-  prependRealtimeClip, createPosterCache } from '@/lib/clipsFeed';
+  prependRealtimeClip, createPosterCache, CLIP_POSTER_IMAGE_PROPS } from '@/lib/clipsFeed';
 import {
   subscribeToClipUploads,
   retryClipUpload,
@@ -281,9 +281,9 @@ const ClipCard = React.memo(function ClipCard({
           <Image
             source={{ uri: clip.thumbnailUrl || clip.localUri! }}
             style={styles.video}
-            contentFit="cover"
-            transition={150}
-            cachePolicy="memory-disk"
+            recyclingKey={clip.id}
+            // P3.6 Build 31: disk-only (see CLIP_POSTER_IMAGE_PROPS).
+            {...CLIP_POSTER_IMAGE_PROPS}
           />
         ) : (
           <View

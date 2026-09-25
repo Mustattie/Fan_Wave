@@ -138,3 +138,23 @@ export function createPosterCache(max = 500): PosterCache {
     },
   };
 }
+
+// ─── P3.6 Build 31 (2026-09-25): poster memory policy ──────────────────
+//
+// Each ClipCard paints its still frame with expo-image at the full card
+// size. On Android that decode is sized to the viewport (Galaxy S10+:
+// 1440 x 3040 x 4 bytes = ~17.5 MB per poster, in the native heap since
+// API 26). With cachePolicy 'memory-disk' Glide ALSO kept every decoded
+// poster in its in-memory LRU after the card unmounted, so a 40-clip
+// stress round retained tens of full-screen bitmaps beyond the 3-4 cards
+// FlatList keeps mounted. The 40 KB JPEG on disk re-decodes in a few ms,
+// so the memory tier buys nothing here and costs the most expensive
+// bitmaps in the app. Disk-only: only mounted cards hold a bitmap.
+//
+// recyclingKey: Fabric recycles the native view; keying it by clip keeps a
+// recycled ImageView from showing the previous card's frame.
+export const CLIP_POSTER_IMAGE_PROPS = {
+  contentFit: 'cover',
+  transition: 150,
+  cachePolicy: 'disk',
+} as const;

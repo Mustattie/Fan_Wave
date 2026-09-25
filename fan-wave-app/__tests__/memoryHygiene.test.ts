@@ -3,7 +3,14 @@
  * memory review asked for. None of this is device verification; it stops
  * the code-side guarantees from silently regressing.
  */
-import { createPosterCache } from '../lib/clipsFeed';
+import { createPosterCache, CLIP_POSTER_IMAGE_PROPS } from '../lib/clipsFeed';
+
+describe('poster image memory policy (P3.6 Build 31)', () => {
+  it('posters are disk-cached only, so unmounted cards hold no full-screen bitmap', () => {
+    expect(CLIP_POSTER_IMAGE_PROPS.cachePolicy).toBe('disk');
+    expect(CLIP_POSTER_IMAGE_PROPS.contentFit).toBe('cover');
+  });
+});
 import {
   initVideoDiskCache,
   VIDEO_DISK_CACHE_BYTES,
