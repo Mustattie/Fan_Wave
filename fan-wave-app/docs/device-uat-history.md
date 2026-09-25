@@ -1,9 +1,9 @@
 # Device UAT history — v9.5 stability program
 
 Physical-device baseline for the v9.5 stability program. **Build 30 is the
-most recent physical Android build.** Everything committed after it
-(v9.5.20 through v9.5.33) has passed `tsc` and Jest only and has never run on
-a device. Jest/TypeScript green is not device verification.
+most recent physically TESTED Android build.** Build 31 (v9.5.36, e59a65f)
+was cut on 2026-09-25 and carries everything after Build 30; it has not been
+tested yet. Jest/TypeScript green is not device verification.
 
 Device: Samsung Galaxy S10+ / Android 12, package `org.fansphere.app`,
 app version 1.0.0 throughout. Builds are EAS `preview` (staging profile,
@@ -17,6 +17,7 @@ prod Supabase). No iOS build has been cut in this program.
 | 28 | 28 | 91fac18 | v9.5.17 | Phase 1 fixes 5–10 | Yes, S10+ | Password-recovery link bounced to the tabs; My Sports change never reached Game Day / Home; realtime `channel_error` warnings on every socket drop; Clips memory question (no incorrect retention found) → fixed in v9.5.18 |
 | 29 | 29 | f5207c8 | v9.5.18 | Build 28 UAT fixes | Yes, S10+ | Linked-game party time stayed "Tonight 7PM" (Pirates vs Cardinals 11:35 AM CDT) → fixed in v9.5.19. Sentry: `realtime.rejoin_failed [games-realtime]` |
 | 30 | 30 | ae9cded | v9.5.19 | Build 29 UAT fix | Yes, S10+ (`adb shell dumpsys package org.fansphere.app` confirmed versionCode=30) | Stale auto-title after changing the linked game (Lynx vs Fever → Canucks vs Oilers kept the Lynx title while the time moved 7:00 → 8:00 PM) → fixed in v9.5.20, **not yet device-verified** |
+| 31 | 31 | e59a65f | v9.5.36 | v9.5.20–v9.5.36 (all post-Build-30 work) | **Built 2026-09-25, NOT YET TESTED.** EAS build d035de6b, APK https://expo.dev/artifacts/eas/37AkR6L5fCZEazBpyrVa8SsveFHVJDkJlK69m_7fLHQ.apk | P3.6 device UAT pending (`qa/p3.6-android-memory-uat.md`); P3.6 stays CODE/AUTOMATION READY until it passes on the S10+ |
 
 ## Build 28 coverage (v9.5.15–v9.5.17)
 
