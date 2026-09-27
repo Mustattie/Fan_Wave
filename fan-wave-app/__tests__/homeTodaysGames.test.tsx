@@ -17,7 +17,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useGames, clearGamesCache, mergeGameLegs } from '../hooks/useData';
 import { selectTodaysGames } from '../lib/homeGames';
-import { invalidateCache } from '../lib/cache';
+import { invalidateCache, getCache } from '../lib/cache';
 
 jest.mock('../lib/cache', () => ({
   getCache: jest.fn(async () => null),
@@ -91,8 +91,7 @@ function installGamesTable() {
   });
 }
 
-function wrapper() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function wrapper(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
@@ -171,6 +170,34 @@ describe('Home Today\'s Games vs Game Day (Build 31 regression)', () => {
     await clearGamesCache();
     const cleared = (invalidateCache as jest.Mock).mock.calls.map((c) => c[1]);
     expect(cleared).toEqual(expect.arrayContaining(['30', '50']));
+  });
+
+  // Phase 1 device Test 6 (Build 26): Home lagged Game Day by up to 30 s
+  // because the AsyncStorage shortcut also answered the refetch that a
+  // realtime score change triggers. Cold start may use the storage copy;
+  // every refetch must reach the server.
+  it('serves the storage copy only on cold start; a realtime-style invalidation reaches the server', async () => {
+    const staleFinal = { ...finals[0]!, id: 'stale-row' };
+    const staleDisplay = { id: 'stale-row', status: 'final', sport: 'mlb', scheduledAt: staleFinal.scheduled_at };
+    (getCache as jest.Mock).mockClear();
+    (getCache as jest.Mock).mockResolvedValueOnce([staleDisplay]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useGames(30), { wrapper: wrapper(client) });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    // Cold start: the storage copy paints first and no server call happened.
+    expect(result.current.data!.map((g) => g.id)).toEqual(['stale-row']);
+    expect((supabase.from as jest.Mock)).not.toHaveBeenCalled();
+
+    // A score row changed: useGamesRealtime invalidates ['games'].
+    await client.invalidateQueries({ queryKey: ['games'] });
+    await waitFor(() => expect(result.current.data!.some((g) => g.id === 'stale-row')).toBe(false));
+
+    expect((supabase.from as jest.Mock)).toHaveBeenCalledWith('games');
+    expect(result.current.data!.filter((g) => g.status === 'final')).toHaveLength(30);
+    expect(result.current.data!.some((g) => g.status === 'scheduled')).toBe(true);
+    // The storage shortcut was consulted once (cold start), not on the refetch.
+    expect((getCache as jest.Mock)).toHaveBeenCalledTimes(1);
   });
 
   it('mergeGameLegs orders live, finals, upcoming and dedupes by id', () => {

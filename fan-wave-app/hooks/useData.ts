@@ -69,18 +69,27 @@ export function useGames(limit = 30) {
   gamesCacheSubkeys.add(subkey);
   return useQuery<GameDisplay[]>({
     queryKey: ['games', limit],
-    queryFn: async () => {
-      const cached = await getCache<GameDisplay[]>('games', subkey);
+    queryFn: async ({ client, queryKey }) => {
+      // Phase 1 device Test 6 (Build 26, 2026-09-23; fixed 2026-09-27):
+      // Home lagged Game Day by up to 30 s on a live game because this
+      // shortcut answered EVERY run of the queryFn -- including the
+      // refetch that useGamesRealtime triggers by invalidating ['games']
+      // when a score row changes -- with the AsyncStorage copy written up
+      // to 30 s earlier. Game Day patches rows straight from the realtime
+      // event, so it never lagged. The shortcut exists for one reason,
+      // an instant first paint on cold start, so it now applies only when
+      // the query has no data yet. Any refetch (realtime invalidation,
+      // focus, manual pull) goes to the server.
+      const isRefetch = client.getQueryState(queryKey)?.data !== undefined;
+      const cached = isRefetch ? null : await getCache<GameDisplay[]>('games', subkey);
       // v9.4.0 UAT Round 3: treat empty AsyncStorage cache as
       // "not yet loaded" rather than "confirmed no games". Arrays are
       // truthy so `if (cached)` returned [] as valid cache -- if a
       // previous session cached [] during a transient empty moment or
       // after a Supabase timeout, the next 30s of app opens returned
       // that empty list even after ESPN had synced fresh scores. That
-      // was the Game Day cold-load empty-state race (#13): the user
-      // opens the app, sees "No games live", pulls to refresh, and
-      // populates because RQ's invalidateQueries blows THIS cache
-      // too. Only shortcut on a cache hit with actual entries.
+      // was the Game Day cold-load empty-state race (#13). Only shortcut
+      // on a cold-start cache hit with actual entries.
       if (cached && cached.length > 0) return cached;
 
       try {
