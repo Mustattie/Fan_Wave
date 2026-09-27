@@ -19,6 +19,7 @@ prod Supabase). No iOS build has been cut in this program.
 | 29 | 29 | f5207c8 | v9.5.18 | Build 28 UAT fixes | Yes, S10+ | Linked-game party time stayed "Tonight 7PM" (Pirates vs Cardinals 11:35 AM CDT) → fixed in v9.5.19. Sentry: `realtime.rejoin_failed [games-realtime]` |
 | 30 | 30 | ae9cded | v9.5.19 | Build 29 UAT fix | Yes, S10+ (`adb shell dumpsys package org.fansphere.app` confirmed versionCode=30) | Stale auto-title after changing the linked game (Lynx vs Fever → Canucks vs Oilers kept the Lynx title while the time moved 7:00 → 8:00 PM) → fixed in v9.5.20, **not yet device-verified** |
 | 31 | 31 | e59a65f | v9.5.36 | v9.5.20–v9.5.36 (all post-Build-30 work) | Yes, S10+ (versionCode 31 confirmed). Memory baseline on Home fine: Java Heap 12,524 KB, Native Heap 31,252 KB, TOTAL PSS 136,586 KB, TOTAL RSS 246,176 KB | **FAIL — Home "Today's Games"**: with NFL/NBA/WNBA selected Home showed "No games on deck today"; adding MLB in My Sports updated Game Day (MLB under Upcoming) but Home stayed empty, also after pull-to-refresh → fixed in v9.5.37 (15fa69b), **not yet device-verified**. P3.6 NOT PASS; the rest of the checklist was not run on this build |
+| 32 | 32 | 9e3128f | docs on v9.5.39 | v9.5.37 Home Today's Games, v9.5.38 Clips audio, v9.5.39 poster memory (no Test 6 fix) | Emulator only (installed 2026-09-26, versionCode 32 confirmed) | **Test 3 kill during upload: PASS on emulator** (force-stopped at "Posting… 2 %", upload recovered after relaunch, exactly one clip); physical confirmation still needed. **Test 5 incomplete**: a 29 s / 18 MB clip uploaded and rendered, but the airplane-mode failure → Retry sequence was not finished. Cannot close Test 6 (fix is v9.5.40). No physical S10+ run. |
 
 ## Build 28 coverage (v9.5.15–v9.5.17)
 
@@ -134,6 +135,7 @@ and a clean `tsc`; that is all.
 
 | Commit | Tag | Change | Device check it needs |
 | --- | --- | --- | --- |
+| 10cd73b | v9.5.40 | Games hook consults the 30 s storage cache only on cold start (Phase 1 Test 6); Codex-approved 2026-09-27 | Build 33: live game open on Home and Game Day, two consecutive score updates land on both within seconds |
 | 7abeaa9 | v9.5.20 | Auto-title follows the linked game | Re-run the Build 30 Lynx → Canucks scenario; title must change, an edited title must survive |
 | 138ee38 | v9.5.21 | Wizard derived-state regression test | none (test only) |
 | 6c9fd8d | v9.5.22 | Clips hydration keyed on live ids, poster cache, deduped pages (P2.5/P2.6) | Like tap, upload progress, other-user counter bumps: no refetch storm; no duplicate cards on scroll; poster names stay |

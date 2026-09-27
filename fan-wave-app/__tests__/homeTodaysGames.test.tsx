@@ -57,6 +57,10 @@ const finals = Array.from({ length: 30 }, (_, i) =>
 const upcoming = Array.from({ length: 26 }, (_, i) =>
   row(`sched-${i}`, 'scheduled', ['mlb', 'mlb', 'cfb', 'nhl'][i % 4]!, startOfToday + 12 * H + i * 15 * 60 * 1000),
 );
+// Codex review 2026-09-26 (P2): a game still live 5 h after tip-off and a
+// scheduled row whose start passed 5 h ago without ever going live.
+const liveLong = row('live-long', 'in', 'mlb', NOW.getTime() - 5 * H);
+const expiredScheduled = row('sched-expired', 'scheduled', 'mlb', NOW.getTime() - 5 * H);
 // ...and a long tail of future games so a single limit would be hit.
 const future = Array.from({ length: 200 }, (_, i) =>
   row(`future-${i}`, 'scheduled', 'mlb', startOfToday + 48 * H + i * H),
@@ -70,19 +74,31 @@ const future = Array.from({ length: 200 }, (_, i) =>
 function installGamesTable() {
   (supabase.from as jest.Mock).mockImplementation((table: string) => {
     if (table !== 'games') throw new Error(`unexpected table ${table}`);
-    const q: any = { statuses: null as string[] | null, gte: null as string | null, desc: false };
+    const q: any = { statuses: null as string[] | null, gte: null as string | null, desc: false, orLeg: null as any };
     const chain: any = {};
     chain.select = jest.fn(() => chain);
     chain.not = jest.fn(() => chain);
     chain.in = jest.fn((_col: string, values: string[]) => { q.statuses = values; return chain; });
     chain.eq = jest.fn((_col: string, value: string) => { q.statuses = [value]; return chain; });
     chain.gte = jest.fn((_col: string, value: string) => { q.gte = value; return chain; });
-    chain.or = jest.fn(() => chain);
+    chain.or = jest.fn((expr: string) => {
+      // The live+scheduled leg: status.eq.in,and(status.eq.scheduled,scheduled_at.gte.<iso>)
+      const m = /scheduled_at\.gte\.([^)]+)\)/.exec(expr);
+      q.orLeg = { cutoff: m ? m[1] : null, live: expr.includes('status.eq.in') };
+      return chain;
+    });
     chain.order = jest.fn((_col: string, opts?: { ascending?: boolean }) => { q.desc = opts?.ascending === false; return chain; });
     chain.limit = jest.fn(async (n: number) => {
-      let rows = [...finals, ...upcoming, ...future];
+      let rows = [...finals, ...upcoming, ...future, liveLong, expiredScheduled];
       if (q.statuses) rows = rows.filter((r) => q.statuses.includes(r.status));
       if (q.gte) rows = rows.filter((r) => r.scheduled_at >= q.gte);
+      if (q.orLeg) {
+        rows = rows.filter(
+          (r) =>
+            (q.orLeg.live && r.status === 'in') ||
+            (r.status === 'scheduled' && (!q.orLeg.cutoff || r.scheduled_at >= q.orLeg.cutoff)),
+        );
+      }
       rows.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
       if (q.desc) rows.reverse();
       return { data: rows.slice(0, n), error: null };
@@ -122,6 +138,11 @@ describe('Home Today\'s Games vs Game Day (Build 31 regression)', () => {
 
     // Both legs came back: finals capped at 30, and the day's slate.
     expect(games.filter((g) => g.status === 'final')).toHaveLength(30);
+    // Codex P2: the 5 h-old live game survives the cutoff; the 5 h-old
+    // never-started scheduled row does not.
+    expect(games.some((g) => g.id === 'live-long' && g.status === 'live')).toBe(true);
+    expect(games.some((g) => g.id === 'sched-expired')).toBe(false);
+    expect(games[0]!.id).toBe('live-long'); // live first in the merged order
     expect(games.filter((g) => g.status === 'scheduled').length).toBeGreaterThanOrEqual(26);
 
     // Step 1-3 of the UAT: NFL / NBA / WNBA selected, no such games today.
@@ -130,7 +151,7 @@ describe('Home Today\'s Games vs Game Day (Build 31 regression)', () => {
     // because it had no today rows at all.
     const before = selectTodaysGames(games, new Set(['nfl', 'nba', 'wnba']), 'today', NOW);
     expect(before.length).toBeGreaterThan(0);
-    expect(before.every((g) => g.status === 'scheduled')).toBe(true);
+    expect(before.every((g) => g.status === 'scheduled' || g.status === 'live')).toBe(true);
 
     // Step 4-5: MLB added in My Sports; Game Day shows MLB under Upcoming.
     const { result: gameDay } = renderHook(() => useGames(50), { wrapper: wrapper() });
@@ -143,12 +164,12 @@ describe('Home Today\'s Games vs Game Day (Build 31 regression)', () => {
     // MLB games from Home's own (limit 30) data -- no restart.
     const after = selectTodaysGames(games, new Set(['nfl', 'nba', 'wnba', 'mlb']), 'today', NOW);
     expect(after.length).toBeGreaterThan(0);
-    expect(after.every((g) => g.sport === 'mlb' && g.status === 'scheduled')).toBe(true);
+    expect(after.every((g) => g.sport === 'mlb' && (g.status === 'scheduled' || g.status === 'live'))).toBe(true);
     // Game Day's Upcoming also lists tomorrow's slate ("what's next"), so
     // Home's today-only MLB set must equal Game Day's today-only subset and
     // be contained in the full Upcoming list.
     const gameDayToday = new Set(selectTodaysGames(upcomingOnGameDay as any, null, 'today', NOW).map((g) => g.id));
-    expect(new Set(after.map((g) => g.id))).toEqual(gameDayToday);
+    expect(new Set(after.filter((g) => g.status === 'scheduled').map((g) => g.id))).toEqual(gameDayToday);
     const upcomingIds = new Set(upcomingOnGameDay.map((g) => g.id));
     expect(after.every((g) => upcomingIds.has(g.id))).toBe(true);
 

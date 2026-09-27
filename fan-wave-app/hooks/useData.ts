@@ -121,8 +121,11 @@ export function useGames(limit = 30) {
                 .select(GAME_SELECT)
                 .not('home_team_id', 'is', null)
                 .not('away_team_id', 'is', null)
-                .in('status', ['in', 'scheduled'])
-                .gte('scheduled_at', upcomingCutoff)
+                // Codex review 2026-09-26 (P2): the cutoff applies to
+                // 'scheduled' only. A game still live 4 h+ after tip-off
+                // (extra innings, a long delay) must stay in the window,
+                // as it did before the v9.5.37 two-leg split.
+                .or(`status.eq.in,and(status.eq.scheduled,scheduled_at.gte.${upcomingCutoff})`)
                 .order('scheduled_at', { ascending: true })
                 .limit(limit),
               supabase

@@ -7,6 +7,7 @@
 // check, so a realtime insert shifting offsets produced duplicate keys. The
 // helpers here make those decisions explicit and testable.
 
+import type { AppStateStatus } from 'react-native';
 import type { ClipDisplay } from '@/lib/mappers';
 
 /** Ids of clips that exist on the server: optimistic placeholders excluded. */
@@ -158,3 +159,32 @@ export const CLIP_POSTER_IMAGE_PROPS = {
   transition: 150,
   cachePolicy: 'disk',
 } as const;
+
+// ─── Codex review 2026-09-26 (P1): playback gate for async completions ──
+//
+// The shared player's source load is asynchronous. Its completion used to
+// call play() whenever autoplay was on, even if the user had switched tabs
+// or the app had gone to the background while the load was in flight, so a
+// clip could start (audibly, since v9.5.38) off-screen. Every completion
+// now passes through this gate; the screen keeps the focus and app-state
+// flags in refs and the load effect re-runs on foreground return.
+export interface PlaybackGateInputs {
+  autoplayEnabled: boolean;
+  /** Foreground return: reload comes back paused, as it always did. */
+  forcePause: boolean;
+  /** Clips tab is the focused screen. */
+  focused: boolean;
+  /**
+   * AppState.currentState when the load completed. Only 'active' may play:
+   * the screen's AppState handler pauses and mutes for every other state,
+   * including iOS 'inactive' (control centre, notification shade, app
+   * switcher), so a load that completes there must not start the player
+   * again. Source release stays background-only (codec dispose race);
+   * this gate is only about play().
+   */
+  appState: AppStateStatus;
+}
+
+export function mayStartPlayback(i: PlaybackGateInputs): boolean {
+  return i.autoplayEnabled && !i.forcePause && i.focused && i.appState === 'active';
+}

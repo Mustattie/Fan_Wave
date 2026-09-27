@@ -11,9 +11,17 @@ export type HomeDayFilter = 'today' | 'yesterday';
 
 /** Local-day boundaries [lo, hi) in ms for the device timezone. */
 export function localDayWindow(dayFilter: HomeDayFilter, now: Date = new Date()): [number, number] {
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfTomorrow = startOfToday + 24 * 60 * 60 * 1000;
-  const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
+  // Codex review 2026-09-26 (P2): neighbouring CALENDAR midnights, not
+  // midnight +/- 24 h. On a daylight-saving day the local day is 23 or 25
+  // hours long; the fixed span ended "today" at 23:00 on the fall-back
+  // date (dropping the day's last hour) and reached into tomorrow in
+  // spring. Date(y, m, d + 1) lets the JS engine apply the local offset.
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const d = now.getDate();
+  const startOfToday = new Date(y, m, d).getTime();
+  const startOfTomorrow = new Date(y, m, d + 1).getTime();
+  const startOfYesterday = new Date(y, m, d - 1).getTime();
   return dayFilter === 'today' ? [startOfToday, startOfTomorrow] : [startOfYesterday, startOfToday];
 }
 

@@ -11,6 +11,7 @@ import {
   Alert,
   Animated,
   AppState,
+  AppStateStatus,
   ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -34,7 +35,7 @@ import {
   hydrationKey,
   mergeClipPage,
   applyClipUpdate,
-  prependRealtimeClip, createPosterCache, CLIP_POSTER_IMAGE_PROPS } from '@/lib/clipsFeed';
+  prependRealtimeClip, createPosterCache, CLIP_POSTER_IMAGE_PROPS, mayStartPlayback } from '@/lib/clipsFeed';
 import {
   subscribeToClipUploads,
   retryClipUpload,
@@ -642,6 +643,13 @@ export default function ClipsScreen() {
   // Set by that same foreground path: the reload must come back paused
   // (as returning to the app always did), even if autoplay is opted in.
   const resumePausedRef = useRef(false);
+  // Codex review 2026-09-26 (P1): focus and app state as refs so an async
+  // load completion can consult them (see mayStartPlayback). The raw
+  // AppState value is kept, not a "backgrounded" boolean: the gate lets
+  // only 'active' play, so a load completing during iOS 'inactive' (which
+  // the handler below pauses for) cannot restart the player off-screen.
+  const isFocusedRef = useRef(true);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const [isSharedPlaying, setIsSharedPlaying] = useState(false);
   const [isSharedReady, setIsSharedReady] = useState(false);
   // v9.5.7 (iOS UAT BUG-11): the id of the clip whose playback we have
@@ -734,7 +742,14 @@ export default function ClipsScreen() {
       const forcePause = resumePausedRef.current;
       resumePausedRef.current = false;
       try {
-        if (autoplayEnabled && !forcePause) {
+        if (
+          mayStartPlayback({
+            autoplayEnabled,
+            forcePause,
+            focused: isFocusedRef.current,
+            appState: appStateRef.current,
+          })
+        ) {
           // Re-assert before play(): a foreground return or a source swap
           // must not leave the player in the background-muted state.
           audioRef.current?.apply({ appActive: true });
@@ -801,12 +816,15 @@ export default function ClipsScreen() {
   // dispose race that keeps tab blur to pause-only does not apply. On
   // return the load effect re-runs (foregroundTick) and reloads the active
   // card, paused; the user taps play, as they did before. 'inactive'
-  // (control centre, notification shade on iOS) only pauses.
+  // (control centre, notification shade on iOS) only pauses -- but it is
+  // still recorded in appStateRef, so a load that completes while
+  // inactive is refused by mayStartPlayback rather than calling play().
   useEffect(() => {
     const source = sourceRef.current;
     if (!sharedPlayer || !source) return;
     let released = false;
     const sub = AppState.addEventListener('change', (state) => {
+      appStateRef.current = state;
       if (state === 'active') {
         // Restore the user's preference; playback itself resumes paused.
         audioRef.current?.apply({ appActive: true });
@@ -822,7 +840,11 @@ export default function ClipsScreen() {
       audioRef.current?.apply({ appActive: false });
       try { sharedPlayer.pause(); } catch { /* ignore */ }
       setIsSharedPlaying(false);
-      if (state === 'background' && source.currentUri !== null) {
+      // Codex review 2026-09-26 (P1): a load still in flight (currentUri
+      // null, pendingUri set) used to survive the background handler and
+      // could complete into play(). release() bumps the generation so that
+      // load resolves 'stale', and the foreground path reloads it paused.
+      if (state === 'background' && (source.currentUri !== null || source.pendingUri !== null)) {
         released = true;
         if (stallTimerRef.current) {
           clearTimeout(stallTimerRef.current);
@@ -960,7 +982,9 @@ export default function ClipsScreen() {
   // into other tabs. The codec slot is retained so re-focus is instant.
   useFocusEffect(
     useCallback(() => {
+      isFocusedRef.current = true;
       return () => {
+        isFocusedRef.current = false;
         try { sharedPlayer?.pause(); } catch { /* ignore */ }
         setIsSharedPlaying(false);
       };
