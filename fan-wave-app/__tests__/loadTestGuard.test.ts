@@ -86,4 +86,24 @@ describe('k6 load config production guard', () => {
       }),
     ).toThrow(/STAGE must be 1..5/);
   });
+
+  it('resolves the college-launch profiles by name, case-insensitively', () => {
+    const base = {
+      SUPABASE_URL: `https://${STAGING_REF}.supabase.co`,
+      SUPABASE_ANON_KEY: fakeJwt({ ref: STAGING_REF, role: 'anon' }),
+    };
+    const campus = loadConfig({ ...base, STAGE: 'Campus' });
+    expect(campus.STAGE).toBe('campus');
+    expect(campus.PROFILE.vus).toBe(300);
+    expect(campus.profileDurationSeconds()).toBe(3 * 60 + 10 * 60 + 60);
+    expect(campus.rampingStages()).toEqual([
+      { duration: '3m', target: 300 },
+      { duration: '10m', target: 300 },
+      { duration: '1m', target: 0 },
+    ]);
+    expect(loadConfig({ ...base, STAGE: 'baseline' }).PROFILE.vus).toBe(50);
+    expect(loadConfig({ ...base, STAGE: 'spike' }).PROFILE.vus).toBe(600);
+    expect(loadConfig({ ...base, STAGE: 'baseline' }).PROFILE_NAMES).toEqual(['baseline', 'campus', 'spike']);
+    expect(() => loadConfig({ ...base, STAGE: 'stadium' })).toThrow(/baseline\|campus\|spike/);
+  });
 });

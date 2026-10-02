@@ -10,7 +10,9 @@
  *   LOAD_TOKENS_FILE    optional JSON array of {email,jwt,userId} pre-minted by
  *                       scripts/load/mint-tokens.mjs. When set, scripts skip
  *                       setup() minting and read tokens from a SharedArray.
- *   STAGE               1..5 -> VU targets 100 / 500 / 1000 / 5000 / 10000
+ *   STAGE               1..5 -> VU targets 100 / 500 / 1000 / 5000 / 10000,
+ *                       or baseline | campus | spike (college-launch profiles,
+ *                       50 / 300 / 600 VUs — see COLLEGE_PROFILES)
  *
  * HARD GUARD: this module throws in the init context if SUPABASE_URL is
  * empty, points at the production project (ref fwlfiejvxmslkpoojggs), or if
@@ -128,16 +130,43 @@ export const STAGE_PROFILES = {
   5: { vus: 10000, ramp: '5m', hold: '10m', rampDown: '2m' },
 };
 
+// College-launch profiles (2026-10-02). Sized for one campus in its first
+// term, not the 50k World Cup plan above. Assumptions, written down so
+// they can be challenged: ~2 000 installs across the campus, ~10 % of them
+// in the app at once on an ordinary evening, ~1 in 4 open during a big
+// game, and a kickoff / final-whistle burst that doubles the game-night
+// peak for a few seconds. One VU is one signed-in session.
+//
+//   baseline   ordinary weeknight evening               50 sessions
+//   campus     game night across one campus            300 sessions
+//   spike      kickoff / final whistle on game night   600 sessions
+//                (spike-test.js jumps 30 → 600 in 10 s; the ramp below is
+//                 what the feed / chat / socket scripts use)
+//
+// Run them in the order baseline → campus → spike; the stage-gate rule
+// (never proceed past a failed profile) applies to these too. A campus
+// that passes `spike` has head-room for about two campuses on `campus`.
+export const COLLEGE_PROFILES = {
+  baseline: { vus: 50, ramp: '1m', hold: '5m', rampDown: '30s' },
+  campus: { vus: 300, ramp: '3m', hold: '10m', rampDown: '1m' },
+  spike: { vus: 600, ramp: '10s', hold: '3m', rampDown: '1m' },
+};
+
+export const PROFILE_NAMES = Object.keys(COLLEGE_PROFILES);
+
 export const STAGE = (() => {
   const raw = String(__ENV.STAGE || '1').trim();
   const n = Number(raw);
-  if (!STAGE_PROFILES[n]) {
-    fail(`STAGE must be 1..5 (got "${raw}"). 1=100 VUs, 2=500, 3=1000, 4=5000, 5=10000.`);
-  }
-  return n;
+  if (STAGE_PROFILES[n]) return n;
+  const name = raw.toLowerCase();
+  if (COLLEGE_PROFILES[name]) return name;
+  fail(
+    `STAGE must be 1..5 or one of ${PROFILE_NAMES.join('|')} (got "${raw}"). ` +
+      `1=100 VUs, 2=500, 3=1000, 4=5000, 5=10000; baseline=50, campus=300, spike=600.`
+  );
 })();
 
-export const PROFILE = STAGE_PROFILES[STAGE];
+export const PROFILE = STAGE_PROFILES[STAGE] || COLLEGE_PROFILES[STAGE];
 
 /** ramping-vus stages for the selected profile (optionally capped). */
 export function rampingStages(capVus) {
@@ -183,7 +212,10 @@ export const THRESHOLDS = {
   clips: { clips_latency: ['p(95)<800'] },
   chat: { chat_send: ['p(95)<1000', 'p(99)<3000'] },
   rsvp: { rsvp_latency: ['p(95)<1000'] },
-  errors: { errors: ['rate<0.01'] },
+  // Stop rule: a run whose non-rate-limit error rate is still over 1 % a
+  // minute in is failing, not measuring; k6 aborts it so staging is not
+  // hammered for the rest of the profile (the summary still prints).
+  errors: { errors: [{ threshold: 'rate<0.01', abortOnFail: true, delayAbortEval: '60s' }] },
   // The review states the connection-error gate for stage 5; applying the
   // same number at every stage surfaces a regression early rather than at 10k.
   wsConnect: { ws_connect_errors: ['rate<0.005'] },

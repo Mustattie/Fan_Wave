@@ -96,10 +96,12 @@ function psqlAsync(args) {
 
 /** Pull the executable SQL between "-- NAME-BEGIN" and "-- NAME-END" comment markers. */
 function reversalBlock(sql, name) {
-  const re = new RegExp(`-- ${name}-BEGIN\\n([\\s\\S]*?)-- ${name}-END`);
+  // Tolerate CRLF: a Windows checkout with core.autocrlf=true rewrites the
+  // migration's line endings on checkout, and psql accepts either.
+  const re = new RegExp(`-- ${name}-BEGIN\\r?\\n([\\s\\S]*?)-- ${name}-END`);
   const m = sql.match(re);
   if (!m) throw new Error(`reversal block ${name} not found in 103`);
-  return m[1].split('\n').map((l) => l.replace(/^-- ?/, '')).join('\n');
+  return m[1].split(/\r?\n/).map((l) => l.replace(/^-- ?/, '')).join('\n');
 }
 
 async function main() {

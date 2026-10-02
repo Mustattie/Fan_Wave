@@ -7,5 +7,7 @@ module.exports = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },
-  testPathIgnorePatterns: ['/node_modules/', '/tests/load/'],
+  // '/\\.claude/' keeps git worktrees created under fan-wave-app/.claude/
+  // (each carrying its own copy of __tests__) out of the main checkout's run.
+  testPathIgnorePatterns: ['/node_modules/', '/tests/load/', '/\\.claude/'],
 };

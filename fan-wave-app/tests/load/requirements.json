@@ -1,0 +1,27 @@
+{
+  "$comment": "What the k6 scripts in tests/load need from the target project. scripts/load/preflight.mjs checks every entry against the project's PostgREST OpenAPI document (read-only, anon key); __tests__/loadTestRequirements.test.ts checks that every REST path and RPC the scripts reference is listed here. Keep the three in step.",
+  "tables": {
+    "games": ["id", "home_team_id", "away_team_id", "scheduled_at", "status", "home_score", "away_score"],
+    "teams": ["id"],
+    "watch_parties": ["id", "title", "starts_at", "venue_metro", "venue_city", "rsvp_count", "capacity", "sport_id"],
+    "watch_party_rsvps": ["watch_party_id", "user_id", "status"],
+    "media_clips": ["id", "created_at"],
+    "chat_rooms": ["id"],
+    "chat_room_members": ["chat_room_id", "user_id", "role"],
+    "messages": ["chat_room_id", "user_id", "content"],
+    "users": ["auth_id", "home_city"],
+    "sports": ["id"]
+  },
+  "views": {
+    "trending_clips": []
+  },
+  "rpcs": ["check_rate_limit", "browse_public_groups", "rsvp_to_watch_party"],
+  "realtime_tables": ["games", "messages"],
+  "scripts": {
+    "home-screen.js": { "tables": ["games", "teams", "watch_parties", "sports", "media_clips"], "rpcs": ["browse_public_groups"] },
+    "spike-test.js": { "tables": ["games", "watch_parties", "watch_party_rsvps"], "views": ["trending_clips"], "rpcs": ["browse_public_groups"] },
+    "chat-send.js": { "tables": ["chat_room_members", "messages"], "rpcs": ["check_rate_limit"] },
+    "watch-party-rsvp.js": { "rpcs": ["rsvp_to_watch_party"] },
+    "realtime-ws.js": { "realtime_tables": ["games", "messages"] }
+  }
+}

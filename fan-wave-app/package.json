@@ -15,7 +15,8 @@
     "test:android": "jest -c jest.android.config.js",
     "load:seed": "node scripts/load/seed-users.mjs",
     "load:mint": "node scripts/load/mint-tokens.mjs",
-    "load:cleanup": "node scripts/load/cleanup-users.mjs"
+    "load:cleanup": "node scripts/load/cleanup-users.mjs",
+    "load:preflight": "node scripts/load/preflight.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
