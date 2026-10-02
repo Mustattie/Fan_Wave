@@ -18,10 +18,14 @@
 --      (no JWT uid), so admin tooling keeps working.
 --   2. BEFORE INSERT trigger on media_clips: free-tier writers (tier rank
 --      below home_team) are limited to 3 clips per rolling 24 h, counted
---      exactly as check_clip_quota counts. service_role is exempt. A
---      per-user advisory transaction lock closes the concurrent-insert
---      race. Rejected inserts raise SQLSTATE 42501 (PostgREST -> 403)
---      with a message the client shows verbatim.
+--      exactly as check_clip_quota counts. Only end-user JWT roles
+--      (authenticated, anon) are limited; service_role and operator
+--      sessions with no JWT are exempt, and an empty claims setting is
+--      read as "no JWT" rather than failing the cast (2026-10-02 review
+--      fix, proven by supabase/tests/103 T13). A per-user advisory
+--      transaction lock closes the concurrent-insert race. Rejected
+--      inserts raise SQLSTATE 42501 (PostgREST -> 403) with a message the
+--      client shows verbatim.
 --   3. UNIQUE INDEX on media_clips(media_url). PRE-CHECK before applying:
 --        SELECT media_url, count(*) FROM public.media_clips
 --        WHERE media_url IS NOT NULL GROUP BY 1 HAVING count(*) > 1;
@@ -108,8 +112,17 @@ DECLARE
   v_used  INT;
   v_public_users_id UUID;
 BEGIN
-  v_role := COALESCE(current_setting('request.jwt.claims', true)::jsonb ->> 'role', '');
-  IF v_role = 'service_role' THEN
+  -- Only end-user requests are limited: JWT role 'authenticated' or
+  -- 'anon'. service_role and sessions with no JWT (SQL editor, Management
+  -- API, pg_cron, psql, migrations) pass. NULLIF guards: an unset or
+  -- emptied setting ('' is what SET LOCAL leaves behind at transaction
+  -- end) must read as "no JWT", not as a JSON parse error that would make
+  -- every operator insert into media_clips fail. Same rule as 103.
+  v_role := COALESCE(
+    NULLIF(current_setting('request.jwt.claim.role', true), ''),
+    NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'
+  );
+  IF v_role IS NULL OR v_role NOT IN ('authenticated', 'anon') THEN
     RETURN NEW;
   END IF;
 

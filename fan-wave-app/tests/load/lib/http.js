@@ -4,7 +4,8 @@
  *   errors        Rate  — non-2xx that is NOT a rate-limit (counts toward the
  *                          <1 % gate)
  *   rate_limited  Rate  — 429, or 400/403 whose body mentions rate limiting
- *                          (migration 103 server ceilings raise P0001);
+ *                          (migration 103 server ceilings raise PT429,
+ *                          which PostgREST returns as HTTP 429);
  *                          reported separately so a run that is throttled by
  *                          design is distinguishable from one that is failing
  *   <trend>       Trend — server-side duration of the named request

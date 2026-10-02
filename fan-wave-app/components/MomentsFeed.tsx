@@ -327,12 +327,14 @@ export default function MomentsFeed({
       return;
     }
 
-    // Rate limiter (FW-102): 10 moments per hour per user.
+    // Rate limiter (FW-102). Tier-aware on the server (migration 103:
+    // free 10/h, Home Team+ 60/h); null asks for the caller's tier
+    // ceiling instead of pinning paid users to the free figure.
     const { data: allowed } = await supabase.rpc('check_rate_limit', {
       p_user_id: currentUserId,
       p_action: 'moment_post',
-      p_max_count: 10,
-      p_window_seconds: 3600,
+      p_max_count: null,
+      p_window_seconds: null,
     });
     if (allowed === false) {
       Alert.alert('Slow down', "You're posting moments quickly. Try again in a few minutes.");
@@ -422,11 +424,16 @@ export default function MomentsFeed({
       setMoments((prev) => prev.filter((m) => m.id !== tempId));
       const msg = String(e?.message || '');
       const isRlsError = /policy|row-level|violates/i.test(msg);
+      // Migration 103's server ceiling answers PT429 (HTTP 429) with a
+      // user-readable message; show it rather than "something went wrong".
+      const isRateLimited = e?.code === 'PT429' || /rate limit/i.test(msg);
       Alert.alert(
-        "Couldn't post moment",
-        isRlsError
-          ? 'You may need to join this group before posting. Tap Join and try again.'
-          : 'Something went wrong. Please try again.',
+        isRateLimited ? 'Slow down' : "Couldn't post moment",
+        isRateLimited
+          ? msg
+          : isRlsError
+            ? 'You may need to join this group before posting. Tap Join and try again.'
+            : 'Something went wrong. Please try again.',
       );
     }
   };

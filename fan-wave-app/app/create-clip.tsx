@@ -304,15 +304,19 @@ export default function CreateClipScreen() {
         return;
       }
 
-      // Rate limiter (FW-102): 5 clips per hour per user. Kept in place
-      // as an anti-burst guard even for Home Team+; the quota RPC
-      // handles the tier gate above.
+      // Rate limiter (FW-102). The ceiling is the server's and is
+      // tier-aware (migration 103: free 5/h, Home Team+ 30/h). Passing
+      // null for the numbers asks for the caller's tier ceiling; sending
+      // 5/3600 here used to pin paid users to the free anti-burst figure
+      // because check_rate_limit honours a caller's number as a
+      // tightening. The quota RPC above is the product cap; this is the
+      // burst guard.
       const { data: allowed } = await withTimeout(
         () => supabase.rpc('check_rate_limit', {
           p_user_id: user.id,
           p_action: 'clip_post',
-          p_max_count: 5,
-          p_window_seconds: 3600,
+          p_max_count: null,
+          p_window_seconds: null,
         }),
         PRE_ENQUEUE_TIMEOUT_MS,
       );

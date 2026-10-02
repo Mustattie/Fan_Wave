@@ -72,6 +72,7 @@ export type UploadErrorKind =
   | 'client'
   | 'file_missing'
   | 'paused'
+  | 'rate_limited'
   | 'unknown';
 
 export interface PendingClipJob {
@@ -272,6 +273,10 @@ export function classifyUploadError(e: unknown): UploadErrorKind {
   const msg = String((e as any)?.message ?? e ?? '');
   if (msg.startsWith('Timeout after') || msg.startsWith('Upload timed out')) return 'timeout';
   if (msg === 'Not signed in') return 'auth';
+  // Migration 103's server ceiling: PostgREST returns HTTP 429 with
+  // SQLSTATE PT429 as the error code. Not transient in the retry sense
+  // (the window has to pass), so the job waits for a manual Retry.
+  if ((e as any)?.code === 'PT429' || /rate limit/i.test(msg)) return 'rate_limited';
   const status = msg.match(/Upload failed \((\d{3})\)/);
   if (status) {
     const code = Number(status[1]);
@@ -316,6 +321,8 @@ function friendlyMessage(kind: UploadErrorKind, raw: string): string {
       return 'The original video is no longer on this device, so this upload cannot be resumed.';
     case 'paused':
       return 'Clip uploads are paused for a moment while we handle a surge. Your clip is saved here; tap Retry soon.';
+    case 'rate_limited':
+      return "You've posted a lot of clips in a short time. Your clip is saved here; tap Retry in a little while.";
     default:
       return raw || 'Upload failed.';
   }

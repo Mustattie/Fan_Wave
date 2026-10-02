@@ -102,6 +102,11 @@ describe('clipUploads', () => {
     expect(classifyUploadError(new Error('Upload timed out. Check your connection'))).toBe('timeout');
     expect(classifyUploadError(new Error('Upload failed (409): Duplicate'))).toBe('client');
     expect(classifyUploadError(new Error('Upload failed (401): jwt expired'))).toBe('auth');
+    // Migration 103 server ceiling: PostgREST 429, error.code PT429.
+    expect(
+      classifyUploadError(Object.assign(new Error('Rate limit: too many clips in a short time. Please wait a moment and try again.'), { code: 'PT429' })),
+    ).toBe('rate_limited');
+    expect(classifyUploadError({ code: 'PT429', message: 'x' })).toBe('rate_limited');
     // iOS NSURLError localizedDescriptions and Android OkHttp strings arrive
     // verbatim from createUploadTask; they must be transient so the foreground
     // auto-retry fires and the user sees the friendly copy, not the raw string.

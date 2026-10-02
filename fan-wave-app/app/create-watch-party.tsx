@@ -1056,6 +1056,11 @@ export default function CreateWatchPartyScreen() {
       ]);
     } catch (e: any) {
       setCreating(false);
+      if (e?.code === 'PT429') {
+        // Migration 103's server ceiling (HTTP 429) carries its own copy.
+        Alert.alert('Slow down', e.message);
+        return;
+      }
       // v9.1 UAT pivot: creating a watch party is a free-tier action.
       // Migration 070 drops the has_premium_access gate on
       // watch_parties_insert so this catch only fires on genuine errors

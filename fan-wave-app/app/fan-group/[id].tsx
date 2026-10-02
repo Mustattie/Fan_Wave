@@ -588,6 +588,12 @@ export default function FanGroupDetailScreen() {
       setMessages((prev) => prev.filter((m) => m.id !== newMsg.id));
       if (e?.message?.startsWith('Timeout after')) {
         Alert.alert('Send failed', 'Message timed out. Check your connection and try again.');
+      } else if (e?.code === 'PT429') {
+        // Migration 103's server ceiling (HTTP 429). The advisory
+        // pre-check above normally catches this first; when it does not
+        // (timeout fail-open, or a build without the pre-check) the
+        // message must not just vanish from the thread.
+        Alert.alert('Slow down', e.message);
       }
     }
   };

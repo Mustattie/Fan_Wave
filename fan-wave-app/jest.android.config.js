@@ -5,8 +5,9 @@
 //
 // jest-expo's per-platform presets (SDK 54) omit the babel `configFile`
 // that the default preset sets, so react-native's flow-typed jest setup
-// is not transformed; supply it explicitly.
-const path = require('path');
+// is not transformed; supply it explicitly. Resolved through Node so the
+// config also works from a git worktree that borrows the main
+// checkout's node_modules.
 const base = require('./jest.config.js');
 const android = require('jest-expo/android/jest-preset.js');
 // The key is a regex source ('\.[jt]sx?$'); look it up rather than
@@ -21,7 +22,7 @@ module.exports = {
     ...android.transform,
     [babelKey]: [
       babelEntry[0],
-      { ...babelEntry[1], configFile: path.join(__dirname, 'node_modules/expo/internal/babel-preset.js') },
+      { ...babelEntry[1], configFile: require.resolve('expo/internal/babel-preset.js') },
     ],
   },
 };

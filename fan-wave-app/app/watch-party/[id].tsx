@@ -353,15 +353,17 @@ export default function WatchPartyDetailScreen() {
   const handleRsvp = async (status: RsvpStatus) => {
     const newStatus = rsvpStatus === status ? null : status;
 
-    // Rate limiter (FW-102): 20 RSVP toggles per day.
+    // Rate limiter (FW-102). Tier-aware on the server (migration 103:
+    // free 20/day, Home Team+ 100/day); null asks for the caller's tier
+    // ceiling instead of pinning paid users to the free figure.
     try {
       const { data: { user } } = await getLocalUser();
       if (user) {
         const { data: allowed } = await supabase.rpc('check_rate_limit', {
           p_user_id: user.id,
           p_action: 'rsvp',
-          p_max_count: 20,
-          p_window_seconds: 86400,
+          p_max_count: null,
+          p_window_seconds: null,
         });
         if (allowed === false) return;
       }
@@ -409,6 +411,13 @@ export default function WatchPartyDetailScreen() {
         p_status: newStatus ?? 'cancelled',
       });
       if (error) {
+        if (error.code === 'PT429') {
+          // Migration 103's server ceiling (HTTP 429). Not an entitlement
+          // problem, so it must not fall into the 42501 paywall branch.
+          setRsvpStatus(previousStatus);
+          Alert.alert('Slow down', error.message);
+          return;
+        }
         if (
           error.code === '42501' ||
           /row-level security/i.test(error.message ?? '')
