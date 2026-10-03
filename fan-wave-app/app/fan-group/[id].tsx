@@ -11,9 +11,11 @@ import {
   Platform,
   Alert,
   Modal,
+  AppState,
+  type AppStateStatus,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import {
   ArrowLeft,
   Info,
@@ -27,6 +29,13 @@ import { Colors } from '@/constants/Colors';
 import { supabase, getLocalUser } from '@/lib/supabase';
 import { reportError } from '@/lib/errorReporting';
 import { subscribeToMessages, subscribeToPresence } from '@/lib/realtime';
+import {
+  fetchGroupMemberCount,
+  applyMemberCount,
+  presenceUserIds,
+  presenceRosterChanged,
+  becameActive,
+} from '@/lib/groupMemberCount';
 import * as Contacts from 'expo-contacts';
 import {
   loadContactsWithPhones,
@@ -196,6 +205,54 @@ export default function FanGroupDetailScreen() {
     })();
   }, [id]);
 
+  // Member count freshness (Build 33 UAT, 2026-10-03): the count is read
+  // once with the room row and was only ever bumped locally on our own
+  // Join, so the existing member's device kept "1 member" after someone
+  // else joined -- through a deep-link reopen and a background/return.
+  // chat_room_members is not in the realtime publication, so refetch the
+  // one column (a) when the presence roster changes (a new member's device
+  // joins presence right after inserting its membership row), (b) on every
+  // navigation re-focus, which also covers router.replace() landing on an
+  // already-mounted instance of this screen, and (c) when the app returns
+  // to the foreground while this screen is focused -- navigation focus
+  // does not change across a background/return, and the roster can be
+  // unchanged by then if the joiner already left the screen. The response
+  // only lands on the room it was requested for (the route can switch
+  // rooms while a request is pending) and only a changed value renders.
+  const refreshMemberCount = useCallback(async () => {
+    if (!id) return;
+    const roomId = id;
+    const n = await fetchGroupMemberCount(roomId);
+    if (n === null) return;
+    setGroup((prev) => applyMemberCount(prev, roomId, n));
+  }, [id]);
+  const refreshMemberCountRef = useRef(refreshMemberCount);
+  refreshMemberCountRef.current = refreshMemberCount;
+  const focusedOnceRef = useRef(false);
+  const isFocusedRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      isFocusedRef.current = true;
+      // The mount-time room load already carries the count; refetch on
+      // every focus after that one.
+      if (focusedOnceRef.current) void refreshMemberCountRef.current();
+      focusedOnceRef.current = true;
+      return () => {
+        isFocusedRef.current = false;
+      };
+    }, []),
+  );
+  useEffect(() => {
+    let prev: AppStateStatus | null = AppState.currentState ?? null;
+    const sub = AppState.addEventListener('change', (next) => {
+      if (isFocusedRef.current && becameActive(prev, next)) {
+        void refreshMemberCountRef.current();
+      }
+      prev = next;
+    });
+    return () => sub.remove();
+  }, []);
+
   // Membership check — separate query so it refreshes after Join
   useEffect(() => {
     if (!id || !currentUserId) return;
@@ -225,6 +282,8 @@ export default function FanGroupDetailScreen() {
       setGroup((prev) =>
         prev ? { ...prev, memberCount: (prev.memberCount || 0) + 1 } : prev,
       );
+      // Reconcile with the trigger-maintained server count (mig 008).
+      void refreshMemberCount();
     } catch (e: any) {
       reportError(e, { source: 'fan-group:handleJoin', groupId: id });
       Alert.alert(
@@ -234,7 +293,7 @@ export default function FanGroupDetailScreen() {
     } finally {
       setJoining(false);
     }
-  }, [id, currentUserId, joining]);
+  }, [id, currentUserId, joining, refreshMemberCount]);
 
   // Load initial merged feed: messages + match_moments in parallel,
   // interleaved by created_at. Both tables are chat_room-scoped and
@@ -378,16 +437,26 @@ export default function FanGroupDetailScreen() {
   // messages effect already keeps; the eligibility flip is the only thing
   // that should (re)subscribe.
   const presenceEligible = isMember || isOwner;
+  const presenceRosterRef = useRef<string[] | null>(null);
   useEffect(() => {
     if (!id) return;
     if (!presenceEligible) {
       setOnlineCount(0);
       return;
     }
+    presenceRosterRef.current = null;
     const unsub = subscribeToPresence(
       `presence-${id}`,
       (state) => {
         setOnlineCount(Object.keys(state).length);
+        // Roster change (not a heartbeat) => someone joined or left the
+        // room; pull the server member count. Reads through the ref so
+        // this effect still depends on [id, presenceEligible] only.
+        const roster = presenceUserIds(state);
+        if (presenceRosterChanged(presenceRosterRef.current, roster)) {
+          void refreshMemberCountRef.current();
+        }
+        presenceRosterRef.current = roster;
       },
       { user_id: currentUserIdRef.current || 'anon', online_at: new Date().toISOString() },
     );
