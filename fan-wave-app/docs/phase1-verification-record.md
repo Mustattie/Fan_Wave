@@ -67,7 +67,47 @@ Management API query endpoint:
 Any earlier note that "099 remains deferred" is outdated. Do not apply
 either migration again.
 
-## What Build 32 must run to close Phase 1
+## Status at 2026-10-02 — Build 33 evidence plus owner attestation
+
+Build 32 was emulator-only; the physical run happened on Build 33
+(v9.5.41, f131669, S10+, 2026-10-01/02). On 2026-10-02 the owner stated
+that the Phase 1 device tests were performed manually twice, directed
+that one valid post-fix pass is sufficient, and that completed tests are
+not to be rerun. The attestation is recorded as such; it is not turned
+into a PASS where no observation of the result exists in the repo. Each
+open row names the single missing datum instead of a rerun.
+
+| # | Evidence on record | Status | Still needed (no rerun) |
+| --- | --- | --- | --- |
+| 3 | Build 33: force-stopped at "Posting… 45 %", relaunch resumed the job by itself, completed after one Retry, exactly one row `Build33_T3_kill` under a new path, no 409 in logcat | **PARTIAL — device recovery passed; Sentry pending** | Sentry filtered to build 33 shows no 409 (owner; the same sweep serves fixes 7–9 and row 17) |
+| 4 | Build 26 PASS | closed | — |
+| 5 | Build 33 PASS | closed | — |
+| 6 | v9.5.40 (the fix) is in Build 33; the Padres–Cubs LIVE→FINAL update landed on Home and Game Day inside the same 30 s cycle | PARTIAL | One observation of two consecutive updates with a timestamp per screen, plus the Sentry `realtime.rejoin_failed` check. The 2026-10-02 17:38 CDT NHL run did not happen (the phone was disconnected at 17:10; `docs/codex-sync-2026-10-02.md` Sync 3). Stays PARTIAL if a future game yields fewer than two updates |
+| 7 | Owner attests manual performance; no note in the repo records the observation (Build 26's 7a/7b were My Sports variants; Build 33 had no second device) | NOT RECORDED | Build number, date, and whether device B's two messages appeared on device A within ~10 s, each exactly once, without leaving the conversation. If the owner's own run notes hold this, copy it here; otherwise this is the one Phase 1 test that still needs a run |
+| 8, 9 | Build 26 PASS | closed | — |
+| 10a | Build 29 PASS (reset password) | closed | — |
+| 10b | Owner attests manual performance; no recorded result | NOT RECORDED | Build number, date, clean return to Sign In after Delete account, and no `auth.unexpected_signed_out` in Sentry at that time |
+
+Fixes 5–9 retest list, reusing Build 33 evidence where it overlaps:
+
+| Fix | Overlapping evidence already on record | Still needed |
+| --- | --- | --- |
+| 5 — feed cap 200, hearts/follows intact after refresh | Build 33 row 3: 60 cards, no duplicates; the cap is unreachable with the 20 clips in prod, so cap behaviour rests on `__tests__/clipsFeed.test.ts` | Two observations: heart a clip, pull to refresh, the heart stays filled; follow a creator, pull to refresh, the follow stays (any build from 28 on). The cap itself has no device evidence |
+| 6 — 7-day failed-job expiry, stable cache directory | TTL pinned by `__tests__/clipUploads.test.ts` ("drops a failed job older than 7 days"); Build 33 Tests 3/5 exercised the restore path (a failed job survived a force-stop and completed on Retry). A 7-day wait is not observable in a session | Unit evidence covers the TTL only. The stable cache directory (the same job directory before and after an export/restart) still needs one device check — `run-as` is refused on the preview build, so it needs a debuggable build or the job path logged by the app |
+| 7 — one `presence.joined` per group open | None on Build 33 (rows 11/12 were not run; no group was opened) | Cannot be verified from the Build 33 sweep: zero group opens means zero expected joins. `presence.joined` is a breadcrumb (lib/realtime.ts), not a standalone event, so it needs one session that opens a group N times and then a captured Sentry event whose breadcrumb trail (or retained logcat from that session) shows exactly N `presence.joined` |
+| 8 — one `link.consumed` per auth link | Build 29 password-recovery PASS (link opened Set New Password, new password accepted) on v9.5.18, which carries fix 8 | `link.consumed` is a breadcrumb (lib/supabase.ts, app/auth-callback.tsx), not a standalone event: needs a captured Sentry event whose trail, or retained logcat from that session, shows exactly one `link.consumed` for that link |
+| 9 — own content after the `getLocalUser()` swap; second-device sign-out | Build 33: the uploader's own rows `Build33_T3_kill` and `Build33_T5_airplane` appeared in the feed on v9.5.41 | Second-device sign-out, taken with Test 7's second device |
+| Party created on device A appears live on device B | None | With Test 7's second device |
+| Sentry clean of `OutOfMemoryError` and `realtime.channel_error` (watch-parties) | Build 33 logcat: 0 OOM / 0 ANR | The same Sentry sweep |
+
+Net: one Sentry sweep (owner), one two-update observation (not yet made;
+the phone was disconnected before the 2026-10-02 17:30 game), one
+second-device session (Test 7, fix 9's sign-out, cross-device party), one
+throwaway-account deletion (10b), one heart-and-follow-after-refresh
+glance, one stable-cache-directory check, and one captured-event check
+each for the `presence.joined` and `link.consumed` breadcrumbs.
+
+## What Build 32 must run to close Phase 1 (superseded by the table above; kept for the steps and pass criteria)
 
 Run on the Galaxy S10+ after the P3.6 memory rows, on a build containing
 v9.5.37–v9.5.39:
