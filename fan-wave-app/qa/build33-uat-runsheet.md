@@ -15,9 +15,9 @@ shows 33.
 | --- | --- | --- | --- | --- |
 | 3 | Kill during upload (physical confirmation of the Build 32 emulator pass) | Record a 20–30 s clip, tap Post; at "Posting… 2–50 %" force-stop from Recents; relaunch | Card returns as queued/retrying, completes under a new path, exactly one clip in the feed; no 409 in Sentry | **PARTIAL** 2026-10-01 — recovery verified: killed at "Posting… 45 %" on mobile data; resumed on relaunch; completed after one Retry on Wi-Fi; one row, new path, no 409 in logcat. Sentry no-409 check pending (owner). 2026-10-02 owner direction: no rerun; the Sentry review is the only open item |
 | 5 | Airplane mode during upload | Sign in as an MVP account (free tier caps at 3 clips/24 h); start an upload; airplane mode ON at ~50 %; wait for the failure copy; airplane mode OFF; tap Retry | Friendly copy ("The connection dropped…"), not a raw native string; Retry succeeds; one clip; the New Clip preview rendered (not black) before posting | **PASS** — airplane at 11 % → friendly copy in 4 s; Retry settled in 10 s; one row; preview rendered (free-tier account, 3rd clip of the day) |
-| 6 | Live-score navigation, two consecutive updates | Pick a live game. Open it on Home (Today's Games card) and on Game Day. Wait for two consecutive score or clock updates (ESPN sync writes about once a minute per live game). After each update, compare both screens. Optionally repeat with a second device on the other tab | Both screens show update 1 within seconds of each other, then update 2 likewise; Home never sits on a value Game Day has already moved past; Sentry shows no `realtime.rejoin_failed` | **PARTIAL** — one update (LIVE→FINAL) seen, both screens moved in the same 30 s cycle; second consecutive update needs a live game. 2026-10-02 17:10: the phone was disconnected before the 17:30 CDT NHL game, so the planned adb-automated two-update run did not happen; no other rerun. Still needed: two timestamped consecutive updates on both screens AND the Sentry `realtime.rejoin_failed` check |
+| 6 | Live-score navigation, two consecutive updates | Pick a live game. Open it on Home (Today's Games card) and on Game Day. Wait for two consecutive score or clock updates (ESPN sync writes about once a minute per live game). After each update, compare both screens. Optionally repeat with a second device on the other tab | Both screens show update 1 within seconds of each other, then update 2 likewise; Home never sits on a value Game Day has already moved past; Sentry shows no `realtime.rejoin_failed` | **PASS on device, Sentry pending** (2026-10-03 13:38–13:44 CDT, S10+ over adb, Claude; MLB White Sox @ Guardians, prod `games.id 179f9cf7…`, no manual refresh): baseline Bottom 4th 0-2 (server 13:27); update 1 Top 5th — Home 13:38:50, Game Day 13:38:57; both still Top 5th at 13:41:52 / 13:41:58; update 2 Middle 5th — Home 13:42:15, Game Day 13:42:21 (6 s); ten agreeing cycles 13:41:04–13:44:41. Codex independently saw Bottom 6th on both screens at 14:07:43 / 14:08:01 (emulator). Earlier 2026-10-01: one LIVE→FINAL update (Padres–Cubs); 2026-10-02 NHL run cancelled (phone disconnected). Still needed: Sentry `realtime.rejoin_failed` sweep (owner). Log: scratchpad `test6b.log`; `docs/codex-sync-2026-10-03.md` |
 | 6b | Live game older than four hours (v9.5.41) | If a game in extra innings or a long delay is available: confirm it still appears on Home and Game Day more than 4 h after its scheduled start | Still listed as live | NOT AVAILABLE — no 4 h+ live game |
-| 7 | Two-account chat catch-up | Two accounts in one group chat; device A airplane mode; device B sends two messages; A airplane mode OFF and stays in the conversation | Both messages appear on A within ~10 s, each exactly once | NOT RECORDED — the owner attests (2026-10-02) that the Phase 1 tests were performed manually twice; no note records this observation. Missing datum: build, date, and both messages on A within ~10 s, each once. Needs a second device only if the owner's notes do not hold it |
+| 7 | Two-account chat catch-up | Two accounts in one group chat; device A airplane mode; device B sends two messages; A airplane mode OFF and stays in the conversation | Both messages appear on A within ~10 s, each exactly once | **PASS on device, breadcrumb leg pending** (2026-10-03 14:05 CDT, Codex over computer use; Build 33 on both devices): QA room Anaheim Ducks Fans `cf06ddf9…` with only the two test accounts (the phone account joined through the real deep link). Device A = emulator (fan Sphere Uat) on the chat screen in airplane mode > 30 s; device B = S10+ (Tattie Mus) sent two rows while A was offline (`T7C135gT7D135` — label textually corrupted by the device collision below but one saved row — and `T7E135`, both 14:05); neither visible in the offline snapshot; airplane off at 14:05:53.126; absent at the 9.5 s poll, both present at the 13.9 s poll without leaving the chat (each UIAutomator poll ≈ 4 s, so arrival is bounded to (9.5 s, 13.9 s] against the ~10 s target), each exactly once. Still needed: Sentry `presence.rejoined` breadcrumb evidence. Evidence: `%LOCALAPPDATA%\Temp\fan-sphere-codex-uat-2026-10-03.md`; `docs/codex-sync-2026-10-03.md` |
 | 10b | Delete-account sign-out | Delete a throwaway account from Profile | Clean sign-out; no `auth.unexpected_signed_out` | NOT RECORDED — owner attestation as for Test 7; missing datum: build, date, clean return to Sign In, and no `auth.unexpected_signed_out` in Sentry at that time. Needs a throwaway account only if the owner's notes do not hold it |
 
 ## Part B — Build 31/32 defects, first physical confirmation
@@ -125,8 +125,15 @@ trend across the session is upward and the Home/Game Day loop produced
 the session high. The 15,404 live Views vs 271 cold and ~985 (flat) across
 repeated tab rounds show navigation alone does not explain the count; that
 the remainder is the loaded Clips feed is inferred, not measured. Rows 11,
-12, 16, 17 not run (11/12 write to prod watch parties / a real group chat,
-16 needs a prod flag change, 17 needs the Sentry login).
+16, 17 not run (11 writes to prod watch parties, 16 needs a prod flag
+change, 17 needs the Sentry login). Row 12 PASS 2026-10-03 (Codex, emulator,
+QA room Anaheim Ducks Fans): five labelled messages `R12M1`–`R12M5` plus a
+nonpersonal emulator-camera photo, background 14:15:19.919 → 14:17:21.099
+(121.2 s), resumed into the same chat, every message once, photo bubble
+kept, presence `2 online`, logcat clean of fatal/ANR/OOM/"cannot add
+presence callbacks"; PSS 244,736 → 214,114 KB, Java 51,536 → 30,264 KB,
+Native 51,376 → 32,340 KB. Evidence: `r12-*.xml/png`, `r12-mem-before/after.txt`
+in `%LOCALAPPDATA%\Temp`; `docs/codex-sync-2026-10-03.md`.
 
 Sentry (2026-10-02 16:57, owner in the dashboard): Build 33 events arrive
 in project react-native, environment staging (smoke event
@@ -148,3 +155,43 @@ EAS remote build number in the next build.
 NHL game. Test 6 (two consecutive updates) and row 13's scores-resume leg
 were not run; both remain PARTIAL. 2026-10-03 03:40: phone still not
 attached (`adb devices` empty); no device work this session.
+
+## 2026-10-03 session — shared devices (Claude over adb + Codex over computer use)
+
+The owner plugged the S10+ back in (13:26 CDT) with the Fan_Sphere_UAT
+emulator also running Build 33, signed in as a second account (fan Sphere
+Uat). Claude and Codex agreed the run order first (Sync 4 in
+`docs/codex-sync-2026-10-03.md`). Claude ran Test 6 (above). From ~13:45 the
+Codex desktop session drove both devices itself (Test 7, fix 5, row 12,
+smoke); Claude's tab-bar taps landed on the open keyboard during the
+hand-over and corrupted two Test 7 labels (`T7B_13471 5pm`, `T7C135gT7D135`)
+— recorded in the sync doc; Claude made no device input after 14:05.
+Prod writes this session. In the QA room only: one join (Tattie Mus →
+Anaheim Ducks Fans), nine labelled messages, one emulator photo; Build 33
+has no leave-group UI, so the membership and messages remain. Outside
+the room, on the emulator account (fix 5): one like on the first visible
+clip and one follow of its creator, both reversed afterwards (baseline
+`Follow` / count 0 confirmed); the like/follow notifications, if any,
+were not recalled.
+
+New finding (Codex): after the phone joined, the emulator — already a
+member, on the group screen — kept `1 member · 2 online` through a
+deep-link reopen and the row-12 background/return. Cause (code): the
+fan-group screen reads `chat_rooms.member_count` once on mount, bumps it
+only on its own Join, and `chat_room_members` is not in the realtime
+publication. Fix v9.5.43 (`lib/groupMemberCount.ts`): refetch the count on a
+presence-roster change, on navigation re-focus and on app foreground; Codex
+reviewed. Not device-verified until the next build.
+
+Build 34 static gates on origin/v9.5 639c2ae (v9.5.42 + v9.5.43 on top of
+Build 33's f131669), run 2026-10-03 14:45 in an isolated worktree:
+`npx tsc --noEmit` clean, Jest 217/217 on both presets, `npx expo-doctor`
+18/18, `npx expo install --check` up to date. The one new silent catch
+(`lib/groupMemberCount.ts` returns null when the count cannot be read) is
+intentional: the refresh is best-effort. No new inserts/updates/deletes.
+
+Still open after this session: rows 11 (Create Party link/change/cancel),
+13 (both network legs + scores-resume), 14 (exact 30-min soak), 15 (two more
+rendered previews), 16, 17, R1–R8, R4, R5; Sentry legs of Tests 3/6/7 and row
+13; Clips listening check; Test 10b; fixes 6/7/8/9 evidence; cross-device
+party.
