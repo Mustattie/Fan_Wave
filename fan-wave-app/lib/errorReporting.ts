@@ -13,6 +13,7 @@
 //   clearUserContext()         — clear after sign-out
 
 import { Platform } from 'react-native';
+import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 
 type Sentry = typeof import('@sentry/react-native');
@@ -28,11 +29,17 @@ let initialised = false;
  * regression can be pinned to the build that introduced it. The SDK's own
  * release/dist are left at their defaults so future source-map uploads
  * still associate.
+ *
+ * Build 33 finding (2026-10-02): `build_number` was absent on every event
+ * because expo-constants 18 no longer exposes `nativeBuildVersion`, so the
+ * tag silently coalesced to null. `expo-application` is the supported
+ * source (Android versionCode / iOS CFBundleVersion as a string); the old
+ * Constants field is kept only as a fallback for older runtimes.
  */
 export function buildTags(): Record<string, string> {
   const tags: Record<string, string> = { platform: Platform.OS };
   const version = Constants.expoConfig?.version ?? (Constants as any).nativeAppVersion ?? null;
-  const build = (Constants as any).nativeBuildVersion ?? null;
+  const build = Application.nativeBuildVersion ?? (Constants as any).nativeBuildVersion ?? null;
   if (version) tags.app_version = String(version);
   if (build) tags.build_number = String(build);
   return tags;
