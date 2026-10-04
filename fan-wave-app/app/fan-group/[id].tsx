@@ -27,8 +27,9 @@ import {
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase, getLocalUser } from '@/lib/supabase';
-import { reportError } from '@/lib/errorReporting';
-import { subscribeToMessages, subscribeToPresence } from '@/lib/realtime';
+import { reportError, addBreadcrumb } from '@/lib/errorReporting';
+import { subscribeToMessages, subscribeToPresence, getRealtimeDiagnostics } from '@/lib/realtime';
+import { shouldReportCatchUpError } from '@/lib/transientNetworkError';
 import {
   fetchGroupMemberCount,
   applyMemberCount,
@@ -392,7 +393,20 @@ export default function FanGroupDetailScreen() {
         );
       });
     } catch (e) {
-      reportError(e, { source: 'fan-group:catchUpMessages', groupId: id });
+      // Build 33 finding 5: a timeout while the realtime socket is down is
+      // the outage itself (airplane mode, tunnel), not a defect -- a
+      // breadcrumb keeps the trail without an error-level event per cycle.
+      // Any other failure, or a timeout with the socket connected, is
+      // still reported.
+      const { socketConnected } = getRealtimeDiagnostics();
+      if (shouldReportCatchUpError(e, socketConnected)) {
+        reportError(e, { source: 'fan-group:catchUpMessages', groupId: id });
+      } else {
+        addBreadcrumb('realtime', 'catchup.skipped_offline', {
+          topic: `room-messages-${id}`,
+          detail: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
   }, [id]);
 
