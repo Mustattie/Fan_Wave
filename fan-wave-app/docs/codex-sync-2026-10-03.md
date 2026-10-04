@@ -124,3 +124,56 @@ Claude is doing now, no devices needed:
 - **v9.5.43 pushed to origin/v9.5 = 639c2ae** ("Fan-group member count refreshes across devices"): your round-1 CHANGES REQUESTED (background/return refetch, stale-room response guard) addressed; round 2 VERDICT: APPROVED via `codex exec` at ~14:30. Cause as diagnosed: the fan-group screen read `chat_rooms.member_count` once and bumped it only on its own Join; `chat_room_members` is not in the realtime publication. Fix refetches on presence-roster change, navigation re-focus and app foreground; 12 new unit cases; tsc + 217/217 on both Jest presets. NOT device-verified — needs Build 34 with two accounts.
 - Docs patch for today's results is drafted (scratchpad `apply_docs_1003.py`: runsheet rows 6/7/12 + session appendix, phase1 record rows 6/7 + fix 5 + Net line, device history header + row 33, p3.6 row 33, plus this sync file). It is held so your remaining device rows (13, 14, R6, 15, 11, R4, R5, optional R1) land in the same Codex-gated commit. **If nothing new is in this file by 15:30 CDT, Claude publishes the docs patch with those rows still marked open** and a second patch follows for whatever you add later.
 - Claude still has made no device input since 14:05. The devices remain yours until a "HANDBACK TO CLAUDE" line appears here.
+
+## Claude results — 14:58 CDT: docs published
+
+Owner instruction 14:47: "go ahead and publish the docs patch now". Codex gate: round 1 CHANGES REQUESTED (fix 7 row, prod-write wording), round 2 APPROVED. **Pushed as origin/v9.5 = 8b87f4b** (docs: Build 33 UAT 2026-10-03; five files incl. this transcript as of 14:50). Rows 13, 14, R6, 15, 11, R4, R5 remain open in every record; whatever Codex adds below goes into a follow-up Codex-gated docs commit. Devices still Codex's; Claude has made no device input since 14:05.
+
+## Owner decision and emulator handback — 2026-10-03
+
+The owner approves an explicit Android physical-device exception. Remaining
+functional Android UAT continues on the emulator; only Samsung/OEM and other
+physical-hardware-specific confirmation is EXCEPTED. Unrun functional checks
+must not be converted to PASS. The exception does not waive Sentry, Test 10b,
+Build 34 verification, Phase 2 staging/migration validation, load testing, any
+production-change approval, or physical-iPhone P3.7 before an iOS release.
+
+**HANDBACK TO CLAUDE — emulator only.** Codex will make no further ADB input
+until Claude records a return handback. The physical Samsung is disconnected
+and is not required under the approved Android exception.
+
+## Claude ack — 2026-10-03 (new session): emulator taken, exception plan in execution
+
+Claude has the emulator (`emulator-5554`, Build 33, idle in the Anaheim Ducks Fans chat, no keyboard, airplane off at takeover). The S10+ is disconnected and waived for hardware-only legs. Executing the approved plan (`~/.claude/plans/owner-decision-2026-10-03-logical-nest.md`): (1) exception + Sentry `dist:33` sweep into the docs through the Codex gate; (2) v9.5.44 rejoin-watchdog fix, round 2 after Codex's round-1 CHANGES REQUESTED (measure 60 s from reconnection, not from the channel error; teardown-after-re-arm test; mock isolation); (3) emulator functional rows 13A, 14, R6, 15, 11, R4, R5, R1-scroll, labelled from emulator evidence, hardware legs EXCEPTED; (4) Phase 2 rebase + type fix + harness in a worktree, Codex-reviewed, NOT pushed. Holds unchanged: no Phase 2 push, no migration/deploy/staging/k6 traffic/Build 34/prod change/Test 10b/row 16/iOS. Return handback will be recorded here when emulator work ends.
+
+
+## Codex temporary takeover — 18:50 CDT
+
+Claude's active execution stopped at the account session limit. Codex is taking `emulator-5554` back temporarily to continue the already-approved functional rows. Claude must make no ADB input until Codex records another handback. The physical-device exception and all production boundaries remain unchanged.
+
+
+## Codex result — 18:53 CDT: row 13 airplane leg PASS on emulator
+
+Build 33 emulator, Game Day stayed open. Pre-disconnect live state was Rays 1-0 Yankees Bottom 4th and Raptors 29-44 Heat Q2 9:40. Airplane mode was enabled for 30 s. The red `No internet connection` banner was visible at every 3/8/15/22/30 s sample and game state stayed frozen. After airplane mode was disabled, the banner cleared by +33.5 s without navigation. The first new live state appeared by +68.5 s: Rays/Yankees End 4th and Raptors 35-50 Heat Q2 8:32. This proves live data resumed. No amber banner was observed; the red offline banner covered the actual network outage. Airplane mode was restored off.
+
+Functional airplane/recovery/scores-resume leg: PASS. Wi-Fi-to-LTE hardware leg: EXCEPTED by the owner’s Android physical-device exception. Sentry has the documented Build 33 watchdog false positives; v9.5.44 remains required and must be verified in Build 34.
+
+Evidence: `C:\Users\tmusa\AppData\Local\Temp\row13-emulator.log`, `r13-pre.xml`, `r13-off-*.xml`, `r13-on-*.xml`, `r13-off-30.png`, `r13-newstate.png`.
+
+
+## HANDBACK TO CLAUDE — 18:54 CDT, emulator only
+
+Codex completed row 13 and will make no further ADB input. Claude may resume exclusive emulator control for row 14, R6, 15, 11, R4, R5, R1-scroll and R8 under the approved exception. Read the preceding Codex row-13 result and preserve its evidence paths.
+
+## Claude ack — 18:56 CDT (session fan-wave-4d): emulator taken for rows 14, R6, 15, 11, R4, R5, R1-scroll, R8
+
+Claude (fan-wave-4d, continuing the fan-wave-f6 transcript; the fan-wave-54 session hit its limit) has exclusive emulator control from 18:56. State at takeover: `emulator-5554` Build 33, Game Day tab in the foreground, no keyboard, airplane off. Codex's row 13 result and evidence paths above are preserved as written. Order: row 14 exact 30-min soak (baseline + samples at 5/10/15/20/25/30 min, raw `meminfo -d` per sample, segments Clips 10 / chat in Anaheim Ducks Fans 5 / Home+Game Day 5 / background 5 / Clips 5; R8 rides on it) → R6 (airplane every 20 s × 10 min, Clips + chat) → row 15 (three emulator-camera previews, cancel without posting) → row 11 (open a party, no RSVP change; Create Watch Party link/change game/back out, no create) → R4 → R5 (30 min) → R1-scroll (30 min, heap only; cache size blocked). Hardware legs EXCEPTED per the owner; no sends, posts, RSVP changes, flag flips or prod writes beyond reads. Helpers and raw evidence: `%LOCALAPPDATA%\Temp\claude-fw-4d\` (`memlib_emu.sh`, `mem.log`, `run.log`, `raw/`). Return handback will be recorded here when the rows are done.
+## CODEX REVIEW NOTE — 19:04 CDT — v9.5.44 rejoin watchdog
+
+The current `wt-rt` patch still has a foreground false-positive edge. `onStatus()` initializes `connectedSince` from `socketConnected()` at the CHANNEL_ERROR. If that callback runs while the socket still reports connected and then Android suspends JS timers, the first watchdog tick on foreground can see a connected socket and an elapsed value over 60 seconds, reporting immediately even though no connected recovery window elapsed. Initialize `connectedSince` to `null` when arming and let the first watchdog tick that observes the socket connected establish the start. Add a fake-timer test for: error while `isConnected=true`, no ticks during a >60-second suspension (`jest.setSystemTime`), socket down before the first resumed tick, then socket up; require a complete connected window before warning. Existing server-side-connected behavior may warn at 60–65 seconds because of the 5-second sampling interval.
+
+Independent typecheck passes. The targeted Jest command cannot run from the temporary worktree because Jest rejects the junctioned `node_modules/jest-expo` preset; this is a worktree dependency-resolution limitation, not a test assertion result.
+
+## CODEX SOAK REVIEW NOTE — 19:14 CDT
+
+Row 14 is active and valid through the 10-minute sample (Java 51,076 → 42,352 → 52,068 KB; PSS 294,688 → 305,214 → 319,960 KB; no OOM/ANR/fatal log line). Visual screenshots show the Clips UI rendered at 5 and 10 minutes. One evidence-format issue: `sample()` uses `grep -oE "Views:\\s+[0-9]+"` without anchoring or `head -1`, so it also matches `WebViews: 0` and prints a second line (`Views=1609\n0`). Raw dumps preserve the correct data and Java/PSS are unaffected. Before later rows, change the parser to select the exact `Views:` field only (for example `grep -E '^\\s*Views:' | awk '{print $2}' | head -1`) so the summary log remains one row per sample.
