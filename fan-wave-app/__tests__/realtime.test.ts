@@ -39,6 +39,9 @@ function mockMakeChannel(topic: string): FakeChannel {
   return ch;
 }
 
+// Mutable so a test can take the socket down (background, airplane mode).
+let mockSocketConnected = true;
+
 jest.mock('@/lib/supabase', () => ({
   supabase: {
     channel: jest.fn((topic: string) => {
@@ -51,7 +54,7 @@ jest.mock('@/lib/supabase', () => ({
     }),
     removeChannel: (ch: FakeChannel) => mockRemoveChannel(ch),
     getChannels: () => Array.from(mockChannels.values()),
-    realtime: { isConnected: () => true },
+    realtime: { isConnected: () => mockSocketConnected },
   },
 }));
 
@@ -86,6 +89,7 @@ function liveChannel(topic: string): FakeChannel {
 describe('realtime registry', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    mockSocketConnected = true;
     mockChannels.clear();
     mockRemoveChannel.mockClear();
     (reportMessage as jest.Mock).mockClear();
@@ -185,13 +189,14 @@ describe('realtime registry', () => {
     expect(getRealtimeDiagnostics().topics[0]!.errors).toBe(3);
   });
 
-  it('treats a post-join CHANNEL_ERROR as a reconnect: breadcrumb only, warning only if no rejoin in 60 s', () => {
+  it('treats a post-join CHANNEL_ERROR as a reconnect: breadcrumb only, warning only if no rejoin in 60 s of connected socket time (socket stays connected here)', () => {
     subscribeToGames(jest.fn());
     const ch = liveChannel('games-realtime');
     ch.statusCb?.('SUBSCRIBED');
     (addBreadcrumb as jest.Mock).mockClear();
 
-    // Socket drop: Phoenix errors every joined channel.
+    // Channel errors while the mock socket stays connected (the
+    // server-side case), so the 60 s window runs from the error itself.
     ch.statusCb?.('CHANNEL_ERROR', new Error('socket closed'));
     expect(reportMessage).not.toHaveBeenCalled();
     expect(addBreadcrumb).toHaveBeenCalledWith(
@@ -219,6 +224,89 @@ describe('realtime registry', () => {
       expect.objectContaining({ phase: 'after-join' }),
       expect.anything(),
     );
+  });
+
+  it('counts the 60 s only while the socket is connected: no warning during a background, a full window after the socket returns', () => {
+    // Build 33 Sentry sweep: a 2-minute background produced three
+    // rejoin_failed warnings per user, each with socketConnected=false.
+    subscribeToGames(jest.fn());
+    const ch = liveChannel('games-realtime');
+    ch.statusCb?.('SUBSCRIBED');
+    (reportMessage as jest.Mock).mockClear();
+
+    // Backgrounded: socket down, Phoenix errors the channel. Three minutes
+    // pass -- the old 60 s timer would have warned twice by now.
+    mockSocketConnected = false;
+    ch.statusCb?.('CHANNEL_ERROR', new Error('socket closed'));
+    jest.advanceTimersByTime(180_000);
+    expect(reportMessage).not.toHaveBeenCalled();
+
+    // Foreground: socket back and the channel rejoins -> never a warning.
+    mockSocketConnected = true;
+    ch.statusCb?.('SUBSCRIBED');
+    jest.advanceTimersByTime(120_000);
+    expect(reportMessage).not.toHaveBeenCalled();
+
+    // Socket returns 55 s after the error, just before the old deadline, and
+    // the channel never rejoins: the warning must wait a full 60 s of
+    // connected time, not fire at t = 60 s with one second connected.
+    mockSocketConnected = false;
+    ch.statusCb?.('CHANNEL_ERROR', new Error('socket closed'));
+    jest.advanceTimersByTime(55_000);
+    mockSocketConnected = true;
+    jest.advanceTimersByTime(60_000); // t = 115 s: connected ~60 s but the first connected tick was at 60 s
+    expect(reportMessage).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(10_000); // t = 125 s: 65 s of connected ticks
+    expect(reportMessage).toHaveBeenCalledTimes(1);
+    expect(reportMessage).toHaveBeenCalledWith(
+      'realtime.rejoin_failed [games-realtime]',
+      'warning',
+      expect.objectContaining({ phase: 'after-join', socketConnected: true }),
+      expect.anything(),
+    );
+  });
+
+  it('teardown during an offline re-arm leaves no timer behind and never warns', () => {
+    const unsub = subscribeToGames(jest.fn());
+    const ch = liveChannel('games-realtime');
+    ch.statusCb?.('SUBSCRIBED');
+    (reportMessage as jest.Mock).mockClear();
+
+    mockSocketConnected = false;
+    ch.statusCb?.('CHANNEL_ERROR', new Error('socket closed'));
+    jest.advanceTimersByTime(12_000); // at least two offline ticks, each re-armed
+    expect(jest.getTimerCount()).toBeGreaterThan(0);
+
+    unsub();
+    jest.advanceTimersByTime(400); // past the teardown grace
+    expect(jest.getTimerCount()).toBe(0);
+
+    mockSocketConnected = true;
+    jest.advanceTimersByTime(180_000);
+    expect(reportMessage).not.toHaveBeenCalled();
+  });
+
+  it('a tick that slept through a background suspension restarts the connected window instead of warning on wake', () => {
+    subscribeToGames(jest.fn());
+    const ch = liveChannel('games-realtime');
+    ch.statusCb?.('SUBSCRIBED');
+    (reportMessage as jest.Mock).mockClear();
+
+    // The channel errors while the socket is still connected (seeds the
+    // connected window), then the app is backgrounded: wall-clock time moves
+    // three minutes but no timer callback runs. In between the socket dropped
+    // and came back without any tick observing it.
+    ch.statusCb?.('CHANNEL_ERROR', new Error('socket closed'));
+    jest.advanceTimersByTime(5_000); // one connected tick before the suspension
+    jest.setSystemTime(Date.now() + 180_000);
+
+    // Wake: the first tick sees the socket up and the channel still errored.
+    jest.advanceTimersByTime(5_000);
+    expect(reportMessage).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(50_000); // 55 s of connected ticks since wake
+    expect(reportMessage).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(10_000); // a full 60 s window after wake
+    expect(reportMessage).toHaveBeenCalledTimes(1);
   });
 
   it('notifies onReconnect on a re-join but not on the first join', () => {
@@ -297,6 +385,7 @@ describe('realtime registry', () => {
 describe('kill switches (P3.3)', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    mockSocketConnected = true;
     mockChannels.clear();
     _resetRealtimeRegistryForTests();
     for (const k of Object.keys(mockSwitches)) delete mockSwitches[k];

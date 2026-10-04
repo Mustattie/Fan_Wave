@@ -67,6 +67,14 @@ interface Entry {
   reopenTimer: ReturnType<typeof setTimeout> | null;
   /** Armed on a post-join error; fires if no SUBSCRIBED follows in time. */
   rejoinWatchdog: ReturnType<typeof setTimeout> | null;
+  /**
+   * Build 33 Sentry sweep: the watchdog only counts time while the socket is
+   * connected. Set when a watchdog tick first sees the socket up after the
+   * error, null while it is down.
+   */
+  connectedSince: number | null;
+  /** Date.now() when the current watchdog tick was armed; a tick that fires long after it was suspended. */
+  watchdogArmedAt: number;
   /** P3.6: the 0-3 s onReconnect spread timers, cleared with the entry. */
   reconnectTimers: Set<ReturnType<typeof setTimeout>>;
   reopenAttempts: number;
@@ -106,6 +114,16 @@ export function jitter(ms: number, random: () => number = Math.random): number {
 // a breadcrumb unless the channel has not re-subscribed within this
 // window; a pre-join error is reported at once as a rejected join.
 const REJOIN_WATCHDOG_MS = 60_000;
+// Build 33 Sentry sweep (2026-10-03): every `realtime.rejoin_failed` on the
+// build (62 warnings, 2 users, always three channels at once) fired exactly
+// 60 s after the app was backgrounded or put in airplane mode, with
+// socketConnected=false in the payload, and the channels rejoined the moment
+// the socket came back. A channel cannot rejoin while the socket is down, so
+// the watchdog was measuring the length of the background, not a failed
+// rejoin. It now samples the socket every tick and only warns once the
+// channel has stayed un-subscribed for REJOIN_WATCHDOG_MS of *connected*
+// time, counted from the first tick that saw the socket up.
+const REJOIN_WATCHDOG_TICK_MS = 5_000;
 
 function socketConnected(): boolean {
   try {
@@ -156,6 +174,52 @@ function clearRejoinWatchdog(entry: Entry): void {
     clearTimeout(entry.rejoinWatchdog);
     entry.rejoinWatchdog = null;
   }
+  entry.connectedSince = null;
+}
+
+/**
+ * Tick every REJOIN_WATCHDOG_TICK_MS while a joined channel is not
+ * re-subscribed. Connected time accumulates from the first tick that sees
+ * the socket up; any tick that sees it down resets the window, so a socket
+ * that returns just before a deadline still gets a full REJOIN_WATCHDOG_MS
+ * (and a timer suspended in the background cannot fire the warning on
+ * foreground: a tick that fires more than three tick intervals after it was
+ * armed restarts the window). SUBSCRIBED clears the watchdog through clearRejoinWatchdog;
+ * teardown removes the registry entry, which ends the loop.
+ */
+function armRejoinWatchdog(entry: Entry): void {
+  entry.watchdogArmedAt = Date.now();
+  entry.rejoinWatchdog = setTimeout(() => {
+    entry.rejoinWatchdog = null;
+    if (!registry.has(entry.key) || entry.status === 'SUBSCRIBED') {
+      entry.connectedSince = null;
+      return;
+    }
+    const now = Date.now();
+    // A tick that fires long after it was armed slept through a background
+    // suspension (JS timers do not run while the app is backgrounded). The
+    // socket may have dropped and returned in between without a tick seeing
+    // it, so the connected window restarts from this tick.
+    if (now - entry.watchdogArmedAt > REJOIN_WATCHDOG_TICK_MS * 3) {
+      entry.connectedSince = null;
+    }
+    if (!socketConnected()) {
+      entry.connectedSince = null;
+      armRejoinWatchdog(entry);
+      return;
+    }
+    if (entry.connectedSince === null) entry.connectedSince = now;
+    if (now - entry.connectedSince < REJOIN_WATCHDOG_MS) {
+      armRejoinWatchdog(entry);
+      return;
+    }
+    entry.connectedSince = null;
+    reportOnce(
+      entry,
+      'rejoin_failed',
+      `still ${entry.status} ${REJOIN_WATCHDOG_MS / 1000}s after the socket reconnected`,
+    );
+  }, REJOIN_WATCHDOG_TICK_MS);
 }
 
 function fanout(entry: Entry, payload: RealtimePostgresChangesPayload<any>): void {
@@ -235,11 +299,8 @@ function onStatus(entry: Entry, channel: RealtimeChannel, status: string, err?: 
         detail: err?.message ?? null,
       });
       if (!entry.rejoinWatchdog) {
-        entry.rejoinWatchdog = setTimeout(() => {
-          entry.rejoinWatchdog = null;
-          if (!registry.has(entry.key) || entry.status === 'SUBSCRIBED') return;
-          reportOnce(entry, 'rejoin_failed', `still ${entry.status} after ${REJOIN_WATCHDOG_MS / 1000}s`);
-        }, REJOIN_WATCHDOG_MS);
+        entry.connectedSince = socketConnected() ? Date.now() : null;
+        armRejoinWatchdog(entry);
       }
       return;
     }
@@ -371,6 +432,8 @@ export function subscribeToTable(
       reopenTimer: null,
       reconnectTimers: new Set(),
       rejoinWatchdog: null,
+      connectedSince: null,
+      watchdogArmedAt: 0,
       reopenAttempts: 0,
       errors: 0,
       rejoins: 0,
