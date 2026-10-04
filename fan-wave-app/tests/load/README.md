@@ -141,15 +141,30 @@ target user count.
 2. Create `fan-wave-app/.env.loadtest` (gitignored):
    ```
    STAGING_SUPABASE_URL=https://<staging-ref>.supabase.co
-   STAGING_SUPABASE_ANON_KEY=<staging anon key>
-   STAGING_SERVICE_ROLE_KEY=<staging service_role key>
+   STAGING_SUPABASE_ANON_KEY=<staging anon / publishable key>
+   STAGING_SERVICE_ROLE_KEY=<staging service_role (secret) key>
    ```
+   All three are required. Each key has one job: k6 runs with
+   `STAGING_SUPABASE_ANON_KEY` (passed as `SUPABASE_ANON_KEY` below) and
+   never sees the service key; the preflight's schema check reads the
+   project's OpenAPI document (`GET /rest/v1/`) with
+   `STAGING_SERVICE_ROLE_KEY`, because Supabase serves that root endpoint
+   only to a secret key — the anon/publishable key is answered with
+   `401 {"message":"Secret API key required"}` (confirmed on the staging
+   project on 2026-10-04 after the migration replay). Seeding and cleanup
+   use the service key too. With the service key missing, the preflight
+   reports `STAGING_SERVICE_ROLE_KEY is not set; schema verification cannot
+   run without it` as a blocker rather than silently skipping the check.
    Then `npm run load:preflight -- --stage baseline`. It is read-only: it
-   refuses the prod ref in the URL or in any key's JWT claim, looks the
+   refuses the prod ref in the URL or in either key's JWT claim, looks the
    project up by name and status through the Management API (a name
    containing "prod" is refused), checks every relation, column and RPC in
-   `requirements.json` against the project's OpenAPI document, and checks
-   the seeded-user and token counts for the profile. It prints no secret.
+   `requirements.json` against the project's OpenAPI document (one GET with
+   the service key), and checks the seeded-user and token counts for the
+   profile. It prints no secret. `LOADTEST_ENV_FILE=<path>` makes it read
+   that dotenv file instead of `fan-wave-app/.env.loadtest`; the Jest
+   suite sets it to a nonexistent path so its offline cases never pick up
+   a real file.
 3. Seed users (creates confirmed accounts, sets `home_city`):
    ```
    node scripts/load/seed-users.mjs --count 100 --city Chicago      # stage 1

@@ -12,13 +12,20 @@
  *      then PATH. The chosen binary is printed so the run can be
  *      reproduced with the same one;
  *   2. the target in fan-wave-app/.env.loadtest is NOT production: the URL
- *      ref, the anon key's JWT `ref` claim and (when set) the service_role
- *      key's claim all agree and none is the prod ref;
+ *      ref, the anon key's JWT `ref` claim and the service_role key's claim
+ *      all agree and none is the prod ref. Both keys are required: k6 runs
+ *      with the anon/publishable key, the schema check (step 4) needs the
+ *      service_role key;
  *   3. the project's name and status, read through the Management API with
  *      SUPABASE_ACCESS_TOKEN (env or fan-wave-app/.env.supabase), do not look
  *      like production (a name containing "prod" is refused);
  *   4. the schema the k6 scripts need (tests/load/requirements.json) exists,
- *      read from the project's PostgREST OpenAPI document with the anon key;
+ *      read from the project's PostgREST OpenAPI document (GET /rest/v1/)
+ *      with the service_role key. Supabase answers that root endpoint only
+ *      to a secret key; the anon/publishable key gets
+ *      401 {"message":"Secret API key required"} (seen on staging
+ *      2026-10-04). The key is used for this one read-only GET and k6
+ *      never sees it;
  *   5. the seeded users / pre-minted tokens cover the chosen profile and the
  *      tokens have not aged past their 3600 s TTL.
  *
@@ -26,6 +33,9 @@
  * exit 1 = BLOCKED (the blockers and the shortest unblock are listed).
  * `--ref` alone (no .env.loadtest) runs just the Management API check;
  * with neither a URL nor --ref it makes no network request at all.
+ * LOADTEST_ENV_FILE=<path> reads that dotenv file instead of
+ * fan-wave-app/.env.loadtest (the tests point it at a nonexistent path so
+ * the real file never reaches a child that must stay offline).
  *
  * A FORBIDDEN target (the production ref in the URL, in --ref, or in any
  * key's `ref` claim) short-circuits every remote check: steps 3 and 4 are
@@ -158,9 +168,14 @@ if (!stage) block(`--stage "${stageRaw}" is not a profile`, 'use baseline | camp
 
 // 2. target ----------------------------------------------------------------
 console.log('\nTarget');
-loadDotEnv();
-const envFile = path.join(APP_ROOT, '.env.loadtest');
-const envFileRel = path.relative(APP_ROOT, envFile);
+// LOADTEST_ENV_FILE overrides which dotenv file is read (default
+// fan-wave-app/.env.loadtest). The test suite points it at a path that
+// does not exist so a developer's real .env.loadtest can never leak into a
+// child that must stay offline; values already in the environment still win.
+const envFileOverride = process.env.LOADTEST_ENV_FILE || '';
+const envFile = envFileOverride ? path.resolve(envFileOverride) : path.join(APP_ROOT, '.env.loadtest');
+const envFileRel = envFileOverride ? `LOADTEST_ENV_FILE=${envFile}` : path.relative(APP_ROOT, envFile);
+loadDotEnv(envFile);
 const url = String(process.env.STAGING_SUPABASE_URL || '').replace(/\/+$/, '');
 let ref = /https:\/\/([a-z0-9]+)\.supabase\.co/i.exec(url)?.[1] || '';
 const refArg = args.ref ? String(args.ref) : '';
@@ -187,8 +202,8 @@ const anonKey = process.env.STAGING_SUPABASE_ANON_KEY || '';
 const serviceKey = process.env.STAGING_SERVICE_ROLE_KEY || '';
 function checkKey(label, key, role) {
   if (!key) {
-    if (role === 'anon') block(`${label} is not set`, 'add it to .env.loadtest (Project Settings > API on the staging project)');
-    else warn(`${label} is not set; seed-users / cleanup-users need it, k6 does not`);
+    if (role === 'anon') block(`${label} is not set`, 'add it to .env.loadtest (Project Settings > API on the staging project); k6 runs with this key');
+    else block(`${label} is not set; schema verification cannot run without it`, 'add it to .env.loadtest (Project Settings > API on the staging project); GET /rest/v1/ answers only a secret key, and seed-users / cleanup-users need it too');
     return false;
   }
   const p = decodeJwtPayload(key);
@@ -211,8 +226,10 @@ function checkKey(label, key, role) {
   ok(`${label}: role ${role}, ref matches, not production`);
   return true;
 }
-const anonOk = url ? checkKey('STAGING_SUPABASE_ANON_KEY', anonKey, 'anon') : false;
-if (url) checkKey('STAGING_SERVICE_ROLE_KEY', serviceKey, 'service_role');
+// Both keys are checked and either can forbid the target. The anon key is
+// what k6 runs with; the service_role key gates the schema step below.
+if (url) checkKey('STAGING_SUPABASE_ANON_KEY', anonKey, 'anon');
+const serviceOk = url ? checkKey('STAGING_SERVICE_ROLE_KEY', serviceKey, 'service_role') : false;
 
 // 3. project identity (Management API, optional) --------------------------
 console.log('\nProject identity');
@@ -246,17 +263,26 @@ if (forbidden) {
   }
 }
 
-// 4. schema (PostgREST OpenAPI, anon key) ---------------------------------
+// 4. schema (PostgREST OpenAPI, service_role key) -------------------------
+// The root OpenAPI endpoint answers only a secret API key: the anon /
+// publishable key gets 401 {"message":"Secret API key required"} (staging,
+// 2026-10-04). This is therefore the one place the preflight uses
+// STAGING_SERVICE_ROLE_KEY. It stays a single read-only GET, the key value
+// is never printed, and k6 itself still runs with the anon key.
 console.log('\nSchema (tests/load/requirements.json)');
 const req = JSON.parse(fs.readFileSync(path.join(LOAD_DIR, 'requirements.json'), 'utf8'));
 if (forbidden) {
   warn(FORBIDDEN_SKIP);
-} else if (!url || !anonOk) {
-  warn('skipped; needs STAGING_SUPABASE_URL and a usable anon key');
+} else if (!url || !serviceOk) {
+  warn('skipped; needs STAGING_SUPABASE_URL and a usable STAGING_SERVICE_ROLE_KEY (GET /rest/v1/ answers only a secret API key; the anon/publishable key gets 401)');
 } else {
-  const res = await remoteGet(`${url}/rest/v1/`, { headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` } });
+  const res = await remoteGet(`${url}/rest/v1/`, { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } });
   if (res.status !== 200 || !res.json) {
-    block(`OpenAPI document: HTTP ${res.status}`, 'check the URL / anon key; PostgREST serves GET /rest/v1/ to the anon key');
+    const detail = res.json && res.json.message ? ` (${res.json.message})` : '';
+    block(
+      `OpenAPI document with the service_role key: HTTP ${res.status}${detail}`,
+      'check the URL / STAGING_SERVICE_ROLE_KEY; GET /rest/v1/ is served only to a secret API key (401 "Secret API key required" means a non-secret key was sent)'
+    );
   } else {
     const defs = res.json.definitions || {};
     const paths = res.json.paths || {};
