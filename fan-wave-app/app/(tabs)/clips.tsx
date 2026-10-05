@@ -578,11 +578,14 @@ export default function ClipsScreen() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState('foryou');
   const [clips, setClips] = useState<ClipDisplay[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [filterLoading, setFilterLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const initialLoadSettledRef = useRef(false);
+  const mountedRef = useRef(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   // v8.6 P0: ONE shared player for the whole feed. Replaces the
   // per-card useVideoPlayer that exhausted MediaCodec slots and SIGABRTed
@@ -677,6 +680,16 @@ export default function ClipsScreen() {
     getLocalUser().then(({ data }) => {
       setCurrentUserId(data.user?.id ?? null);
     });
+  }, []);
+
+  // Mounted guard for async handlers. Invalidates outstanding generation
+  // on unmount so stale requests cannot mutate state after cleanup.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      fetchGenRef.current++;
+    };
   }, []);
   const [likedClipIds, setLikedClipIds] = useState<Set<string>>(new Set());
   // v8.5 P0 (round 2): switched from a Set of "visible" ids to a single
@@ -1063,11 +1076,13 @@ export default function ClipsScreen() {
           });
           if (error) throw error;
           const mapped = await hydratePosters((data ?? []).map(mapClipToDisplay));
-          if (gen !== fetchGenRef.current) return;
+          if (gen !== fetchGenRef.current || !mountedRef.current) return { status: 'stale' };
           if (replace) setClips(mapped);
           else setClips((prev) => mergeClipPage(prev, mapped, MAX_LOADED_CLIPS));
-          setHasMore(mapped.length === PAGE_SIZE && (pageNum + 1) * PAGE_SIZE < MAX_LOADED_CLIPS);
-          return;
+          if (gen === fetchGenRef.current && mountedRef.current) {
+            setHasMore(mapped.length === PAGE_SIZE && (pageNum + 1) * PAGE_SIZE < MAX_LOADED_CLIPS);
+          }
+          return { status: 'success' };
         }
 
         let query = supabase
@@ -1112,22 +1127,28 @@ export default function ClipsScreen() {
 
         const { data, error } = await query;
         if (error) throw error;
-        if (gen !== fetchGenRef.current) return;
+        if (gen !== fetchGenRef.current || !mountedRef.current) return { status: 'stale' };
 
         if (data && data.length > 0) {
           const mapped = await hydratePosters(data.map(mapClipToDisplay));
-          if (gen !== fetchGenRef.current) return;
+          if (gen !== fetchGenRef.current || !mountedRef.current) return { status: 'stale' };
           if (replace) setClips(mapped);
           else setClips((prev) => mergeClipPage(prev, mapped, MAX_LOADED_CLIPS));
-          setHasMore(data.length === PAGE_SIZE && (pageNum + 1) * PAGE_SIZE < MAX_LOADED_CLIPS);
+          if (gen === fetchGenRef.current && mountedRef.current) {
+            setHasMore(data.length === PAGE_SIZE && (pageNum + 1) * PAGE_SIZE < MAX_LOADED_CLIPS);
+          }
+          return { status: 'success' };
         } else {
-          if (replace) setClips([]);
-          setHasMore(false);
+          if (gen === fetchGenRef.current && mountedRef.current) {
+            if (replace) setClips([]);
+            setHasMore(false);
+          }
+          return { status: 'success' };
         }
-      } catch {
-        if (gen !== fetchGenRef.current) return;
-        if (replace) setClips([]);
-        setHasMore(false);
+      } catch (err) {
+        if (gen !== fetchGenRef.current || !mountedRef.current) return { status: 'stale' };
+        reportError(err as Error, { source: 'clips:fetchClips', pageNum, filter });
+        return { status: 'failed' };
       }
     },
     [hydratePosters]
@@ -1197,14 +1218,37 @@ export default function ClipsScreen() {
     return () => { cancelled = true; };
   }, [clipsHydrationKey]);
 
-  // Initial load
+  // Initial load and filter change.
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      setLoading(true);
-      await fetchClips(0, activeFilter, true);
-      setLoading(false);
+      const isInitial = !initialLoadSettledRef.current;
+      if (isInitial) {
+        setIsInitialLoading(true);
+      } else {
+        setFilterLoading(true);
+      }
+      // Pause player when filter changes so the retained old card cannot
+      // continue playing under the newly selected filter.
+      try { sharedPlayer?.pause(); } catch { /* ignore */ }
+      setIsSharedPlaying(false);
+      const result = await fetchClips(0, activeFilter, true);
+      if (cancelled || !mountedRef.current) return;
+      if (result.status === 'stale') return;
+      if (result.status === 'success') {
+        setPage(0);
+      }
+      if (isInitial) {
+        initialLoadSettledRef.current = true;
+        setIsInitialLoading(false);
+      } else {
+        setFilterLoading(false);
+      }
     })();
-  }, [activeFilter, fetchClips]);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFilter, fetchClips, sharedPlayer]);
 
   // Realtime subscription for new clips — only active when tab is focused.
   // Deduplicates against optimistic placeholders: if a row arrives via
@@ -1348,19 +1392,29 @@ export default function ClipsScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    setPage(0);
-    setHasMore(true);
-    await fetchClips(0, activeFilter, true);
-    setRefreshing(false);
+    const result = await fetchClips(0, activeFilter, true);
+    if (mountedRef.current) {
+      if (result.status === 'success') {
+        setPage(0);
+      }
+      if (result.status === 'success' || result.status === 'failed') {
+        setFilterLoading(false);
+      }
+      setRefreshing(false);
+    }
   }, [activeFilter, fetchClips]);
 
   const handleEndReached = useCallback(async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     const nextPage = page + 1;
-    setPage(nextPage);
-    await fetchClips(nextPage, activeFilter, false);
-    setLoadingMore(false);
+    const result = await fetchClips(nextPage, activeFilter, false);
+    if (mountedRef.current) {
+      if (result.status === 'success') {
+        setPage(nextPage);
+      }
+      setLoadingMore(false);
+    }
   }, [loadingMore, hasMore, page, activeFilter, fetchClips]);
 
   // Like toggle with optimistic UI
@@ -1630,7 +1684,7 @@ export default function ClipsScreen() {
   }, [loadingMore]);
 
   const renderEmpty = useCallback(() => {
-    if (loading) return null;
+    if (isInitialLoading) return null;
     // v9.5.8 (iOS UAT UX-29): Clips, My Clips and Blocked Users each drew
     // their own empty state in a different shape -- emoji + headline +
     // subline here, a bare sentence there, a headline + paragraph
@@ -1643,7 +1697,7 @@ export default function ClipsScreen() {
         subtitle="Be the first to share a highlight from your communities."
       />
     );
-  }, [loading]);
+  }, [isInitialLoading]);
 
   const handleUploadPress = useCallback(() => {
     Alert.alert(
@@ -1736,7 +1790,13 @@ export default function ClipsScreen() {
         />
       </View>
 
-      {loading ? (
+      {filterLoading && (
+        <View style={styles.filterLoadingContainer}>
+          <ActivityIndicator size="small" color={Colors.dark.accent} />
+        </View>
+      )}
+
+      {isInitialLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.dark.accent} />
         </View>
@@ -1844,6 +1904,11 @@ const styles = StyleSheet.create({
   pillContainer: {
     paddingHorizontal: 16,
     marginBottom: 8,
+  },
+  filterLoadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
   },
   uploadFab: {
     position: 'absolute',
