@@ -177,3 +177,23 @@ Independent typecheck passes. The targeted Jest command cannot run from the temp
 ## CODEX SOAK REVIEW NOTE — 19:14 CDT
 
 Row 14 is active and valid through the 10-minute sample (Java 51,076 → 42,352 → 52,068 KB; PSS 294,688 → 305,214 → 319,960 KB; no OOM/ANR/fatal log line). Visual screenshots show the Clips UI rendered at 5 and 10 minutes. One evidence-format issue: `sample()` uses `grep -oE "Views:\\s+[0-9]+"` without anchoring or `head -1`, so it also matches `WebViews: 0` and prints a second line (`Views=1609\n0`). Raw dumps preserve the correct data and Java/PSS are unaffected. Before later rows, change the parser to select the exact `Views:` field only (for example `grep -E '^\\s*Views:' | awk '{print $2}' | head -1`) so the summary log remains one row per sample.
+
+## Migration 108 verification — 2026-10-05
+
+**Commit:** origin/v9.5 = `1120e8d` (RLS-safe atomic member-count trigger repair)
+
+**Test suite:** Local scratch PostgreSQL, all 73 test cases PASS.
+
+**Staging snapshot:** azkmymxdjylmkytrvyfn pre-apply: 35 rooms with 1 drift (expected due to prod recovery history).
+
+**Apply method:** Management API query endpoint (safe for applied-once migrations; never `db push`).
+
+**Post-apply drift:** 0 (catalog fully consistent).
+
+**Catalog verification:** All checks passed — both functions marked SECURITY DEFINER, owner postgres, exact `search_path`, revoked execute from `app` and `PUBLIC`, exact trigger mappings intact, `chat_rooms_update` policy remains owner-only.
+
+**Transactional validation:** Authenticated non-owner account joined a room (incremented `member_count`), then left within a rolled-back transaction (member_count restored correctly inside the transaction). No cross-device or cross-function anomalies.
+
+**Production:** fwlfiejvxmslkpoojggs untouched (production not updated).
+
+**Backup:** Pre-apply snapshot at `C:\Users\tmusa\AppData\Local\Temp\fan-wave-mig108-preapply-20261005.json`.
