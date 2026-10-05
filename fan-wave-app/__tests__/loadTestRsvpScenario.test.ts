@@ -107,7 +107,7 @@ describe('watch-party-rsvp k6 scenario contract', () => {
     it('derives the window from the profile ramp only, parsed to seconds', () => {
       expect(src).toMatch(/const ARRIVAL_WINDOW = shrink\(PROFILE\.ramp, 3\);/);
       expect(src).toMatch(/const ARRIVAL_WINDOW_SECONDS = parseDurationSeconds\(ARRIVAL_WINDOW\);/);
-      expect(src).toMatch(/\bparseDurationSeconds,\n/); // imported from lib/config.js
+      expect(src).toMatch(/\bparseDurationSeconds,\r?\n/); // imported from lib/config.js
       // No env knob may widen (or narrow) the window: the script reads no
       // __ENV at all; every setting comes from lib/config.js's profile.
       expect(src).not.toMatch(/__ENV/);

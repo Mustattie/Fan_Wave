@@ -32,6 +32,7 @@ import { GroupCard } from '@/components/GroupCard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { supabase, getLocalUser } from '@/lib/supabase';
 import { subscribeToWatchParties } from '@/lib/realtime';
+import { reportError } from '@/lib/errorReporting';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { POPULAR_CITIES } from '@/constants/Cities';
 import {
@@ -40,6 +41,7 @@ import {
   type WatchPartyDisplay,
   type ChatRoomDisplay,
 } from '@/lib/mappers';
+import { loadOrKeep, showFullScreenLoader, isActiveDiscoverRequest, DISCOVER_LOAD_TIMEOUT_MS } from '@/lib/discoverLoad';
 
 // v9.1.4 UAT 2026-07-21: both pill lists used to be hardcoded (5 sports on
 // the top-of-Discover filter, 4 in the Create Group modal) and had drifted
@@ -86,9 +88,14 @@ export default function DiscoverScreen() {
   const [watchParties, setWatchParties] = useState<WatchPartyDisplay[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [hasMoreParties, setHasMoreParties] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [partyCursor, setPartyCursor] = useState<string | null>(null);
+
+  // Track request ID to prevent stale overlapping loads from applying out of order
+  const loadRequestRef = useRef(0);
+  const isMountedRef = useRef(true);
 
   // Fan Groups section (lifted from (tabs)/groups.tsx for v9.0 tab-swap).
   // Joined sub-tab: user's memberships; Suggested sub-tab: public groups
@@ -149,59 +156,55 @@ export default function DiscoverScreen() {
   // filters Watch Parties + Venues (party.venue_name) too.
   const fetchWatchParties = useCallback(
     async (_sport?: string, cursor?: string | null, search?: string) => {
-      try {
-        // v8.5 P0: 2h grace so freshly-hosted parties (whose preset clock
-        // may already be a few minutes past at create-time) stay visible
-        // until the event actually plays out.
-        const startedAfter =
-          cursor || new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-        const applySearch = (q: any) => {
-          if (!search) return q;
-          const safe = search.replace(/[%,]/g, ' ').trim();
-          if (!safe) return q;
-          return q.or(
-            `title.ilike.%${safe}%,venue_name.ilike.%${safe}%,venue_city.ilike.%${safe}%`,
-          );
-        };
-        const baseSelect = (q: any) =>
-          applySearch(
-            q
-              .from('watch_parties')
-              .select('*, sport:sports!sport_id(*)')
-              .gt('starts_at', startedAfter),
-          )
-            .order('starts_at', { ascending: true })
-            .limit(20);
+      // v8.5 P0: 2h grace so freshly-hosted parties (whose preset clock
+      // may already be a few minutes past at create-time) stay visible
+      // until the event actually plays out.
+      const startedAfter =
+        cursor || new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const applySearch = (q: any) => {
+        if (!search) return q;
+        const safe = search.replace(/[%,]/g, ' ').trim();
+        if (!safe) return q;
+        return q.or(
+          `title.ilike.%${safe}%,venue_name.ilike.%${safe}%,venue_city.ilike.%${safe}%`,
+        );
+      };
+      const baseSelect = (q: any) =>
+        applySearch(
+          q
+            .from('watch_parties')
+            .select('*, sport:sports!sport_id(*)')
+            .gt('starts_at', startedAfter),
+        )
+          .order('starts_at', { ascending: true })
+          .limit(20);
 
-        if (city) {
-          // v9.4.3 (mig 087): match the metro anchor, not the venue's own
-          // city. venue_city is display truth now; venue_metro is what
-          // "near you" means. OR-ing venue_city keeps pre-087 rows (metro
-          // NULL) matching, and the legacy retry covers an environment
-          // where 087 hasn't run yet.
-          // Bare locality, quoted -- see the note in useData.useWatchParties.
-          const anchor = `"${city.split(',')[0]!.trim().replace(/"/g, '')}"`;
-          let { data, error } = await baseSelect(supabase).or(
-            `venue_metro.ilike.${anchor},venue_city.ilike.${anchor}`
-          );
-          if (error) {
-            const legacy = await baseSelect(supabase).ilike('venue_city', city);
-            if (legacy.error) throw error;
-            data = legacy.data;
-          }
-          const mapped = (data || []).map(mapWatchPartyToDisplay);
-          if (mapped.length > 0) {
-            return { items: mapped, hasMore: mapped.length === 20, broadened: false };
-          }
+      if (city) {
+        // v9.4.3 (mig 087): match the metro anchor, not the venue's own
+        // city. venue_city is display truth now; venue_metro is what
+        // "near you" means. OR-ing venue_city keeps pre-087 rows (metro
+        // NULL) matching, and the legacy retry covers an environment
+        // where 087 hasn't run yet.
+        // Bare locality, quoted -- see the note in useData.useWatchParties.
+        const anchor = `"${city.split(',')[0]!.trim().replace(/"/g, '')}"`;
+        let { data, error } = await baseSelect(supabase).or(
+          `venue_metro.ilike.${anchor},venue_city.ilike.${anchor}`
+        );
+        if (error) {
+          const legacy = await baseSelect(supabase).ilike('venue_city', city);
+          if (legacy.error) throw error;
+          data = legacy.data;
         }
-
-        const { data: wider, error: widerError } = await baseSelect(supabase);
-        if (widerError) throw widerError;
-        const mapped = (wider || []).map(mapWatchPartyToDisplay);
-        return { items: mapped, hasMore: mapped.length === 20, broadened: !!city };
-      } catch {
-        return { items: [], hasMore: false, broadened: false };
+        const mapped = (data || []).map(mapWatchPartyToDisplay);
+        if (mapped.length > 0) {
+          return { items: mapped, hasMore: mapped.length === 20, broadened: false };
+        }
       }
+
+      const { data: wider, error: widerError } = await baseSelect(supabase);
+      if (widerError) throw widerError;
+      const mapped = (wider || []).map(mapWatchPartyToDisplay);
+      return { items: mapped, hasMore: mapped.length === 20, broadened: !!city };
     },
     [city],
   );
@@ -230,11 +233,12 @@ export default function DiscoverScreen() {
       if (sport && sport !== 'all') {
         const sportName = SPORT_ID_MAP[sport];
         if (sportName) {
-          const { data: sportRow } = await supabase
+          const { data: sportRow, error: sportError } = await supabase
             .from('sports')
             .select('id')
             .ilike('name', sportName)
             .maybeSingle();
+          if (sportError) throw sportError;
           sportUuid = sportRow?.id ?? NONE;
         } else {
           sportUuid = NONE;
@@ -242,95 +246,91 @@ export default function DiscoverScreen() {
       }
 
       // My groups
+      const { data, error } = await supabase
+        .from('chat_room_members')
+        .select('chat_rooms(*)')
+        .eq('user_id', user.id);
+      if (error) throw error;
+
       let joined: ChatRoomDisplay[] = [];
-      try {
-        const { data, error } = await supabase
-          .from('chat_room_members')
-          .select('chat_rooms(*)')
-          .eq('user_id', user.id);
-        if (!error && data) {
-          const rawRooms = data
-            .map((row: any) => row.chat_rooms)
-            .filter(Boolean);
-          // Client-side sport filter -- the joined query pulls chat_rooms
-          // via a nested select so sport_id is already on each row. When
-          // the pill is 'all' (sportUuid=null) skip filtering entirely.
-          const filteredRooms =
-            sportUuid === null
-              ? rawRooms
-              : sportUuid === NONE
-                ? []
-                : rawRooms.filter((r: any) => r.sport_id === sportUuid);
-          joined = filteredRooms.map(mapChatRoomToDisplay);
-        }
-      } catch {
-        joined = [];
+      if (data) {
+        const rawRooms = data
+          .map((row: any) => row.chat_rooms)
+          .filter(Boolean);
+        // Client-side sport filter -- the joined query pulls chat_rooms
+        // via a nested select so sport_id is already on each row. When
+        // the pill is 'all' (sportUuid=null) skip filtering entirely.
+        const filteredRooms =
+          sportUuid === null
+            ? rawRooms
+            : sportUuid === NONE
+              ? []
+              : rawRooms.filter((r: any) => r.sport_id === sportUuid);
+        joined = filteredRooms.map(mapChatRoomToDisplay);
       }
 
       // Suggested groups (public, not owned by user, not already joined).
       // v8.2 pattern: query chat_rooms directly rather than the RPC so a
       // missing/buggy RPC can't silently zero the list.
+      // Exclude worldcup-typed groups from Suggested. Per v9.x pivot WC
+      // is hidden from the UI (mig 053 chat_room_members_insert still
+      // requires has_wc_access for group_type='worldcup', so surfacing
+      // them here just teased users into a 42501 that read "Could not
+      // join. Please try again." after v9.1's GroupCard cleanup.
+      let query = supabase
+        .from('chat_rooms')
+        .select('*')
+        .eq('visibility', 'public')
+        .neq('group_type', 'worldcup')
+        // v9.5.3: game_chat rooms are auto-created by get_or_create_game_chat
+        // the first time anyone opens live chat on a game, and they are
+        // public, so they were listing here as fan groups -- "Detroit Tigers
+        // vs Kansas City Royals" sitting alongside "Mckinney Football Fanz".
+        // 15 of prod's 57 rooms were these. They also grow with usage, so
+        // the pollution gets worse the more the app is used. Migration 085
+        // fixed the same confusion in the affinity RPC; the list was missed.
+        .neq('group_type', 'game_chat')
+        // v9.5: "Featured placement in Discover" is the MVP benefit, and
+        // this is where it lands. owner_is_featured is a denormalised
+        // boolean on the room maintained by trigger (mig 089) — the client
+        // cannot read anyone's tier directly (users RLS is own-profile-only),
+        // and it should not need to. Ordering by it first keeps member_count
+        // as the tiebreaker, so a featured room with 2 members still ranks
+        // above an unfeatured one with 200. That is what "featured" means.
+        .order('owner_is_featured', { ascending: false })
+        .order('member_count', { ascending: false })
+        .limit(30);
+
+      // Sport filter -- v9.2.6 pattern: force a no-match zero-UUID
+      // filter when the pill has no row in `sports`, so we fail closed
+      // instead of returning every group. Uses the sportUuid resolved
+      // above to stay in sync with the joined filter.
+      if (sportUuid === NONE) {
+        query = query.eq('sport_id', '00000000-0000-0000-0000-000000000000');
+      } else if (sportUuid) {
+        query = query.eq('sport_id', sportUuid);
+      }
+
+      // Search filter (name ilike)
+      if (search && search.trim()) {
+        const safe = search.replace(/[%,]/g, ' ').trim();
+        if (safe) {
+          query = query.ilike('name', `%${safe}%`);
+        }
+      }
+
+      const { data: suggestedData, error: suggestedError } = await query;
+      if (suggestedError) throw suggestedError;
+
       let suggested: ChatRoomDisplay[] = [];
-      try {
-        // Exclude worldcup-typed groups from Suggested. Per v9.x pivot WC
-        // is hidden from the UI (mig 053 chat_room_members_insert still
-        // requires has_wc_access for group_type='worldcup', so surfacing
-        // them here just teased users into a 42501 that read "Could not
-        // join. Please try again." after v9.1's GroupCard cleanup.
-        let query = supabase
-          .from('chat_rooms')
-          .select('*')
-          .eq('visibility', 'public')
-          .neq('group_type', 'worldcup')
-          // v9.5.3: game_chat rooms are auto-created by get_or_create_game_chat
-          // the first time anyone opens live chat on a game, and they are
-          // public, so they were listing here as fan groups -- "Detroit Tigers
-          // vs Kansas City Royals" sitting alongside "Mckinney Football Fanz".
-          // 15 of prod's 57 rooms were these. They also grow with usage, so
-          // the pollution gets worse the more the app is used. Migration 085
-          // fixed the same confusion in the affinity RPC; the list was missed.
-          .neq('group_type', 'game_chat')
-          // v9.5: "Featured placement in Discover" is the MVP benefit, and
-          // this is where it lands. owner_is_featured is a denormalised
-          // boolean on the room maintained by trigger (mig 089) — the client
-          // cannot read anyone's tier directly (users RLS is own-profile-only),
-          // and it should not need to. Ordering by it first keeps member_count
-          // as the tiebreaker, so a featured room with 2 members still ranks
-          // above an unfeatured one with 200. That is what "featured" means.
-          .order('owner_is_featured', { ascending: false })
-          .order('member_count', { ascending: false })
-          .limit(30);
-
-        // Sport filter -- v9.2.6 pattern: force a no-match zero-UUID
-        // filter when the pill has no row in `sports`, so we fail closed
-        // instead of returning every group. Uses the sportUuid resolved
-        // above to stay in sync with the joined filter.
-        if (sportUuid === NONE) {
-          query = query.eq('sport_id', '00000000-0000-0000-0000-000000000000');
-        } else if (sportUuid) {
-          query = query.eq('sport_id', sportUuid);
-        }
-
-        // Search filter (name ilike)
-        if (search && search.trim()) {
-          const safe = search.replace(/[%,]/g, ' ').trim();
-          if (safe) {
-            query = query.ilike('name', `%${safe}%`);
-          }
-        }
-
-        const { data, error } = await query;
-        if (!error && data) {
-          const memberIds = new Set(joined.map((g) => g.id));
-          suggested = (data || [])
-            .filter(
-              (g: any) =>
-                !memberIds.has(g.id) && g.owner_id !== user.id,
-            )
-            .map(mapChatRoomToDisplay);
-        }
-      } catch {
-        suggested = [];
+      if (suggestedData) {
+        const memberIds = new Set(joined.map((g) => g.id));
+        suggested = (suggestedData || [])
+          .filter(
+            (g: any) =>
+              !memberIds.has(g.id) && g.owner_id !== user.id,
+          )
+          .map(mapChatRoomToDisplay);
       }
 
       return { joined, suggested };
@@ -341,13 +341,29 @@ export default function DiscoverScreen() {
   const loadMoreParties = useCallback(async () => {
     if (!hasMoreParties || loadingMore || !partyCursor) return;
     setLoadingMore(true);
-    const { items, hasMore } = await fetchWatchParties(activeFilter, partyCursor, searchQuery);
-    setWatchParties((prev) => [...prev, ...items]);
-    setHasMoreParties(hasMore);
-    if (items.length > 0) {
-      setPartyCursor(items[items.length - 1]?.startsAt ?? null);
+    try {
+      const result = await loadOrKeep(
+        () => fetchWatchParties(activeFilter, partyCursor, searchQuery),
+        (e) => reportError(e, {
+          source: 'discover:loadMoreParties',
+          sport: activeFilter,
+          searchLength: searchQuery?.length ?? 0,
+        }),
+        DISCOVER_LOAD_TIMEOUT_MS,
+      );
+      if (result && isMountedRef.current) {
+        const { items, hasMore } = result;
+        setWatchParties((prev) => [...prev, ...items]);
+        setHasMoreParties(hasMore);
+        if (items.length > 0) {
+          setPartyCursor(items[items.length - 1]?.startsAt ?? null);
+        }
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setLoadingMore(false);
+      }
     }
-    setLoadingMore(false);
   }, [hasMoreParties, loadingMore, partyCursor, activeFilter, fetchWatchParties, searchQuery]);
 
   const [partiesBroadened, setPartiesBroadened] = useState(false);
@@ -375,40 +391,86 @@ export default function DiscoverScreen() {
 
   const loadData = useCallback(
     async (sport?: string, search?: string) => {
+      const requestId = ++loadRequestRef.current;
+      if (!isMountedRef.current) return;
       setLoading(true);
       setLoadingMyGroups(true);
       setLoadingSuggested(true);
       try {
         const [groupResults, partyResult] = await Promise.all([
-          fetchFanGroups(sport, search),
-          fetchWatchParties(sport, null, search),
+          loadOrKeep(
+            () => fetchFanGroups(sport, search),
+            (e) => reportError(e, {
+              sport,
+              source: 'discover:fetchFanGroups',
+              searchLength: search?.length ?? 0,
+            }),
+            DISCOVER_LOAD_TIMEOUT_MS,
+          ),
+          loadOrKeep(
+            () => fetchWatchParties(sport, null, search),
+            (e) => reportError(e, {
+              sport,
+              source: 'discover:fetchWatchParties',
+              searchLength: search?.length ?? 0,
+            }),
+            DISCOVER_LOAD_TIMEOUT_MS,
+          ),
         ]);
-        setMyGroups(groupResults.joined);
-        setSuggestedGroups(groupResults.suggested);
-        setMyGroupIds(new Set(groupResults.joined.map((g) => g.id)));
-        setWatchParties(partyResult.items);
-        setHasMoreParties(partyResult.hasMore);
-        setPartiesBroadened(!!partyResult.broadened);
-        if (partyResult.items.length > 0) {
-          setPartyCursor(partyResult.items[partyResult.items.length - 1]?.startsAt ?? null);
-        } else {
-          setPartyCursor(null);
+
+        // Only apply results if this request is not stale and component is still mounted
+        if (isActiveDiscoverRequest(requestId, loadRequestRef.current, isMountedRef.current)) {
+          if (groupResults) {
+            setMyGroups(groupResults.joined);
+            setSuggestedGroups(groupResults.suggested);
+            setMyGroupIds(new Set(groupResults.joined.map((g) => g.id)));
+          }
+          if (partyResult) {
+            setWatchParties(partyResult.items);
+            setHasMoreParties(partyResult.hasMore);
+            setPartiesBroadened(!!partyResult.broadened);
+            if (partyResult.items.length > 0) {
+              setPartyCursor(partyResult.items[partyResult.items.length - 1]?.startsAt ?? null);
+            } else {
+              setPartyCursor(null);
+            }
+          }
+          setLoading(false);
+          setLoadingMyGroups(false);
+          setLoadingSuggested(false);
+          setLoadedOnce(true);
         }
-      } finally {
-        setLoading(false);
-        setLoadingMyGroups(false);
-        setLoadingSuggested(false);
+      } catch {
+        // Errors should already be reported by loadOrKeep
+        if (isActiveDiscoverRequest(requestId, loadRequestRef.current, isMountedRef.current)) {
+          setLoading(false);
+          setLoadingMyGroups(false);
+          setLoadingSuggested(false);
+        }
       }
     },
     [fetchFanGroups, fetchWatchParties],
   );
+
+  // Cleanup on unmount: prevent stale requests from setting state and ensure
+  // mounted flag is correct for future requests. Strict Mode effect replay can
+  // leave isMountedRef.current false, so reset it in setup before cleanup.
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      ++loadRequestRef.current;
+    };
+  }, []);
 
   // Resolve the current auth user id so the Create Group flow + Join CTA
   // ownership check work correctly.
   useEffect(() => {
     (async () => {
       const { data: { user } } = await getLocalUser();
-      setCurrentUserId(user?.id ?? null);
+      if (isMountedRef.current) {
+        setCurrentUserId(user?.id ?? null);
+      }
     })();
   }, []);
 
@@ -529,9 +591,12 @@ export default function DiscoverScreen() {
   );
 
   const handleRefresh = useCallback(async () => {
+    if (!isMountedRef.current) return;
     setRefreshing(true);
     await loadData(activeFilter, searchQuery);
-    setRefreshing(false);
+    if (isMountedRef.current) {
+      setRefreshing(false);
+    }
   }, [activeFilter, loadData, searchQuery]);
 
   const handleCitySelect = useCallback((selectedCity: string) => {
@@ -762,7 +827,7 @@ export default function DiscoverScreen() {
         />
       </View>
 
-      {loading && !refreshing ? (
+      {showFullScreenLoader(loading, refreshing, loadedOnce) ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.dark.accent} />
         </View>
