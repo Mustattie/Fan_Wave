@@ -48,6 +48,10 @@ import { acquireSessions, sessionForVu } from './lib/auth.js';
 const SESSION_SECONDS = Number(__ENV.SESSION_SECONDS || 120);
 const HEARTBEAT_MS = 25000;
 const REJOIN_BUDGET_MS = 10000;
+// Full iteration = two half-holds totaling max(10, SESSION_SECONDS), plus up to 3s jitter
+// and 1s final sleep; +15 gives at least 11s buffer. Without sufficient grace, forced VU
+// termination interrupts ws.connect() during HTTP 101 upgrade, creating false ws_connect_errors.
+const GRACEFUL_RAMP_DOWN_SECONDS = Math.ceil(Math.max(10, SESSION_SECONDS) + 15);
 
 const connectErrors = new Rate('ws_connect_errors');
 const joinOk = new Rate('ws_join_ok');
@@ -62,7 +66,7 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 0,
       stages: rampingStages(),
-      gracefulRampDown: '30s',
+      gracefulRampDown: `${GRACEFUL_RAMP_DOWN_SECONDS}s`,
     },
   },
   setupTimeout: '15m',
@@ -186,6 +190,12 @@ function runSocket(jwt, holdMs, label) {
   });
 
   const okStatus = res && res.status === 101;
+  if (!okStatus || !connected) {
+    console.warn(
+      `[realtime-ws] ws.connect ${label}: ` +
+        `status=${okStatus ? 101 : (res ? res.status : 'no-response')}, connected=${connected}`
+    );
+  }
   connectErrors.add(okStatus && connected ? 0 : 1);
   const joinedAll = joinMs !== null;
   if (connected) joinOk.add(joinedAll ? 1 : 0);

@@ -5,26 +5,42 @@ Everything here targets a **staging** Supabase project. `lib/config.js`
 throws in the init context if `SUPABASE_URL` or the key is the production
 project (`fwlfiejvxmslkpoojggs`), so no script can start against prod.
 
-> **Status (2026-10-02):** still **not run**. There is no staging project
-> the scripts can use today: both EAS profiles and `.env.staging` point at
-> prod, and the legacy dev project `azkmymxdjylmkytrvyfn` ("Fan Wave",
-> ACTIVE_HEALTHY, Postgres 17.6, ca-central-1) stopped at migration 045 of
-> 107 — a read-only probe on 2026-10-02 found no `watch_parties.venue_metro`,
-> no `trending_clips` view, no `users.subscription_tier`, no `get_user_tier`,
-> and only `games` in the realtime publication, so `home-screen.js` and
-> `spike-test.js` would 400/404 against it. k6: not on PATH on the dev
-> PC; the preflight also accepts a portable copy
-> (`%LOCALAPPDATA%\FanSphereTools\k6\k6-v<ver>-windows-amd64\k6.exe`) or
-> a `K6_BIN` path. A 2026-10-02 Codex review reports a portable v2.2.0 at
-> that location whose production guard exited 107 before sending traffic;
-> it was not visible from Claude Code's Bash or PowerShell sessions the same
-> day, so run `npm run load:preflight` and trust its "k6 ... via" line
-> (or set `K6_BIN` to the exact path). Ready now:
-> the college-launch profiles below, the requirements
-> manifest, and `npm run load:preflight`, which proves a target is
-> non-production and complete before any k6 process starts. See "Standing
-> up staging" for the two unblock paths.
+> **Status (2026-10-05):** Staging load tests completed on commit `aa1524f`
+> against `azkmymxdjylmkytrvyfn` (resized Micro → Small, then restored to
+> Micro ACTIVE_HEALTHY). **Primary 600-user read+RSVP spike: PASS.** **Chat +
+> Realtime simultaneous 600+600 burst: FAIL on error threshold.** See
+> "Load-test results" immediately below for the detailed pass/fail split,
+> compute size, result file paths, and next-action recommendation.
 
+## Load-test results (2026-10-05)
+
+**Staging project:** `azkmymxdjylmkytrvyfn` (resized ci_micro → ci_small for test, restored ci_micro ACTIVE_HEALTHY)
+**Production:** `fwlfiejvxmslkpoojggs` untouched
+**Commit:** `aa1524fcba62459851f802293345697f90c33626`
+
+### Pass: Primary 600-user spike, read + RSVP
+
+| Scenario | Result file | Profile | Test | p95 / p99 | Errors | 429s | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Read spike (feed + hold) | `tests/load/results/spike-readmix-small-20261005.json` | spike (600 VUs) | `spike-test.js` | feed 399.4ms, hold 384.6ms | 1/179760 (0.0006%) | 0 | ✓ PASS |
+| Spike burst (10 s) | same | spike (600 VUs) | `spike-test.js` | p99 1036.1ms | — | — | ✓ PASS |
+| RSVP 600-arrival burst | `tests/load/results/spike-rsvp-small-20261005.json` | spike (600 VUs) | `watch-party-rsvp.js` | p95 296.6ms | 0% | 0% | ✓ PASS |
+
+All metrics within gate thresholds: feed/hold/RSVP latency ✓, error rate < 1% ✓, zero rate-limit refusals ✓. One TCP connection attempt timed out in the read spike (1 of 179,760 operations), within the error gate.
+
+### Fail: 600+600 simultaneous chat + Realtime sockets
+
+| Scenario | Result file | Profile | Test | Errors | Status |
+| --- | --- | --- | --- | --- | --- |
+| Chat 600-writer burst | `tests/load/results/spike-chat-small-20261005.json` | spike (600 VUs) | `chat-send.js` | 1.827% (300/16418) | ✗ FAIL (gate: < 1%) |
+| Realtime 600-socket join | `tests/load/results/spike-ws-small-20261005.json` | spike (600 VUs) | `realtime-ws.js` | sustained db timeouts | ✗ PARTIAL (diagnostic) |
+
+Chat errors exceeded threshold during a simultaneous 600 concurrent Realtime socket test. Realtime emitted `{:error, "Too many database timeouts"}` on games-realtime and room-messages-* topics; connect errors 0.167% ✓, but join success 95.160% (gate: > 99%) ✗. The run was stopped after chat already failed. This defines a **600+600 simultaneous two-campus chat+Realtime ceiling**, not a regression: the existing 300-user campus (chat + Realtime paired, same profiles) remains **PASS** (see 2026-10-04 baseline and campus runs for evidence).
+
+### Recommendation
+
+1. **Keep the current 300-user campus target green.** The 600-user read and RSVP scenarios pass their gates on Small. The simultaneous chat+Realtime burst (600+600 VUs on the same staging instance) exceeds the measured capacity and requires investigation of the observed database timeouts plus a green rerun before claiming two-campus co-load support.
+2. **Do not claim two-campus simultaneous chat+Realtime support yet.** Micro's earlier read spike (from 2026-10-04) failed latency (feed p95 4.36s, hold p95 4.42s). Small resolves the primary read and RSVP gates, but the paired chat/Realtime run still fails. Determine whether configuration, schema/query behavior, or a larger compute tier is needed, then rerun the unchanged pair without weakening its gates.
 ## Scripts
 
 | Script | What it measures | Needs |
@@ -32,7 +48,7 @@ project (`fwlfiejvxmslkpoojggs`), so no script can start against prod.
 | `home-screen.js` | Screen-open feed: games + parties near city + public groups + clips page 0 | — |
 | `spike-test.js` | Kickoff spike: baseline → stage peak in 10 s, hold, cool down; read mix | — |
 | `chat-send.js` | `check_rate_limit` + `messages` INSERT, one room | `CHAT_ROOM_ID` (public room) |
-| `watch-party-rsvp.js` | `rsvp_to_watch_party` going→none burst on one party | `PARTY_ID` |
+| `watch-party-rsvp.js` | `rsvp_to_watch_party` burst on one party: one going→none cycle per VU, arrivals spread linearly across a third of the profile's ramp (row lock + capacity concurrency, not abuse rate) | `PARTY_ID` |
 | `realtime-ws.js` | Phoenix socket join (games + room channel), heartbeat, drop + rejoin ≤ 10 s | `CHAT_ROOM_ID` optional |
 
 Shared modules: `lib/config.js` (env, prod guard, stage profiles, thresholds),
@@ -59,6 +75,54 @@ send every 2–6 s).
 | `campus` | game night across one campus | 300 | 3 m | 10 m | 1 m | 14 m |
 | `spike` | kickoff / final whistle on game night | 600 | 10 s (spike-test: 30 → 600) | 3 m | 1 m | about 4.5 m |
 
+`watch-party-rsvp` uses the profile's VU count and ramp, not its hold:
+it runs `per-vu-iterations` with exactly one iteration per VU, and each VU
+performs one going→none cycle (a short dwell between the two calls) and
+exits. The arrival shape is the committed one — reach the peak in a third
+of the profile's ramp (`shrink(PROFILE.ramp, 3)`, floored at 10 s) — but
+because `per-vu-iterations` has no ramp of its own, each VU sleeps before
+its "going" call so the VUs are spread linearly across that window: VU n
+(1-based) starts at (n − 1) × window ÷ VUs seconds. The window is derived
+from the profile alone; there is no env override that could widen it.
+
+| Profile | VUs | Ramp | Arrival window | Spacing |
+| --- | --- | --- | --- | --- |
+| `baseline` | 50 | 1 m | 20 s | one "going" every 0.4 s |
+| `campus` | 300 | 3 m | 60 s | one every 0.2 s |
+| `spike` | 600 | 10 s | 10 s | one every 17 ms |
+
+`spike` is the honest schema stress gate for the RSVP path: 600 arrivals
+on one `watch_parties` row inside 10 s, every one of them taking the
+migration 073 row lock. Passing `baseline` and `campus` proves ordinary
+evenings and game nights; passing `spike` is what proves the schema.
+
+It does not loop, because migration 103 caps `watch_party_rsvps` INSERTs
+at **20 per user per day** on the free tier (100/day paid; the window is
+86 400 s, see `rate_limit_ceiling` in migration 103). A looping toggle
+spends that budget in minutes and the remainder of the run is PT429 noise
+(baseline on staging with the old looping script: 1 000 successes — 50
+users × 20 — then 2 138 HTTP 429s). One cycle per VU costs each load user
+one of its 20 daily INSERTs (the cancel is a DELETE and does not count), so
+the same user pool supports at most 20 runs in a day, fewer if the users
+have RSVPed through the app that day. Repeat runs therefore need fresh or
+rotated users: re-seed with `scripts/load/seed-users.mjs`, or point
+`LOAD_USERS_FILE` / `LOAD_TOKENS_FILE` at a pool that has not run today.
+
+Diagnostic record (staging, 2026-10-04, `baseline`, 50 VUs, one cycle
+each, `rsvp_ok` 100 %):
+
+| RPC under test | Arrival | `rsvp_ok` | `rsvp_latency` p95 | Result |
+| --- | --- | --- | --- | --- |
+| migration 073 `rsvp_to_watch_party` | all 50 at once (no stagger) | 100 % | 1.4569 s | functionally correct; failed the 1 s gate |
+| migration 109 candidate (no shared party-row lock) | all 50 at once (no stagger) | 100 % | 3.98 s | worse; rejected and rolled back on staging |
+
+The instantaneous 50-VU burst was never the committed arrival model (the
+committed scenario ramped to 50 over 20 s), so the 1.4569 s p95 measured a
+shape the gate was not written for. Migration 109 was an attempt to remove
+the 073 row lock to pass that shape; it made p95 worse and has been
+deleted from the tree. Migration 073 stays as the RSVP RPC. The staggered
+arrival above restores the committed model; the gates are unchanged.
+
 Thresholds are the stage-gate rules below, unchanged: they are per-request
 latencies and error rates, so they do not loosen for a smaller audience.
 
@@ -67,10 +131,10 @@ latencies and error rates, so they do not loosen for a smaller audience.
 | Each screen-open query (games, parties, groups, clips) | p95 < 800 ms | `home-screen`, `spike-test` (hold phase) |
 | Spike phase (the 10 s burst) | p99 < 5 s; p95 reported, not gated | `spike-test` |
 | Chat send (`check_rate_limit` + insert) | p95 < 1 s, p99 < 3 s | `chat-send` |
-| RSVP toggle | p95 < 1 s | `watch-party-rsvp` |
+| RSVP toggle | p95 < 1 s; `rsvp_ok` = 100 % (every going and every cancel 2xx; a 429, capacity-full P0001 or 5xx fails the run) | `watch-party-rsvp` |
 | Non-rate-limit errors | < 1 %; k6 aborts the run once it has been over the line for 60 s (stop rule) | all |
 | Socket connect errors / join success / rejoin within 10 s | < 0.5 % / > 99 % / ≥ 99 % | `realtime-ws` |
-| Rate-limit refusals (`rate_limited`, HTTP 429 from migration 103) | reported, not an error; `chat-send` stays under the 60/min ceiling by design, so any 429 there is a server finding | all |
+| Rate-limit refusals (`rate_limited`, HTTP 429 from migration 103) | reported, not an error, except in `watch-party-rsvp` where a 429 fails `rsvp_ok`; `chat-send` stays under the 60/min ceiling by design, so any 429 there is a server finding | all |
 
 Run order, once per profile, baseline → campus → spike, never skipping and
 never proceeding past a failed profile:
@@ -119,6 +183,7 @@ thresholds fail; fix, re-run the same stage, then continue.
 | `feed_latency`, `games_latency`, `parties_latency`, `groups_latency`, `clips_latency` | p95 < 800 ms | home-screen, spike |
 | `chat_send` | p95 < 1 s, p99 < 3 s | chat-send |
 | `rsvp_latency` | p95 < 1 s | watch-party-rsvp |
+| `rsvp_ok` | = 100 % (any non-2xx going or cancel, 429 included, fails) | watch-party-rsvp |
 | `errors` | < 1 % | all |
 | `ws_connect_errors` | < 0.5 % | realtime-ws |
 | `ws_join_ok` | > 99 % | realtime-ws |
@@ -127,7 +192,12 @@ thresholds fail; fix, re-run the same stage, then continue.
 `rate_limited` (429 / mig 103 ceilings) is reported separately and is not an
 error: a run that is throttled by design tells you the ceilings work; a run
 that is throttled unexpectedly tells you a ceiling is too low for the
-target user count.
+target user count. The one exception is `watch-party-rsvp`: its `rsvp_ok`
+gate counts a 429 as a failed RSVP, because that scenario is sized to stay
+under migration 103's 20-per-user-per-day RSVP ceiling (one INSERT per
+user per run) and a 429 there means the pool's daily budget was already
+spent or the ceiling is wrong. Rotate to fresh load users rather than
+loosening the gate.
 
 ## One-time setup
 
