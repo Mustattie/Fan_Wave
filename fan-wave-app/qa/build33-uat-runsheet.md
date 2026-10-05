@@ -18,7 +18,7 @@ shows 33.
 | 6 | Live-score navigation, two consecutive updates | Pick a live game. Open it on Home (Today's Games card) and on Game Day. Wait for two consecutive score or clock updates (ESPN sync writes about once a minute per live game). After each update, compare both screens. Optionally repeat with a second device on the other tab | Both screens show update 1 within seconds of each other, then update 2 likewise; Home never sits on a value Game Day has already moved past; Sentry shows no `realtime.rejoin_failed` | **PASS on device, Sentry pending** (2026-10-03 13:38–13:44 CDT, S10+ over adb, Claude; MLB White Sox @ Guardians, prod `games.id 179f9cf7…`, no manual refresh): baseline Bottom 4th 0-2 (server 13:27); update 1 Top 5th — Home 13:38:50, Game Day 13:38:57; both still Top 5th at 13:41:52 / 13:41:58; update 2 Middle 5th — Home 13:42:15, Game Day 13:42:21 (6 s); ten agreeing cycles 13:41:04–13:44:41. Codex independently saw Bottom 6th on both screens at 14:07:43 / 14:08:01 (emulator). Earlier 2026-10-01: one LIVE→FINAL update (Padres–Cubs); 2026-10-02 NHL run cancelled (phone disconnected). Still needed: Sentry `realtime.rejoin_failed` sweep (owner). Log: scratchpad `test6b.log`; `docs/codex-sync-2026-10-03.md` **2026-10-03 16:37 sweep: `realtime.rejoin_failed` present (62 events on the issue). The six inspected in full (the 19:05Z and 19:17Z triples) carry `socketConnected=false` and fired 60 s into a background/airplane window; their trails do NOT show recovery from those outages (the 19:05Z trails hold `rejoined` crumbs only for the earlier 19:03:37Z reconnect; the 19:17Z trails hold none). Recovery evidence is separate and device-side (Test 7 catch-up, emulator row 13). The other 56 were reviewed as issue-event summaries only and show the same three-channels-per-cycle pattern (2 users). Sentry leg: explained for the inspected sample, not clean; the criterion "no `realtime.rejoin_failed`" stays unmet until Build 34 carries the separate, not-yet-pushed watchdog change (v9.5.44). Test 6 stays PASS on device.** |
 | 6b | Live game older than four hours (v9.5.41) | If a game in extra innings or a long delay is available: confirm it still appears on Home and Game Day more than 4 h after its scheduled start | Still listed as live | NOT AVAILABLE — no 4 h+ live game |
 | 7 | Two-account chat catch-up | Two accounts in one group chat; device A airplane mode; device B sends two messages; A airplane mode OFF and stays in the conversation | Both messages appear on A within ~10 s, each exactly once | **PASS on device, breadcrumb leg pending** (2026-10-03 14:05 CDT, Codex over computer use; Build 33 on both devices): QA room Anaheim Ducks Fans `cf06ddf9…` with only the two test accounts (the phone account joined through the real deep link). Device A = emulator (fan Sphere Uat) on the chat screen in airplane mode > 30 s; device B = S10+ (Tattie Mus) sent two rows while A was offline (`T7C135gT7D135` — label textually corrupted by the device collision below but one saved row — and `T7E135`, both 14:05); neither visible in the offline snapshot; airplane off at 14:05:53.126; absent at the 9.5 s poll, both present at the 13.9 s poll without leaving the chat (each UIAutomator poll ≈ 4 s, so arrival is bounded to (9.5 s, 13.9 s] against the ~10 s target), each exactly once. Still needed: Sentry `presence.rejoined` breadcrumb evidence. Evidence: `%LOCALAPPDATA%\Temp\fan-sphere-codex-uat-2026-10-03.md`; `docs/codex-sync-2026-10-03.md` **2026-10-03 sweep: the captured emulator events carry `presence.rejoined [presence-cf06ddf9…]` at 19:03:37Z, which precedes the airplane-on at 19:04:01Z and the tested reconnect at 19:05:53Z; it proves an earlier reconnect, not the one under review, so the breadcrumb leg stays PENDING (duplicate-crumb observation noted). Test 7 remains PASS on device, breadcrumb leg pending.** |
-| 10b | Delete-account sign-out | Delete a throwaway account from Profile | Clean sign-out; no `auth.unexpected_signed_out` | NOT RECORDED — owner attestation as for Test 7; missing datum: build, date, clean return to Sign In, and no `auth.unexpected_signed_out` in Sentry at that time. Needs a throwaway account only if the owner's notes do not hold it |
+| 10b | Delete-account sign-out | Delete a throwaway account from Profile | Clean sign-out; no `auth.unexpected_signed_out` | **PASS on Build 34** (2026-10-03 22:12 CDT, Codex, `Medium_Phone` emulator, fresh install, throwaway account created for the test): onboarding completed, Profile → Delete Account → `DELETE` → confirmed → "Account deleted" → signed-out Welcome; 0 rows left in `auth.users` / `public.users`; 0 `auth.unexpected_signed_out` on Build 34/staging in the window |
 
 ## Part B — Build 31/32 defects, first physical confirmation
 
@@ -221,3 +221,40 @@ Scope: issues and events tagged `dist:33` or release `org.fansphere.app@1.0.0+33
 | Fix 8 (`link.consumed` once per auth link) | No auth-link consumption occurred in the window; stays open |
 
 `build_number` tag: still absent on Build 33 events (expected; fixed in v9.5.42 for Build 34). Sweeps use `dist:33`.
+
+## Build 34 on the emulator (2026-10-03 evening) and the 2026-10-05 local-APK rows
+
+Narrative, timestamps and evidence paths: `docs/codex-sync-2026-10-03.md`
+(Claude 20:12 / 21:00 / 21:36 CDT, Codex 18:53 / 21:58 / 22:12 CDT, and the
+2026-10-05 Codex results). Everything below ran on emulators under the
+owner's 2026-10-03 Android physical-device exception; nothing here is
+physical-device evidence, and the 2026-10-05 rows ran on a locally built APK
+of 0556a5c (native versionCode 35, staging Supabase), not on an EAS build.
+
+| Row / test | Build | Result |
+| --- | --- | --- |
+| 13 airplane leg | 33 | **PASS** (Codex): red banner at every sample during 30 s of airplane mode, cleared by +33.5 s, first new live state by +68.5 s; Wi-Fi→LTE leg EXCEPTED |
+| 14 exact 30-min soak (+ R8) | 33 | **PASS** (Claude): Java max 52,068 KB, PSS non-monotonic, Views 1,139 → 1,700, app logcat 0 OOM / ANR / fatal |
+| 15 three previews | 33 | **PASS** (Claude): each preview rendered the emulator's moving test pattern and was cancelled without posting; physical camera EXCEPTED |
+| 11 create / link / change / back out | 33 | **PASS** (Claude): title and time followed the second game, nothing created; open-party and RSVP legs NOT RUN |
+| R4 | 33 | **PASS** (Claude): three A→B→A rounds, no stall or error on A |
+| v9.5.42 build tag | 34 | **PASS**: `build_number=34`, `dist=34` on the cold-start smoke event |
+| v9.5.44 watchdog (Test 6 Sentry leg) | 34 | **PASS**: 0 `realtime.*` on `dist:34` after 90 s background and three 30 s airplane cycles; still 0 in Codex's read-only query after the R6 run |
+| v9.5.43 member count | 34 | Client correct, **server value wrong** (P1): the counter triggers were SECURITY INVOKER under owner-only RLS → migration 108 (staging applied 2026-10-05, prod pending the owner) |
+| R5 | 34 | **Heap PASS**; Views 824 → 4,106 monotonic → finding 4 → fixed in 0556a5c |
+| R1-scroll | 34 | **PASS** on heap / Native / Views; cache-size leg NOT MEASURABLE (not debuggable) |
+| R6 continuous same-process | 34 | **PASS** (Codex): chat → Clips, four qualifying airplane cycles in chat and eight on Clips, Java / Views / PSS flat; channel-count sub-leg NOT MEASURABLE |
+| Test 10b | 34 | **PASS** (Codex, `Medium_Phone`, throwaway account): clean return to Welcome, 0 rows left, 0 `auth.unexpected_signed_out` |
+| Clips retained-feed fix (finding 4) | local 35 | **PASS** (Codex): the previous clip stayed mounted during an offline refetch; Views 664 → 664 over 50 switches; smoothness INCONCLUSIVE on the emulator |
+| Fix 9 second-device sign-out | local 35 | **PASS** (Codex, two emulators) |
+| Party created on A appears live on B | local 35 | **PASS** (Codex): visible on B at the first +2 s poll; the staging row was deleted afterwards |
+
+Findings from these runs: (1) Discover stuck on a full-screen spinner after
+repeated airplane cycles and recovered only on relaunch — fixed in 1198711
+(included in the 2026-10-05 local APK but not re-exercised; no EAS build yet); (2) the presence header shows `2 online` for ~20 s after
+each reconnect with one member online — minor, not a gate; (3) the
+server-side `member_count` drift above — migration 108. Still open after
+2026-10-05: rows 16 and 17 on Build 34 or later (owner / next sweep), the
+open-party and RSVP legs of row 11, R2 / R3 / R7 (fixtures, debuggable
+build), Test 7's breadcrumb leg, fixes 6 / 7 / 8 evidence, and the Clips
+listening check (EXCEPTED).
