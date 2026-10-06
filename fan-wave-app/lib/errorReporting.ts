@@ -20,6 +20,23 @@ type Sentry = typeof import('@sentry/react-native');
 
 let sentry: Sentry | null = null;
 let initialised = false;
+const breadcrumbRunId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+let breadcrumbSequence = 0;
+
+/** RN's DeviceContext merges native mirrors with the original JS trail. */
+export function dedupeAppBreadcrumbMirrors<T extends { data?: Record<string, unknown> }>(
+  breadcrumbs: T[] | undefined,
+): T[] | undefined {
+  if (!breadcrumbs) return breadcrumbs;
+  const seen = new Set<string>();
+  return breadcrumbs.filter((crumb) => {
+    const id = crumb.data?.fan_sphere_breadcrumb_id;
+    if (typeof id !== 'string') return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
 
 /**
  * P3.1 (2026-09-25): tags that let the Sentry issue list be split by
@@ -92,6 +109,10 @@ export function initErrorReporting(): void {
       tracesSampleRate: ENV === 'production' ? 0.1 : 0.5,
       enableAutoSessionTracking: true,
       enabled: !__DEV__,
+      beforeSend(event) {
+        event.breadcrumbs = dedupeAppBreadcrumbMirrors(event.breadcrumbs);
+        return event;
+      },
     });
     try {
       sentry.setTags(buildTags());
@@ -163,7 +184,10 @@ export function addBreadcrumb(
   data?: Record<string, string | number | boolean | null>,
 ): void {
   if (sentry) {
-    sentry.addBreadcrumb({ category, message, data, level: 'info' });
+    sentry.addBreadcrumb({
+      category, message, level: 'info',
+      data: { ...data, fan_sphere_breadcrumb_id: `${breadcrumbRunId}:${++breadcrumbSequence}` },
+    });
     return;
   }
   if (__DEV__) {

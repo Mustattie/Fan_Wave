@@ -1,4 +1,24 @@
-import { isUsableDsn } from '../lib/errorReporting';
+import { isUsableDsn, dedupeAppBreadcrumbMirrors } from '../lib/errorReporting';
+
+describe('native/JS breadcrumb mirrors', () => {
+  it('keeps one copy of each actual app emission despite native timestamp drift', () => {
+    const first = { message: 'presence.joined', timestamp: 1, data: { fan_sphere_breadcrumb_id: 'run:1' } };
+    const mirror = { ...first, timestamp: 1.001 };
+    const nextOpen = { ...first, timestamp: 2, data: { fan_sphere_breadcrumb_id: 'run:2' } };
+    expect(dedupeAppBreadcrumbMirrors([first, mirror, nextOpen])).toEqual([first, nextOpen]);
+  });
+
+  it('retains genuine repeated emissions and unmarked native breadcrumbs', () => {
+    const crumbs = [
+      { message: 'presence.joined', data: { fan_sphere_breadcrumb_id: 'run:1' } },
+      { message: 'presence.joined', data: { fan_sphere_breadcrumb_id: 'run:2' } },
+      { message: 'native event', data: {} },
+      { message: 'native event', data: {} },
+    ];
+    expect(dedupeAppBreadcrumbMirrors(crumbs)).toEqual(crumbs);
+    expect(dedupeAppBreadcrumbMirrors(undefined)).toBeUndefined();
+  });
+});
 
 describe('isUsableDsn', () => {
   it('accepts a real-shaped DSN', () => {
