@@ -1,0 +1,20 @@
+{
+  "diagnosticBuild": 40,
+  "legacyMetadataFallback": "Rendered regression tests; native39/40 playback branches retained; signed candidate smoke remains open",
+  "backend": "staging",
+  "architecture": "x86_64",
+  "fixtureContent": "150 distinct URL keys, same 3-second 5678912-byte video",
+  "nativeProductCommit": "df3824a",
+  "signing": "local debug key; not EAS",
+  "appProcessId": "4278",
+  "fixtureCleanup": {
+    "messageFixtures": 0,
+    "temporaryMembership": 0,
+    "roomMemberCount": 650,
+    "clipFixtures": 0,
+    "clipsUploadEnabled": true,
+    "at": "2026-10-06T11:06:20.2576993Z",
+    "partyFixtures": 0
+  },
+  "apkSha256": "44D0C9179E7A4251F5B907E40ED521AFF7B5702162D627FA683ED164CD012520"
+}

@@ -197,3 +197,8 @@ re-run of the Build 29 and Build 30 confirmations (recovery link, My Sports,
 offline banner, Watch Party time chips and title) to catch regressions in
 the realtime and feed rewrites. Run the pre-EAS gate checklist
 (`qa/pre-eas-build-checklist.md`) before cutting it.
+
+## October 6 final reconciliation
+
+All applicable emulator UAT is closed, including upload kill switch, watch-party RSVP/cancel, chat video previews, actual cached loops, 150-key disk-cache eviction, presence/auth-link telemetry and ten-cycle channel-count recovery. Earlier hardware exceptions remain exceptions. Staging fixtures read back zero and original room count/flag restored; emulator stopped. TypeScript and both Jest presets pass (35 suites, 302 tests each; existing teardown warning). See docs/uat-closure-2026-10-06.md and qa/evidence/2026-10-06. Production/backend verification, signed Android candidate smoke, physical iPhone P3.7 and launch-capacity acceptance remain release gates. No production/EAS/push performed.
+

@@ -509,6 +509,22 @@ Only after this is the build "ready for UAT."
 
 ## Maintaining this document
 
+### Regression checks added after October 6 UAT
+
+- Clips upload paused by the staging kill switch: the failed retry card must
+  remain visible after restart and successful empty/populated Following or
+  Trending fetches. Restore the flag, retry, and verify exactly one server row.
+  Record fixture cleanup and the final flag value; do not toggle production
+  flags for this test.
+- Chat media preview: a message marked video must render video when its URL
+  contains a query string or has no file extension. Images and closing the
+  modal must clear the video source. Record actual preview and memory results.
+- Captured Sentry events must retain one breadcrumb per actual app emission.
+  Native/JavaScript mirrors with the same emission ID collapse; separate real
+  calls stay visible. Compare two group opens and one cold/warm auth-link
+  handoff against the captured event trail. Verify the selected EAS
+  environment supplies a usable public DSN, rather than a local placeholder.
+
 Every UAT cycle, do this in retro:
 
 1. For each UAT bug we shipped, which phase SHOULD have caught it?
