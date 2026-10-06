@@ -58,8 +58,8 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
 import { getVideoContentType, getImageContentType } from '@/lib/mediaContentType';
 import { withTimeout } from '@/lib/withTimeout';
-import { useVideoPlayer, VideoView } from 'expo-video';
-import { CLIP_PREVIEW_BUFFER_OPTIONS } from '@/lib/videoBuffer';
+import ChatMediaPreview, { type ChatPreviewMedia } from '@/components/ChatMediaPreview';
+
 import { Image as RNImage } from 'react-native';
 
 const PAGE_SIZE = 20;
@@ -86,7 +86,7 @@ export default function FanGroupDetailScreen() {
   const [loadingGroup, setLoadingGroup] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(true);
   const [attaching, setAttaching] = useState(false);
-  const [previewMediaUrl, setPreviewMediaUrl] = useState<string | null>(null);
+  const [previewMedia, setPreviewMedia] = useState<ChatPreviewMedia | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const scrollRef = useRef<FlatList>(null);
 
@@ -817,7 +817,7 @@ export default function FanGroupDetailScreen() {
             {item.mediaType === 'video' ? (
               <TouchableOpacity
                 activeOpacity={0.9}
-                onPress={() => item.mediaUrl && setPreviewMediaUrl(item.mediaUrl)}
+                onPress={() => item.mediaUrl && setPreviewMedia({ url: item.mediaUrl, type: item.mediaType === 'video' ? 'video' : 'image' })}
                 style={styles.mediaPosterVideo}
               >
                 <RNImage
@@ -832,7 +832,7 @@ export default function FanGroupDetailScreen() {
             ) : (
               <TouchableOpacity
                 activeOpacity={0.9}
-                onPress={() => item.mediaUrl && setPreviewMediaUrl(item.mediaUrl)}
+                onPress={() => item.mediaUrl && setPreviewMedia({ url: item.mediaUrl, type: item.mediaType === 'video' ? 'video' : 'image' })}
               >
                 <RNImage source={{ uri: item.mediaUrl }} style={styles.mediaPoster} resizeMode="cover" />
               </TouchableOpacity>
@@ -861,17 +861,6 @@ export default function FanGroupDetailScreen() {
       </View>
     </View>
   );
-
-  // Fullscreen video preview modal — separate <VideoView> so the inline
-  // poster in the feed doesn't hold a codec slot per bubble.
-  const previewPlayer = useVideoPlayer(previewMediaUrl, (p) => {
-    // P3.6: same buffer cap as the New Clip preview; this player lives for
-    // the whole chat screen and had ExoPlayer's default budget.
-    p.bufferOptions = CLIP_PREVIEW_BUFFER_OPTIONS;
-    p.loop = false;
-    p.muted = false;
-    p.play();
-  });
 
   const renderLoadingHeader = () => {
     if (!loadingMore) return null;
@@ -1127,26 +1116,7 @@ export default function FanGroupDetailScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Fullscreen media preview — video plays with sound, image just
-          shows fitted to screen. Tap outside to close. */}
-      <Modal visible={!!previewMediaUrl} transparent animationType="fade" onRequestClose={() => setPreviewMediaUrl(null)}>
-        <TouchableOpacity
-          style={styles.previewBackdrop}
-          activeOpacity={1}
-          onPress={() => setPreviewMediaUrl(null)}
-        >
-          {previewMediaUrl && /\.(mp4|mov|m4v|webm)$/i.test(previewMediaUrl) ? (
-            <VideoView
-              player={previewPlayer}
-              style={styles.previewMedia}
-              nativeControls
-              contentFit="contain"
-            />
-          ) : previewMediaUrl ? (
-            <RNImage source={{ uri: previewMediaUrl }} style={styles.previewMedia} resizeMode="contain" />
-          ) : null}
-        </TouchableOpacity>
-      </Modal>
+      <ChatMediaPreview media={previewMedia} onClose={() => setPreviewMedia(null)} />
 
       {/* Invite chooser sheet — two options: contacts picker (SMS deep
           link, mirrors create-private-group flow) and the existing
@@ -1323,16 +1293,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingTop: 6,
     paddingBottom: 4,
-  },
-  previewBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.95)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  previewMedia: {
-    width: '100%',
-    height: '80%',
   },
   messageTime: { fontSize: 10, color: Colors.dark.textMuted, marginTop: 3, marginLeft: 4 },
   messageTimeMe: { textAlign: 'right', marginRight: 4, marginLeft: 0 },
