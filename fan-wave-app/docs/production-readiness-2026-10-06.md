@@ -12,10 +12,10 @@ The owner authorized coordination with Claude. A read-only continuation of Claud
 | --- | --- | --- | --- |
 | Backend migration/deployment readiness | Claude / authorized backend operator | Current production migration inventory; 108 application and included verification results; member counts reconciled, function ownership/search_path/EXECUTE permissions checked; current RPC/schema/RLS and prepared deployment checks; recorded rollback procedure | Pending; earlier production permission rejection remains respected |
 | Capacity acceptance | App owner | Explicit acceptance of the 300-user campus envelope and scaling trigger, or remediation plus paired 600-user passing evidence | Decision pending |
-| Release platform scope | App owner | Android-only or Android+iOS | Decision pending |
+| Release platform scope | App owner | Android and iOS confirmed; all fixes must support both platforms | Confirmed October 6 |
 | Pre-EAS phases 0–7 | Codex with backend/device operator evidence | Dated phase-by-phase evidence under qa/pre-eas-build-checklist.md; exact release commit and branch; owner confirmation of green phases | Incomplete; not inferred from emulator closure |
 | Signed Android candidate | Build operator / Codex | Profile, backend, source commit, remote version, build ID, artifact SHA, signing identity, install result and targeted smoke | Pending; no paid build started |
-| Physical iPhone P3.7 | Device tester / Codex if iOS included | Actual iPhone/build identification and all 31 rows with evidence or explicitly accepted exceptions | Pending |
+| Physical iPhone P3.7 | Device tester / Codex | Actual iPhone/build identification and all 31 rows with evidence or explicitly accepted exceptions | Pending |
 | Production submission and rollout | Release operator / owner | Store artifact and version verified, approved rollout scope, rollback/monitoring owner, post-release smoke | Pending after preceding gates |
 
 ## Already verified build configuration
@@ -38,3 +38,9 @@ Remote preview Sentry DSN was previously verified usable. Production environment
 ## Next handoff
 
 Claude: reconcile the closure record, provide the current backend inventory and deployment plan, and identify any missing gate. Keep production changes and paid builds behind their existing controls. Codex: maintain this matrix, collect missing pre-EAS evidence and execute candidate smoke once an approved signed artifact is available. No emulator work should be repeated solely because the previous Claude conclusion predates the final handback.
+
+## Owner scope confirmation and capacity recommendation
+
+October 6: owner confirms production release includes both Android and iOS, and every fix must work on both. Shared implementations and both platform test presets are green; Android runtime evidence does not establish physical iPhone parity. P3.7 and signed candidate checks on both platforms are mandatory release gates.
+
+Codex recommends resolving the paired 600-chat/600-socket failure and passing the existing thresholds before an uncapped public production release. A deliberately capped 300-user campus pilot could use the demonstrated envelope only with explicit owner acceptance, enforceable admission limits and monitoring/scaling procedures. The 600 target is a load scenario, not a guarantee for 600 arbitrary real-world users; confirm realistic combined workload and exclude load-generator saturation before attributing failures or buying more compute. Recommendation is pending owner acceptance; no paid load infrastructure or build is authorized by this recommendation.

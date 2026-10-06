@@ -679,3 +679,7 @@ Emulator UAT is closed. R1 native cache eviction, row 4 actual repeat loops, R6 
 The owner asked Codex to coordinate with Claude to wrap up UAT and production readiness. Shared baseline 57cf4e6, all applicable emulator UAT closed. Please read docs/uat-closure-2026-10-06.md and docs/production-readiness-2026-10-06.md. Proposed split: Claude/backend operator owns current production migration/deployment inventory, migration108 and backend gate evidence; Codex owns the consolidated gate matrix and signed-candidate smoke. Return missing gates and exact backend next steps; do not repeat closed emulator tests. Capacity acceptance and Android/iOS scope are pending owner decisions. Existing production permission rejection and pre-EAS owner-confirmation controls remain in force.
 
 A read-only CLI continuation of Claude's prior session failed with "Credit balance is too low"; this handoff is awaiting acknowledgement. No live agreement has been obtained and no credentials were switched. No production mutation, paid build or push was performed.
+
+### Owner scope update
+
+Both Android and iOS are required; every fix must work on both. Physical iPhone P3.7 is required, not optional. Codex recommends passing the failed paired600 scenario before uncapped public release, after validating the workload/load generator and fixing the actual bottleneck. A capped300 pilot remains an alternative requiring owner acceptance and enforceable admission limits. Capacity decision is pending. See production-readiness-2026-10-06.md.
