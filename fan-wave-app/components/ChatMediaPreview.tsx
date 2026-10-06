@@ -8,6 +8,15 @@ export interface ChatPreviewMedia {
   type: 'video' | 'image';
 }
 
+/** Preserve legacy URL detection only when the message has no media metadata. */
+export function createChatPreviewMedia(
+  url: string,
+  declaredType?: ChatPreviewMedia['type'] | null,
+): ChatPreviewMedia {
+  const path = url.split(/[?#]/, 1)[0];
+  return { url, type: declaredType ?? (/\.(mp4|mov|m4v|webm)$/i.test(path) ? 'video' : 'image') };
+}
+
 export default function ChatMediaPreview({ media, onClose }: {
   media: ChatPreviewMedia | null;
   onClose: () => void;

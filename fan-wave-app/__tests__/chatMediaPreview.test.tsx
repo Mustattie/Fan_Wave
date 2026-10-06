@@ -1,7 +1,7 @@
 import React from 'react';
 import { render } from '@testing-library/react-native';
 import { useVideoPlayer } from 'expo-video';
-import ChatMediaPreview from '../components/ChatMediaPreview';
+import ChatMediaPreview, { createChatPreviewMedia } from '../components/ChatMediaPreview';
 
 jest.mock('expo-video', () => ({
   useVideoPlayer: jest.fn(() => ({})),
@@ -9,6 +9,18 @@ jest.mock('expo-video', () => ({
 }));
 
 beforeEach(() => jest.clearAllMocks());
+
+it('preserves legacy video previews when nullable media metadata is absent', () => {
+  const url = 'https://storage.test/legacy.mp4?token=fixture#play';
+  const view = render(<ChatMediaPreview media={createChatPreviewMedia(url, null)} onClose={() => {}} />);
+  expect(view.getByTestId('video-preview')).toBeTruthy();
+  expect(useVideoPlayer).toHaveBeenLastCalledWith(url, expect.any(Function));
+});
+
+it('keeps explicit metadata authoritative and excludes query parameters from fallback detection', () => {
+  expect(createChatPreviewMedia('https://storage.test/image.mp4', 'image').type).toBe('image');
+  expect(createChatPreviewMedia('https://storage.test/download?filename=clip.mp4', null).type).toBe('image');
+});
 
 it('renders query/signed video URLs as video using message metadata', () => {
   const url = 'https://storage.test/clip.mp4?token=fixture#play';

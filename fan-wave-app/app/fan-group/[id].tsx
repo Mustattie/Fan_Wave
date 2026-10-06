@@ -58,7 +58,7 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
 import { getVideoContentType, getImageContentType } from '@/lib/mediaContentType';
 import { withTimeout } from '@/lib/withTimeout';
-import ChatMediaPreview, { type ChatPreviewMedia } from '@/components/ChatMediaPreview';
+import ChatMediaPreview, { createChatPreviewMedia, type ChatPreviewMedia } from '@/components/ChatMediaPreview';
 
 import { Image as RNImage } from 'react-native';
 
@@ -817,7 +817,7 @@ export default function FanGroupDetailScreen() {
             {item.mediaType === 'video' ? (
               <TouchableOpacity
                 activeOpacity={0.9}
-                onPress={() => item.mediaUrl && setPreviewMedia({ url: item.mediaUrl, type: item.mediaType === 'video' ? 'video' : 'image' })}
+                onPress={() => item.mediaUrl && setPreviewMedia(createChatPreviewMedia(item.mediaUrl, item.mediaType))}
                 style={styles.mediaPosterVideo}
               >
                 <RNImage
@@ -832,7 +832,7 @@ export default function FanGroupDetailScreen() {
             ) : (
               <TouchableOpacity
                 activeOpacity={0.9}
-                onPress={() => item.mediaUrl && setPreviewMedia({ url: item.mediaUrl, type: item.mediaType === 'video' ? 'video' : 'image' })}
+                onPress={() => item.mediaUrl && setPreviewMedia(createChatPreviewMedia(item.mediaUrl, item.mediaType))}
               >
                 <RNImage source={{ uri: item.mediaUrl }} style={styles.mediaPoster} resizeMode="cover" />
               </TouchableOpacity>
