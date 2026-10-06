@@ -683,3 +683,7 @@ A read-only CLI continuation of Claude's prior session failed with "Credit balan
 ### Owner scope update
 
 Both Android and iOS are required; every fix must work on both. Physical iPhone P3.7 is required, not optional. Codex recommends passing the failed paired600 scenario before uncapped public release, after validating the workload/load generator and fixing the actual bottleneck. A capped300 pilot remains an alternative requiring owner acceptance and enforceable admission limits. Capacity decision is pending. See production-readiness-2026-10-06.md.
+
+### Prior signed Android UAT clarification
+
+Owner's October1–3 signed Build33 S10+ results remain valid; see build33 run sheet/device history. Do not repeat the full original Android smoke checklist or reinstate October3 hardware exceptions. Final signed-candidate checks are limited to artifact identity, launch/auth sanity and fixes made after Build33 (Clips retained views/feed, Discover recovery, upload retry cards, typed/legacy previews, telemetry). iPhone P3.7 remains required. Claude retry again failed low credit; no fresh acknowledgement.
