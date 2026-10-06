@@ -1,0 +1,40 @@
+# Production readiness coordination — October 6, 2026
+
+Status: NO-GO pending backend evidence, build gate completion and owner decisions. Emulator UAT is closed; see uat-closure-2026-10-06.md. Product source baseline 57cf4e6. Documentation commits after this baseline do not change the tested source.
+
+## Coordination status
+
+The owner authorized coordination with Claude. A read-only continuation of Claude's previous UAT session was attempted on October 6; CLI exited with "Credit balance is too low". No fresh Claude acknowledgement or backend review was obtained. Do not treat the work allocation below as an accepted assignment. Claude can resume from the handoff in codex-sync-2026-10-03.md when available. No credentials were changed to work around the failure.
+
+## Work allocation and exit evidence
+
+| Work | Proposed owner | Required closure evidence | State |
+| --- | --- | --- | --- |
+| Backend migration/deployment readiness | Claude / authorized backend operator | Current production migration inventory; 108 application and included verification results; member counts reconciled, function ownership/search_path/EXECUTE permissions checked; current RPC/schema/RLS and prepared deployment checks; recorded rollback procedure | Pending; earlier production permission rejection remains respected |
+| Capacity acceptance | App owner | Explicit acceptance of the 300-user campus envelope and scaling trigger, or remediation plus paired 600-user passing evidence | Decision pending |
+| Release platform scope | App owner | Android-only or Android+iOS | Decision pending |
+| Pre-EAS phases 0–7 | Codex with backend/device operator evidence | Dated phase-by-phase evidence under qa/pre-eas-build-checklist.md; exact release commit and branch; owner confirmation of green phases | Incomplete; not inferred from emulator closure |
+| Signed Android candidate | Build operator / Codex | Profile, backend, source commit, remote version, build ID, artifact SHA, signing identity, install result and targeted smoke | Pending; no paid build started |
+| Physical iPhone P3.7 | Device tester / Codex if iOS included | Actual iPhone/build identification and all 31 rows with evidence or explicitly accepted exceptions | Pending |
+| Production submission and rollout | Release operator / owner | Store artifact and version verified, approved rollout scope, rollback/monitoring owner, post-release smoke | Pending after preceding gates |
+
+## Already verified build configuration
+
+On October 6, eas.json has cli.appVersionSource=remote, requireCommit=true, preview.autoIncrement=true and production.autoIncrement=true. Preview is an internally distributed APK; playstore-preview and production produce store AABs. Preview points at production Supabase while telemetry is tagged staging. Production telemetry is tagged production. No .easignore exists in either repository or app root. No retired wc_pass_2026 reference was found in app/components/lib. Shared source is on v9.5, so the checklist's main-branch gate remains unresolved until the intended release branch/commit is approved and integrated. Do not push main merely to satisfy this check: its CI may initiate a paid build.
+
+Remote preview Sentry DSN was previously verified usable. Production environment, signing/submission credentials, current remote build numbers, store access and artifact availability still require verification; no secret values belong in evidence. Preview APK evidence alone does not verify the final production AAB.
+
+## Signed-candidate regression walk
+
+1. Confirm artifact identity, backend and telemetry environment before exercising account flows.
+2. Walk five-tab/pivot sanity and the complete Phase 4 checklist on the actual signed artifact.
+3. Authenticate, replay the auth handoff and reconnect after an outage. Check single auth consumption, expected presence emissions and stable channel cleanup.
+4. Open video previews with explicit video metadata and signed/query URLs; exercise legacy null-media-type records and image previews; close/reopen without stale playback.
+5. Post a clip, verify picker-copy cleanup; restart a queued upload and exercise retry-card retention across feed replacement. Kill-switch testing requires a separately authorized safe backend; do not toggle the global production flag to reproduce staging tests.
+6. Verify populated Discover remains usable through refresh/outage/recovery; watch-party creation, linked-game selection, RSVP and cancellation reconcile with server state.
+7. Recheck retained Views while switching Clips filters, cached loops and memory stability; review new Sentry errors after the walk. Retain prior long-soak evidence unless a candidate regression invalidates it.
+8. Remove only labelled authorized test fixtures; capture post-build Phase 8 and store-ready AAB verification separately from the preview APK.
+
+## Next handoff
+
+Claude: reconcile the closure record, provide the current backend inventory and deployment plan, and identify any missing gate. Keep production changes and paid builds behind their existing controls. Codex: maintain this matrix, collect missing pre-EAS evidence and execute candidate smoke once an approved signed artifact is available. No emulator work should be repeated solely because the previous Claude conclusion predates the final handback.
