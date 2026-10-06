@@ -34,6 +34,7 @@ import { mapClipToDisplay, type ClipDisplay } from '@/lib/mappers';
 import {
   hydrationKey,
   mergeClipPage,
+  replaceClipPage,
   applyClipUpdate,
   prependRealtimeClip, createPosterCache, CLIP_POSTER_IMAGE_PROPS, mayStartPlayback } from '@/lib/clipsFeed';
 import {
@@ -1077,7 +1078,7 @@ export default function ClipsScreen() {
           if (error) throw error;
           const mapped = await hydratePosters((data ?? []).map(mapClipToDisplay));
           if (gen !== fetchGenRef.current || !mountedRef.current) return { status: 'stale' };
-          if (replace) setClips(mapped);
+          if (replace) setClips((prev) => replaceClipPage(prev, mapped, MAX_LOADED_CLIPS));
           else setClips((prev) => mergeClipPage(prev, mapped, MAX_LOADED_CLIPS));
           if (gen === fetchGenRef.current && mountedRef.current) {
             setHasMore(mapped.length === PAGE_SIZE && (pageNum + 1) * PAGE_SIZE < MAX_LOADED_CLIPS);
@@ -1132,7 +1133,7 @@ export default function ClipsScreen() {
         if (data && data.length > 0) {
           const mapped = await hydratePosters(data.map(mapClipToDisplay));
           if (gen !== fetchGenRef.current || !mountedRef.current) return { status: 'stale' };
-          if (replace) setClips(mapped);
+          if (replace) setClips((prev) => replaceClipPage(prev, mapped, MAX_LOADED_CLIPS));
           else setClips((prev) => mergeClipPage(prev, mapped, MAX_LOADED_CLIPS));
           if (gen === fetchGenRef.current && mountedRef.current) {
             setHasMore(data.length === PAGE_SIZE && (pageNum + 1) * PAGE_SIZE < MAX_LOADED_CLIPS);
@@ -1140,7 +1141,7 @@ export default function ClipsScreen() {
           return { status: 'success' };
         } else {
           if (gen === fetchGenRef.current && mountedRef.current) {
-            if (replace) setClips([]);
+            if (replace) setClips((prev) => replaceClipPage(prev, [], MAX_LOADED_CLIPS));
             setHasMore(false);
           }
           return { status: 'success' };

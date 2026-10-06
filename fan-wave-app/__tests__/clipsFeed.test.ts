@@ -2,6 +2,7 @@ import {
   liveClipIds,
   hydrationKey,
   mergeClipPage,
+  replaceClipPage,
   applyClipUpdate,
   prependRealtimeClip,
 } from '../lib/clipsFeed';
@@ -32,6 +33,20 @@ function clip(id: string, extra: Partial<ClipDisplay> = {}): ClipDisplay {
 }
 
 describe('clipsFeed (v9.5.22: hydration chatter + pagination)', () => {
+  it('keeps retryable and in-flight uploads when a refreshed feed is empty', () => {
+    const failed = clip('temp-failed', { status: 'failed', uploadError: 'Uploads paused' });
+    const uploading = clip('temp-uploading', { status: 'uploading', progress: 43 });
+    expect(replaceClipPage([failed, clip('old'), uploading], [], 200))
+      .toEqual([failed, uploading]);
+  });
+
+  it('replaces old server rows while keeping current upload state and bounding the page', () => {
+    const pending = clip('temp-1', { status: 'failed', progress: 80 });
+    expect(replaceClipPage([clip('old'), pending], [clip('new'), clip('new'), clip('next')], 2))
+      .toEqual([pending, clip('new')]);
+    expect(replaceClipPage([clip('completed', { status: 'live' })], [], 200)).toEqual([]);
+  });
+
   it('liveClipIds skips upload placeholders and failed cards', () => {
     const list = [
       clip('a'),

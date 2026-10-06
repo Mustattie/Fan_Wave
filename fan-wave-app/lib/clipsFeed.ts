@@ -36,6 +36,16 @@ export function hydrationKey(clips: ReadonlyArray<ClipDisplay>): string {
   return `${ids.join(',')}|${Array.from(posters).join(',')}`;
 }
 
+/** Replace server rows without hiding local uploads that still need attention. */
+export function replaceClipPage(
+  prev: ReadonlyArray<ClipDisplay>,
+  page: ReadonlyArray<ClipDisplay>,
+  cap: number,
+): ClipDisplay[] {
+  const pending = prev.filter((c) => c.status === 'uploading' || c.status === 'failed');
+  return mergeClipPage(pending, page, cap).slice(0, cap);
+}
+
 /** Append a page, dropping rows already on the list, bounded by `cap`. */
 export function mergeClipPage(
   prev: ReadonlyArray<ClipDisplay>,
