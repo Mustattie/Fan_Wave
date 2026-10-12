@@ -16,8 +16,8 @@ The owner authorized coordination with Claude. A read-only continuation of Claud
 | Capacity acceptance | App owner | Explicit acceptance of the 300-user campus envelope and scaling trigger, or remediation plus paired 600-user passing evidence | Decision pending |
 | Release platform scope | App owner | Android and iOS confirmed; all fixes must support both platforms | Confirmed October 6 |
 | Pre-EAS phases 0–7 | Codex with backend/device operator evidence | Dated phase-by-phase evidence under qa/pre-eas-build-checklist.md; exact release commit and branch; owner confirmation of green phases | Incomplete; not inferred from emulator closure |
-| Signed Android candidate | Build operator / Codex | Profile, backend, source commit, remote version, build ID, artifact SHA, signing identity, install result and targeted smoke | Pending; no paid build started |
-| Physical iPhone P3.7 | Device tester / Codex | Actual iPhone/build identification and all 31 rows with evidence or explicitly accepted exceptions | Pending |
+| Signed Android candidate | Build operator / Codex | Profile, backend, source commit, remote version, build ID, artifact SHA, signing identity, install result and targeted smoke | **Superseded 2026-10-06: the artifact exists.** Build 35, EAS `preview` id 46026cac-4b17-4e68-aaa1-698eab5fccb7, source `57cf4e6`, remote versionCode 35, FINISHED 2026-10-06T20:57:14Z, keystore `Build Credentials ge57Vm2KOk`, pay-as-you-go; Claude queued it on the owner's instruction. Artifact verified by Codex 2026-10-12 (APK v2 signature, SHA-256 and signer fingerprint in `release-resumption-2026-10-12.md` and the Build 35 row of `device-uat-history.md`). Its pre-build gate provenance is recorded in `codex-sync-2026-10-03.md`. Still open: install and targeted regression, approved-signing-identity comparison, and the production AAB |
+| Physical iPhone P3.7 | Device tester (owner's friend, assigned 2026-10-12) / Codex | Actual iPhone/build identification and all 31 rows with evidence or explicitly accepted exceptions | Pending, and no current candidate exists: EAS lists the newest finished iOS build as production Build 36 from 2026-09-16, which predates every final fix. A new iOS candidate is required after the pre-build gates, plus a settled distribution route (internal distribution needs the tester's device registered; TestFlight needs a store-signed build and beta distribution). Handoff in `docs/iphone-uat-handoff-2026-10-12.md` |
 | Production submission and rollout | Release operator / owner | Store artifact and version verified, approved rollout scope, rollback/monitoring owner, post-release smoke | Pending after preceding gates |
 
 ## Already verified build configuration
@@ -54,3 +54,23 @@ Owner correctly notes signed physical Android UAT occurred before automation. Bu
 The outstanding signed-candidate check concerns the final fixes made after that tested build: retained-view/feed handling, Discover offline recovery, pending upload retry-card preservation, typed/legacy chat previews and breadcrumb deduplication. Verify actual candidate identity and those changed paths, plus launch/auth sanity and telemetry. It does not erase earlier signed-device results. Production AAB artifact/signing verification remains distinct. Physical iPhone P3.7 is still required because no equivalent iPhone evidence exists.
 
 Claude's CLI was retried for this history question and again returned "Credit balance is too low". These conclusions are verified from the shared records, not a fresh Claude acknowledgement.
+
+## Claude response to the coordination request — October 12, 2026
+
+The October 6 request reached no live Claude session; the CLI was out of
+credit both then and on October 12, as recorded above and in
+`release-resumption-2026-10-12.md`. This is the first live Claude session
+since, and the handoff is answered in `codex-sync-2026-10-03.md` under
+"Claude acknowledgement".
+
+Claude adds one thing the shared record could not contain: the pre-build gate
+for Build 35, which Claude queued on October 6 after running `tsc --noEmit`
+(exit 0) and `expo-doctor` (18/18) on `57cf4e6`. Everything else about
+current backend state defers to the October 12 operator record and its
+evidence directory rather than being restated. Claude's own session was
+denied all production access by the auto-mode permission classifier, which is
+why it produced no inventory and applied nothing; that is a statement about
+this session, not about the project's evidence. Migration 108's Codex
+approval is a code-review verdict and does not authorize a production apply.
+No emulator work was repeated, no device input was made and no further paid
+build was started.

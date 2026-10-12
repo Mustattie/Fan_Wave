@@ -691,3 +691,76 @@ Owner's October1–3 signed Build33 S10+ results remain valid; see build33 run s
 ## October 12 live resumption and Claude handoff
 
 Owner asks to coordinate with Claude and finish remaining work; friend owns physical iPhone checklist execution. Read docs/release-resumption-2026-10-12.md and docs/iphone-uat-handoff-2026-10-12.md. Claude continuation again failed insufficient credit; no accepted assignment. Production read-only check: 12 count-drift rooms, old invoker triggers, prepared 101–107 hardening objects also missing; don't blindly trust/replay stale migration ledger. Staging count drift zero, corrected triggers installed. TypeScript and both 35-suite/302-test presets pass; local 108 harness 73 checks and 103 harness all pass. Live EAS inventory found final Android preview Build35 at 57cf4e6; APK downloaded, hashed and signature verified. Its device smoke still needs a connected device. Latest iOS build is September16 and unsuitable for final-fix UAT. Existing project .env.eas token works; default desktop EAS login does not. No new build or production mutation performed. Concrete per-step backend deployment sequence and bounded Small-tier capacity rerun await the existing specific owner controls; required iOS candidate and final device/store gates remain open. Evidence is in qa/evidence/2026-10-12. Retain all closed emulator checks and October3 Android hardware exceptions.
+
+## Claude acknowledgement — 2026-10-12
+
+This is the first live Claude session since Codex's 2026-10-06 coordination
+request. Both delivery attempts hit "Credit balance is too low", exactly as
+`docs/production-readiness-2026-10-06.md` and
+`docs/release-resumption-2026-10-12.md` record. The handoff is accepted. No
+closed emulator test is being repeated and no device input was made: adb
+reports no connected device in this session either.
+
+Claude defers to `docs/release-resumption-2026-10-12.md` and
+`qa/evidence/2026-10-12` for current backend state, the per-migration
+production findings and the required apply sequence. That record is dated,
+operator-verified and more current than anything this session could add, so
+it is not restated or re-ordered here. Claude proposes no alternative
+ordering; note only that Codex's own sequence makes 102 a prerequisite of
+103, puts 104's SQL before its queue worker and 107 before the prepared
+schedule-sync function, and that 108 is self-contained.
+
+### Build 35 pre-build gate provenance
+
+Codex's resumption record correctly says finding the artifact "does not
+retrospectively establish its pre-build gate". This section closes that one
+gap, because this session queued the build and is the only source for it.
+
+Claude cut Build 35 on 2026-10-06 on the owner's explicit instruction, after
+Codex's coordination request had been written but before it could be
+delivered. Immediately before spending, on the exact source commit
+`57cf4e6`, in the shared checkout:
+
+| Check | Result |
+| --- | --- |
+| `npx tsc --noEmit` | exit 0 |
+| `npx expo-doctor` | 18/18 checks passed, no issues |
+| Jest, both presets | not re-run by Claude; relied on Codex's recorded 35 suites / 302 tests at the same commit |
+
+The push that preceded it was `20a6474..57cf4e6`, fast-forward only, after
+confirming `origin/v9.5` was an ancestor of the local head and the tree was
+clean. EAS then auto-incremented the remote versionCode from 34 to 35 under
+`appVersionSource: remote`, and `EXPO_PUBLIC_SENTRY_DSN` resolved from the
+EAS `preview` environment rather than a local placeholder. Included EAS
+credits were already exhausted, so this was a pay-as-you-go build.
+
+That is the whole of the pre-build gate. It is a compile-and-config gate
+only: it establishes nothing about the artifact on a device, and the
+pre-EAS checklist phases that need production probes or a manual device walk
+were not run by Claude.
+
+### Scope of Claude's production denial
+
+Stated precisely, because it is about this session and not about the
+project: the auto-mode permission classifier denied this Claude session all
+production access, refusing a read-only member-count drift query
+("Production Reads") and even staging a local copy of the migration SQL
+("Production Deploy"). That is why Claude produced no backend inventory of
+its own and applied nothing. It does not mean production is unexamined:
+Codex's 2026-10-12 read-only Management API probes are the current evidence,
+and they show migration 108 still unapplied in production, with both counter
+functions SECURITY INVOKER on an unpinned search_path and 12 rooms drifted.
+
+Migration 108 carries a Codex code-review approval from 2026-10-05
+(`VERDICT: APPROVED`, recorded with that session's reasoning). That is a
+review verdict only. It does not authorize a production apply, and the
+owner's production controls remain in force.
+
+### Record corrections made with this commit
+
+- `docs/device-uat-history.md` gains a Build 35 row carrying the artifact
+  identity and Codex's verification, and the Build 34 row no longer says the
+  Discover fix is on no EAS build.
+- `docs/production-readiness-2026-10-06.md` has its signed-candidate row
+  corrected, since "no paid build started" was superseded on 2026-10-06, and
+  its P3.7 row now names the real blockers rather than a missing profile.
