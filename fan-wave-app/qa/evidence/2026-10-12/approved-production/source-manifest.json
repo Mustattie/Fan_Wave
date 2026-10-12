@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-12T23:16:57.309Z",
+  "project": "fwlfiejvxmslkpoojggs",
+  "files": [
+    {
+      "file": "101_kill_switch_flags.sql",
+      "sha256": "f3c7bcd7e8d4c7893af5ad0bebf05a8b86ef39f33fc579368353f4a7f726ec7e"
+    },
+    {
+      "file": "102_clip_quota_server_enforced.sql",
+      "sha256": "7c8d7a3ff13f6f1f3778390327508d8fe54a05582ef3914cbb620e932b6ab0e9"
+    },
+    {
+      "file": "103_rate_limit_server_ceilings.sql",
+      "sha256": "f5da2d1787f499f41fea5c277306d9a51686d2b859c69e476b2c09e8b6e02d1b"
+    },
+    {
+      "file": "104_notification_queue_claiming.sql",
+      "sha256": "fdd71d937abd965a533aab15ee0061d97dd26ba8ae56033a70d112419946cf5f"
+    },
+    {
+      "file": "105_storage_hardening.sql",
+      "sha256": "4524d51183ab456c4b8c7ea21c7c62cea36c3762a55ed920dd41668207c65d25"
+    },
+    {
+      "file": "106_query_indexes.sql",
+      "sha256": "79cdae0e51f8aa4d8c0fba4eb65564f375d51d940538aca392ac117b02e626a1"
+    },
+    {
+      "file": "107_sync_runs.sql",
+      "sha256": "9ca7a8570530cbfa09d8393880bcbf4f6cabacc2f0d91fc23c0d340f9283d1f6"
+    },
+    {
+      "file": "108_member_count_triggers_security_definer.sql",
+      "sha256": "7d621965517d8f2115ee5f6178869d68b6c6ee701a0c20b7ddb0c451ac30d5fe"
+    }
+  ]
+}

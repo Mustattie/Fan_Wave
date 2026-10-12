@@ -1,5 +1,7 @@
 # Release resumption — October 12, 2026
 
+Later execution status: owner authorized the backend and bounded staging work. See [production execution](production-execution-2026-10-12.md) for live results; 101/102/105/106/108 are applied and verified, while operational-retention clarification holds 103/104/107 and dependent function updates. The inventory below is the pre-execution snapshot.
+
 Owner asked Codex to communicate the reconciled status to Claude and finish the remaining work. The owner's friend will perform physical iPhone UAT. Both Android and iOS remain required. Release status remains NO-GO.
 
 ## Work completed today
