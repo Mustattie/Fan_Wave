@@ -1,0 +1,22 @@
+{
+  "scenario": "Two join ACKs followed by a Realtime system error and socket close",
+  "result": {
+    "connected": true,
+    "joinedAll": true,
+    "joinMs": 1
+  },
+  "rates": [
+    [
+      "connect",
+      0
+    ],
+    [
+      "join",
+      1
+    ]
+  ],
+  "warnings": [
+    "[realtime-ws] realtime:synthetic2 system error: Too many database timeouts"
+  ],
+  "incorrectlyClaimsJoinSuccess": true
+}
