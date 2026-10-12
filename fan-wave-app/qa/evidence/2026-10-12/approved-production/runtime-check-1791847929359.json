@@ -1,0 +1,152 @@
+{
+  "at": "2026-10-12T23:32:05.323Z",
+  "unauthorized": {
+    "health-check": 401,
+    "process-notification-queue": 401,
+    "sync-game-schedules": 401
+  },
+  "wrongCredential": {
+    "health-check": 401,
+    "process-notification-queue": 401,
+    "sync-game-schedules": 401
+  },
+  "health": {
+    "httpStatus": 200,
+    "body": {
+      "status": "ok",
+      "timestamp": "2026-10-12T23:32:09.553Z",
+      "checks": {
+        "database": {
+          "status": "ok",
+          "latencyMs": 142
+        },
+        "auth": {
+          "status": "ok",
+          "latencyMs": 123
+        },
+        "storage": {
+          "status": "ok",
+          "latencyMs": 117
+        },
+        "realtime": {
+          "status": "ok",
+          "latencyMs": 247
+        },
+        "sync_freshness": {
+          "status": "ok",
+          "ageSeconds": 2
+        },
+        "queue": {
+          "status": "ok",
+          "pending": 0,
+          "dead": 0
+        },
+        "queue_stuck": {
+          "status": "ok",
+          "stuck": 0
+        },
+        "queue_oldest_pending_seconds": {
+          "status": "ok",
+          "ageSeconds": null
+        }
+      },
+      "version": "2.0.0"
+    }
+  },
+  "database": [
+    {
+      "runtime": {
+        "cron": [
+          {
+            "name": "espn_sync_schedule",
+            "active": true,
+            "schedule": "*/5 * * * *"
+          },
+          {
+            "name": "espn_sync_live",
+            "active": true,
+            "schedule": "* * * * *"
+          },
+          {
+            "name": "drain-notification-queue",
+            "active": true,
+            "schedule": "* * * * *"
+          },
+          {
+            "name": "purge-notification-queue",
+            "active": true,
+            "schedule": "17 3 * * *"
+          },
+          {
+            "name": "purge-sync-runs",
+            "active": true,
+            "schedule": "23 3 * * *"
+          }
+        ],
+        "queue": [
+          {
+            "count": 163,
+            "status": "sent"
+          }
+        ],
+        "sync_runs": [
+          {
+            "ok": true,
+            "source": "espn",
+            "games_seen": 228,
+            "started_at": "2026-10-12T23:32:00.604+00:00",
+            "finished_at": "2026-10-12T23:32:07.61+00:00",
+            "games_skipped": 226,
+            "games_written": 2
+          },
+          {
+            "ok": true,
+            "source": "espn",
+            "games_seen": 228,
+            "started_at": "2026-10-12T23:31:00.245+00:00",
+            "finished_at": "2026-10-12T23:31:05.525+00:00",
+            "games_skipped": 226,
+            "games_written": 2
+          },
+          {
+            "ok": true,
+            "source": "espn",
+            "games_seen": 228,
+            "started_at": "2026-10-12T23:30:01.119+00:00",
+            "finished_at": "2026-10-12T23:30:16.433+00:00",
+            "games_skipped": 228,
+            "games_written": 0
+          },
+          {
+            "ok": true,
+            "source": "espn",
+            "games_seen": 228,
+            "started_at": "2026-10-12T23:30:01.02+00:00",
+            "finished_at": "2026-10-12T23:30:11.823+00:00",
+            "games_skipped": 225,
+            "games_written": 3
+          },
+          {
+            "ok": true,
+            "source": "espn",
+            "games_seen": 228,
+            "started_at": "2026-10-12T23:29:00.534+00:00",
+            "finished_at": "2026-10-12T23:29:05.159+00:00",
+            "games_skipped": 225,
+            "games_written": 3
+          },
+          {
+            "ok": true,
+            "source": "espn",
+            "games_seen": 228,
+            "started_at": "2026-10-12T23:28:00.232+00:00",
+            "finished_at": "2026-10-12T23:28:10.705+00:00",
+            "games_skipped": 227,
+            "games_written": 1
+          }
+        ],
+        "count_drift": 0
+      }
+    }
+  ]
+}
