@@ -1,6 +1,6 @@
 # Production readiness coordination — October 6, 2026
 
-October 12 live status supersedes this historical checkpoint: see [release resumption](release-resumption-2026-10-12.md). Existing Android Build 35 has been located and its APK signature verified; iPhone UAT is assigned to the owner's friend, but needs a new candidate. Current backend gaps remain open.
+October 12 live status supersedes this historical checkpoint: see [production execution](production-execution-2026-10-12.md). Migrations101–108 and all three prepared function updates are complete with healthy runtime checks. Existing Android Build35 has been located and its APK signature verified; iPhone UAT is assigned to the owner's friend, but needs a new candidate. Capacity work is stopped on a reproduced load-harness false pass; device/store gates remain open.
 
 Status: NO-GO pending backend evidence, build gate completion and owner decisions. Emulator UAT is closed; see uat-closure-2026-10-06.md. Product source baseline 57cf4e6. Documentation commits after this baseline do not change the tested source.
 

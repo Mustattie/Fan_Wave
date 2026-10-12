@@ -1,0 +1,13 @@
+{
+  "id": "94fef258-61bc-43b2-855a-7dd5761b3fd1",
+  "slug": "process-notification-queue",
+  "name": "process-notification-queue",
+  "status": "ACTIVE",
+  "version": 8,
+  "created_at": 1781003321154,
+  "updated_at": 1791847668116,
+  "verify_jwt": false,
+  "import_map": false,
+  "entrypoint_path": "file:///tmp/user_fn_fwlfiejvxmslkpoojggs_94fef258-61bc-43b2-855a-7dd5761b3fd1_8/source/supabase/functions/process-notification-queue/index.ts",
+  "ezbr_sha256": "de80305c266fd5a2c19612a05ccb47ed1aa305a279cac4416e2dfae07a3a3e89"
+}

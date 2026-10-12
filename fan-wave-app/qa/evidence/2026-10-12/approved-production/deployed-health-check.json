@@ -1,0 +1,13 @@
+{
+  "id": "e789a862-f9ad-40b9-993e-75ff76aca177",
+  "slug": "health-check",
+  "name": "health-check",
+  "status": "ACTIVE",
+  "version": 7,
+  "created_at": 1781003295005,
+  "updated_at": 1791847678771,
+  "verify_jwt": false,
+  "import_map": false,
+  "entrypoint_path": "file:///tmp/user_fn_fwlfiejvxmslkpoojggs_e789a862-f9ad-40b9-993e-75ff76aca177_7/source/supabase/functions/health-check/index.ts",
+  "ezbr_sha256": "f9a7e0a6967ab115cdb6ac179fc4e492ceac99fafc40f15ce76f2050972d03c3"
+}

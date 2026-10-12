@@ -1,0 +1,102 @@
+{
+  "at": "2026-10-12T23:28:34.067Z",
+  "unauthorized": {
+    "health-check": 401,
+    "process-notification-queue": 401,
+    "sync-game-schedules": 401
+  },
+  "health": {
+    "httpStatus": 200,
+    "body": {
+      "status": "ok",
+      "timestamp": "2026-10-12T23:28:37.803Z",
+      "checks": {
+        "database": {
+          "status": "ok",
+          "latencyMs": 150
+        },
+        "auth": {
+          "status": "ok",
+          "latencyMs": 283
+        },
+        "storage": {
+          "status": "ok",
+          "latencyMs": 208
+        },
+        "realtime": {
+          "status": "ok",
+          "latencyMs": 252
+        },
+        "sync_freshness": {
+          "status": "ok",
+          "ageSeconds": 27
+        },
+        "queue": {
+          "status": "ok",
+          "pending": 0,
+          "dead": 0
+        },
+        "queue_stuck": {
+          "status": "ok",
+          "stuck": 0
+        },
+        "queue_oldest_pending_seconds": {
+          "status": "ok",
+          "ageSeconds": null
+        }
+      },
+      "version": "2.0.0"
+    }
+  },
+  "database": [
+    {
+      "runtime": {
+        "cron": [
+          {
+            "name": "espn_sync_schedule",
+            "active": true,
+            "schedule": "*/5 * * * *"
+          },
+          {
+            "name": "espn_sync_live",
+            "active": true,
+            "schedule": "* * * * *"
+          },
+          {
+            "name": "drain-notification-queue",
+            "active": true,
+            "schedule": "* * * * *"
+          },
+          {
+            "name": "purge-notification-queue",
+            "active": true,
+            "schedule": "17 3 * * *"
+          },
+          {
+            "name": "purge-sync-runs",
+            "active": true,
+            "schedule": "23 3 * * *"
+          }
+        ],
+        "queue": [
+          {
+            "count": 163,
+            "status": "sent"
+          }
+        ],
+        "sync_runs": [
+          {
+            "ok": true,
+            "source": "espn",
+            "games_seen": 228,
+            "started_at": "2026-10-12T23:28:00.232+00:00",
+            "finished_at": "2026-10-12T23:28:10.705+00:00",
+            "games_skipped": 227,
+            "games_written": 1
+          }
+        ],
+        "count_drift": 0
+      }
+    }
+  ]
+}

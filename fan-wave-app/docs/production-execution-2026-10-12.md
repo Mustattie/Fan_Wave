@@ -1,5 +1,7 @@
 # Approved production execution — October 12, 2026
 
+Current status: all migrations 101–108 applied and verified; all three prepared function updates deployed with successful runtime checks. Owner subsequently explicitly approved the recommended operational retention while preserving accounts/content and prohibiting manual cleanup. Capacity testing remains stopped on the independently reproduced socket-harness false pass; no paid resize or store submission occurred.
+
 Owner authorization: apply migrations 101–108 and the prepared health-check, process-notification-queue and sync-game-schedules updates; investigate load-test gaps, use staging Small for up to one hour if needed, restore it, stop on failures; no production data deletion or store submission.
 
 Claude reviewed the exact scope read-only and agrees on prerequisites. Codex is the sole production/compute operator. Claude identified scheduled retention in 104/107 and recommended transactional request wrappers for 101–107, bounded index locking, saved live index definitions, and checking shared-secret/gateway configuration. These safeguards were implemented. Claude's response remains locally at C:/fwc/claude-approved-release-review-20261012.txt.
@@ -10,23 +12,36 @@ Claude reviewed the exact scope read-only and agrees on prerequisites. Codex is 
 | --- | --- |
 | 101 | PASS: four kill-switch rows present and all enabled. No production switch was paused. |
 | 102 | PASS: fresh duplicate media-URL check zero; quota trigger enabled and unique media-URL index valid. |
+| 103 | PASS: required user columns/tier helpers present; eight enabled AFTER INSERT rate-limit triggers; ceiling helpers unavailable to app roles; consumption helper present. |
+| 104 | PASS: fresh notification-key duplicate check zero; claiming RPC and lease column present; app-role EXECUTE revoked, service_role allowed; notification deduplication unique index valid; approved retention scheduled. |
 | 105 | PASS: storage update policy has both USING and WITH CHECK; storage_gc uses RLS; orphan-recording function present. No blob deletion performed. |
 | 106 | PASS: four new workload indexes valid. Old duplicate definitions saved before index cleanup. Games EXPLAIN ANALYZE baseline execution 3.259 ms; bounded transaction completed successfully. |
+| 107 | PASS: sync-run table uses RLS, freshness index present; approved retention scheduled. |
 | 108 | PASS: postgres-owned SECURITY DEFINER count functions, exact pinned search_path, app-role EXECUTE revoked, two enabled membership triggers, zero count drift. Twelve previously drifted production rooms were reconciled. |
 
-101/102/105/106 requests wrapped the unedited reviewed SQL in BEGIN/COMMIT, 5-second lock timeout and 60-second statement timeout. 108 already contains its own transaction/timeouts. Every step had a separate read-only postcheck; no production membership/content fixtures were inserted to test behaviour. 105/106/108 are independent of the held retention changes and were completed while that clarification remained pending.
+101–107 requests wrapped the unedited reviewed SQL in BEGIN/COMMIT, 5-second lock timeout and 60-second statement timeout. 108 already contains its own transaction/timeouts. Every step had a separate read-only postcheck; no production membership/content fixtures were inserted to test behaviour. 105/106/108 were completed first because they are independent of the retention changes; 103/104/107 followed explicit retention approval.
 
 ## Backup and preflight
 
 Schema/function definitions, ownership/ACLs, indexes, policies, triggers and cron metadata are privately saved at C:/fwc/release-approved-20261012/schema-backup.json. Function metadata and deployed sources for all three functions are saved alongside it. Initial CLI download required unavailable Docker; its legacy decoder was incompatible with the deployed bundle. Supabase CLI 2.120.0 was invoked temporarily through npx with its documented --use-api download option; all three source backups succeeded. No application dependency or global CLI installation was changed. Production writes did not begin until backups succeeded.
 
-The edge CRON_SHARED_SECRET digest matches the vault secret used by production cron. Compared digests only; no secret values were printed or committed. All three prepared functions require verify_jwt=false and authenticate inside the function. Their current source/configuration is saved for rollback; deployment remains held pending prerequisite 104/107.
+The edge CRON_SHARED_SECRET digest matches the vault secret used by production cron. Compared digests only; no secret values were printed or committed. All three prepared functions require verify_jwt=false and authenticate inside the function. Their previous source/configuration is saved for rollback. Deployment followed prerequisite 104/107 completion.
 
-## Held scope
+## Retention clarification resolved
 
-103 removes expired rate-limit records probabilistically; 104 schedules purging sent notification-queue records older than 7 days and dead records older than 30 days; 107 schedules purging sync-run records older than 30 days. Owner was asked whether "no production data deletion" allows these operational-retention behaviours. Owner asked for a recommendation; Codex recommended permitting the existing bounded operational retention while preserving accounts/content and prohibiting manual production cleanup. Explicit confirmation is still pending. No retention script or these migrations has been applied.
+103 removes expired rate-limit records older than one day probabilistically; 104 schedules purging sent notification-queue records older than 7 days and dead records older than 30 days; 107 schedules purging sync-run records older than 30 days. Owner explicitly approved these recommended retention periods and continuation. The original reviewed SQL was applied without changing retention periods. No manual cleanup or account/content deletion was performed.
 
-104's fresh uniqueness precheck must run immediately before its apply. No duplicate-data deletion is authorized. 103 needs the eight user-column/tier-helper precheck. Apply and verify these steps after retention scope is resolved, then deploy each function individually with gateway/configuration verification and authenticated smoke checks. Capture current worker/sync results rather than treating ACTIVE status as successful runtime verification.
+104's refreshed uniqueness precheck and 103's eight-column/tier-helper precheck passed before their applies. No duplicate-data deletion was needed or performed.
+
+## Function deployment and runtime verification
+
+| Function | New production version | Verification |
+| --- | --- | --- |
+| process-notification-queue | 8 | ACTIVE, verify_jwt=false; unauthorized request 401. Two post-deployment scheduled responses returned HTTP 200, success=true, sent/failed/dead/batches all zero. No notification test fixtures or forced pushes were sent. |
+| sync-game-schedules | 16 | ACTIVE, verify_jwt=false; unauthorized request 401. Normal scheduled ESPN run finished ok=true: 228 games seen, one written, 227 skipped; sync_runs bookkeeping persisted. |
+| health-check | 7 | ACTIVE, verify_jwt=false; unauthorized request 401; authenticated HTTP 200, version2.0.0, overall status ok. Database/auth/storage/realtime/sync freshness/queue/stuck/oldest-pending checks all ok. |
+
+Runtime readback: sync freshness27 seconds, pending/dead/stuck queues zero, member-count drift zero; retention cron entries active. This verifies the empty notification-worker path and scheduled sync, not a newly sent real-device push or every possible ESPN sport. Nightly retention was configured and not manually invoked. Signed mobile candidate/UAT gates remain separate.
 
 ## Capacity work in progress
 

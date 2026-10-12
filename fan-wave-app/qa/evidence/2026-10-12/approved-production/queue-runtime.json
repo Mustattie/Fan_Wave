@@ -1,0 +1,24 @@
+[
+  {
+    "id": 219249,
+    "status_code": 200,
+    "timed_out": false,
+    "created": "2026-10-12 23:29:00.114894+00",
+    "success": "true",
+    "sent": "0",
+    "failed": "0",
+    "dead": "0",
+    "batches": "0"
+  },
+  {
+    "id": 219248,
+    "status_code": 200,
+    "timed_out": false,
+    "created": "2026-10-12 23:28:10.744883+00",
+    "success": "true",
+    "sent": "0",
+    "failed": "0",
+    "dead": "0",
+    "batches": "0"
+  }
+]
