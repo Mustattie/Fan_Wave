@@ -1,5 +1,7 @@
 # Load tests (k6)
 
+> **October12 validity STOP:** realtime-ws.js can record a successful join after a later subscription system error closes the socket. A deterministic reproduction is committed under qa/evidence/2026-10-12/approved-production/socket-system-error-proof.json. Historical baseline/campus socket success rates require revalidation; do not treat the reported300-user Realtime pass as current capacity acceptance. The paired600 failure remains a failure. Read/RSVP results are unaffected by this socket-metric defect. Correct and behavior-test the harness before paid reruns. See docs/production-execution-2026-10-12.md.
+
 Signed-in k6 scenarios for the 50k–100k-user World Cup / game-week prep.
 Everything here targets a **staging** Supabase project. `lib/config.js`
 throws in the init context if `SUPABASE_URL` or the key is the production
