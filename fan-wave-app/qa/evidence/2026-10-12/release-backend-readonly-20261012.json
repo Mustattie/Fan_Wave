@@ -1,0 +1,789 @@
+{
+  "date": "2026-10-12T22:33:32.400Z",
+  "projects": {
+    "fwlfiejvxmslkpoojggs": {
+      "identity": {
+        "id": "fwlfiejvxmslkpoojggs",
+        "name": "Fan Sphere Prod",
+        "status": "ACTIVE_HEALTHY",
+        "region": "us-east-1"
+      },
+      "inventory": [
+        {
+          "inventory": {
+            "triggers": [
+              {
+                "name": "trg_chat_room_member_delete",
+                "enabled": "O",
+                "definition": "CREATE TRIGGER trg_chat_room_member_delete AFTER DELETE ON public.chat_room_members FOR EACH ROW EXECUTE FUNCTION decrement_member_count()"
+              },
+              {
+                "name": "trg_chat_room_member_insert",
+                "enabled": "O",
+                "definition": "CREATE TRIGGER trg_chat_room_member_insert AFTER INSERT ON public.chat_room_members FOR EACH ROW EXECUTE FUNCTION increment_member_count()"
+              }
+            ],
+            "migrations": [
+              {
+                "name": "001_base_schema",
+                "version": "001"
+              },
+              {
+                "name": "002_chat_schema",
+                "version": "002"
+              },
+              {
+                "name": "003_watch_party_extras",
+                "version": "003"
+              },
+              {
+                "name": "004_moments_clips_moderation",
+                "version": "004"
+              },
+              {
+                "name": "user_team_follows",
+                "version": "005"
+              },
+              {
+                "name": "world_cup_2026",
+                "version": "006"
+              },
+              {
+                "name": "security_fixes",
+                "version": "007"
+              },
+              {
+                "name": "performance_and_integrity",
+                "version": "008"
+              },
+              {
+                "name": "push_notifications",
+                "version": "009"
+              },
+              {
+                "name": "notification_triggers",
+                "version": "010"
+              },
+              {
+                "name": "creator_follows",
+                "version": "011"
+              },
+              {
+                "name": "gamification_and_trending",
+                "version": "012"
+              },
+              {
+                "name": "referrals",
+                "version": "013"
+              },
+              {
+                "name": "watch_party_invites",
+                "version": "014"
+              },
+              {
+                "name": "fix_rls_recursion",
+                "version": "015"
+              },
+              {
+                "name": "fix_badge_triggers",
+                "version": "016"
+              },
+              {
+                "name": "scalability_fixes",
+                "version": "017"
+              },
+              {
+                "name": "notification_queue",
+                "version": "018"
+              },
+              {
+                "name": "partitioning_and_warmup",
+                "version": "019"
+              },
+              {
+                "name": "onboarded_at",
+                "version": "020"
+              },
+              {
+                "name": "clips_storage_bucket",
+                "version": "021"
+              },
+              {
+                "name": "user_profile_trigger",
+                "version": "022"
+              },
+              {
+                "name": "admin_roles",
+                "version": "023"
+              },
+              {
+                "name": "geo_seed_and_fix",
+                "version": "024"
+              },
+              {
+                "name": "fix_watch_party_details_view",
+                "version": "025"
+              },
+              {
+                "name": "block_user",
+                "version": "026"
+              },
+              {
+                "name": "input_length_constraints",
+                "version": "027"
+              },
+              {
+                "name": "fix_geo_seed_by_name",
+                "version": "028"
+              },
+              {
+                "name": "schedule_espn_sync",
+                "version": "029"
+              },
+              {
+                "name": "clip_moment_types",
+                "version": "030"
+              },
+              {
+                "name": "games_sport_id",
+                "version": "031"
+              },
+              {
+                "name": "entitlements",
+                "version": "032"
+              },
+              {
+                "name": "paywall_policies",
+                "version": "033"
+              },
+              {
+                "name": "users_realtime",
+                "version": "034"
+              },
+              {
+                "name": "trial_reminder_cron",
+                "version": "035"
+              },
+              {
+                "name": "storage_limits",
+                "version": "036"
+              },
+              {
+                "name": "rate_limit_function",
+                "version": "037"
+              },
+              {
+                "name": "schedule_team_logo_sync",
+                "version": "038"
+              },
+              {
+                "name": "team_roster_updates",
+                "version": "039"
+              },
+              {
+                "name": "entitlement_immutability",
+                "version": "040"
+              },
+              {
+                "name": "expire_stale_games",
+                "version": "041"
+              },
+              {
+                "name": "expire_stale_live_games",
+                "version": "042"
+              },
+              {
+                "name": "games_realtime",
+                "version": "043"
+              },
+              {
+                "name": "games_espn_id_dedup",
+                "version": "044"
+              },
+              {
+                "name": "rebrand_to_fan_sphere",
+                "version": "045"
+              },
+              {
+                "name": "beta_testers",
+                "version": "046"
+              },
+              {
+                "name": "047_suggest_fan_groups",
+                "version": "20260609111349"
+              },
+              {
+                "name": "047_suggest_fan_groups_fix",
+                "version": "20260609111442"
+              },
+              {
+                "name": "reviewer_bypass_and_free_tier_soft_gates",
+                "version": "20260616071154"
+              },
+              {
+                "name": "free_moments_for_members",
+                "version": "20260616084745"
+              },
+              {
+                "name": "suggest_groups_permissive",
+                "version": "20260616174538"
+              },
+              {
+                "name": "repair_event_ids_and_dedup_suggest",
+                "version": "20260616215856"
+              },
+              {
+                "name": "057_create_avatars_bucket",
+                "version": "20260617094029"
+              },
+              {
+                "name": "058_fix_espn_cron_and_add_worldcup",
+                "version": "20260617094049"
+              },
+              {
+                "name": "059_rsvp_rpc_wc_gate_and_signature",
+                "version": "20260617094852"
+              },
+              {
+                "name": "060_wipe_seeded_worldcup_games_with_fk_handling",
+                "version": "20260617192616"
+              },
+              {
+                "name": "061_rotate_cron_shared_secret_to_fresh_value",
+                "version": "20260618065336"
+              },
+              {
+                "name": "062_drop_cron_secret_tmp",
+                "version": "20260618070343"
+              },
+              {
+                "name": "063_purge_stale_pgnet_http_logs",
+                "version": "20260618071352"
+              },
+              {
+                "name": "061_backfill_chat_room_owner_members",
+                "version": "20260619072256"
+              }
+            ],
+            "count_drift": 12,
+            "count_functions": [
+              {
+                "name": "decrement_member_count",
+                "owner": "postgres",
+                "config": null,
+                "definition": "CREATE OR REPLACE FUNCTION public.decrement_member_count()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    UPDATE chat_rooms\r\n       SET member_count = (\r\n           SELECT COUNT(*) FROM chat_room_members\r\n           WHERE chat_room_id = OLD.chat_room_id\r\n       )\r\n     WHERE id = OLD.chat_room_id;\r\n    RETURN OLD;\r\nEND;\r\n$function$\n",
+                "anon_execute": true,
+                "security_definer": false,
+                "authenticated_execute": true
+              },
+              {
+                "name": "increment_member_count",
+                "owner": "postgres",
+                "config": null,
+                "definition": "CREATE OR REPLACE FUNCTION public.increment_member_count()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n    UPDATE chat_rooms\r\n       SET member_count = (\r\n           SELECT COUNT(*) FROM chat_room_members\r\n           WHERE chat_room_id = NEW.chat_room_id\r\n       )\r\n     WHERE id = NEW.chat_room_id;\r\n    RETURN NEW;\r\nEND;\r\n$function$\n",
+                "anon_execute": true,
+                "security_definer": false,
+                "authenticated_execute": true
+              }
+            ],
+            "realtime_tables": [
+              "users",
+              "games",
+              "messages",
+              "watch_parties",
+              "watch_party_rsvps",
+              "match_moments",
+              "media_clips"
+            ]
+          }
+        }
+      ]
+    },
+    "azkmymxdjylmkytrvyfn": {
+      "identity": {
+        "id": "azkmymxdjylmkytrvyfn",
+        "name": "Fan Wave",
+        "status": "ACTIVE_HEALTHY",
+        "region": "ca-central-1"
+      },
+      "inventory": [
+        {
+          "inventory": {
+            "triggers": [
+              {
+                "name": "trg_chat_room_member_delete",
+                "enabled": "O",
+                "definition": "CREATE TRIGGER trg_chat_room_member_delete AFTER DELETE ON public.chat_room_members FOR EACH ROW EXECUTE FUNCTION decrement_member_count()"
+              },
+              {
+                "name": "trg_chat_room_member_insert",
+                "enabled": "O",
+                "definition": "CREATE TRIGGER trg_chat_room_member_insert AFTER INSERT ON public.chat_room_members FOR EACH ROW EXECUTE FUNCTION increment_member_count()"
+              }
+            ],
+            "migrations": [
+              {
+                "name": "base_schema",
+                "version": "001"
+              },
+              {
+                "name": "chat_schema",
+                "version": "002"
+              },
+              {
+                "name": "watch_party_extras",
+                "version": "003"
+              },
+              {
+                "name": "moments_clips_moderation",
+                "version": "004"
+              },
+              {
+                "name": "user_team_follows",
+                "version": "005"
+              },
+              {
+                "name": "world_cup_2026",
+                "version": "006"
+              },
+              {
+                "name": "security_fixes",
+                "version": "007"
+              },
+              {
+                "name": "performance_and_integrity",
+                "version": "008"
+              },
+              {
+                "name": "push_notifications",
+                "version": "009"
+              },
+              {
+                "name": "notification_triggers",
+                "version": "010"
+              },
+              {
+                "name": "creator_follows",
+                "version": "011"
+              },
+              {
+                "name": "gamification_and_trending",
+                "version": "012"
+              },
+              {
+                "name": "referrals",
+                "version": "013"
+              },
+              {
+                "name": "watch_party_invites",
+                "version": "014"
+              },
+              {
+                "name": "fix_rls_recursion",
+                "version": "015"
+              },
+              {
+                "name": "fix_badge_triggers",
+                "version": "016"
+              },
+              {
+                "name": "scalability_fixes",
+                "version": "017"
+              },
+              {
+                "name": "notification_queue",
+                "version": "018"
+              },
+              {
+                "name": "partitioning_and_warmup",
+                "version": "019"
+              },
+              {
+                "name": "onboarded_at",
+                "version": "020"
+              },
+              {
+                "name": "clips_storage_bucket",
+                "version": "021"
+              },
+              {
+                "name": "user_profile_trigger",
+                "version": "022"
+              },
+              {
+                "name": "admin_roles",
+                "version": "023"
+              },
+              {
+                "name": "geo_seed_and_fix",
+                "version": "024"
+              },
+              {
+                "name": "fix_watch_party_details_view",
+                "version": "025"
+              },
+              {
+                "name": "block_user",
+                "version": "026"
+              },
+              {
+                "name": "input_length_constraints",
+                "version": "027"
+              },
+              {
+                "name": "fix_geo_seed_by_name",
+                "version": "028"
+              },
+              {
+                "name": "schedule_espn_sync",
+                "version": "029"
+              },
+              {
+                "name": "clip_moment_types",
+                "version": "030"
+              },
+              {
+                "name": "games_sport_id",
+                "version": "031"
+              },
+              {
+                "name": "entitlements",
+                "version": "032"
+              },
+              {
+                "name": "paywall_policies",
+                "version": "033"
+              },
+              {
+                "name": "users_realtime",
+                "version": "034"
+              },
+              {
+                "name": "trial_reminder_cron",
+                "version": "035"
+              },
+              {
+                "name": "storage_limits",
+                "version": "036"
+              },
+              {
+                "name": "rate_limit_function",
+                "version": "037"
+              },
+              {
+                "name": "schedule_team_logo_sync",
+                "version": "038"
+              },
+              {
+                "name": "team_roster_updates",
+                "version": "039"
+              },
+              {
+                "name": "entitlement_immutability",
+                "version": "040"
+              },
+              {
+                "name": "expire_stale_games",
+                "version": "041"
+              },
+              {
+                "name": "expire_stale_live_games",
+                "version": "042"
+              },
+              {
+                "name": "games_realtime",
+                "version": "043"
+              },
+              {
+                "name": "games_espn_id_dedup",
+                "version": "044"
+              },
+              {
+                "name": "rebrand_to_fan_sphere",
+                "version": "045"
+              },
+              {
+                "name": "beta_testers",
+                "version": "046"
+              },
+              {
+                "name": "suggest_fan_groups",
+                "version": "047"
+              },
+              {
+                "name": "rename_fifa_to_world_cup",
+                "version": "048"
+              },
+              {
+                "name": "delete_my_account",
+                "version": "049"
+              },
+              {
+                "name": "fix_chat_room_members_recursion_v2",
+                "version": "051"
+              },
+              {
+                "name": "scale_safety",
+                "version": "052"
+              },
+              {
+                "name": "reviewer_bypass_and_free_tier_soft_gates",
+                "version": "053"
+              },
+              {
+                "name": "free_moments_for_members",
+                "version": "054"
+              },
+              {
+                "name": "suggest_groups_permissive",
+                "version": "055"
+              },
+              {
+                "name": "repair_event_ids_and_dedup_suggest",
+                "version": "056"
+              },
+              {
+                "name": "create_avatars_bucket",
+                "version": "057"
+              },
+              {
+                "name": "fix_espn_cron_and_add_worldcup",
+                "version": "058"
+              },
+              {
+                "name": "rsvp_rpc_wc_gate_and_signature",
+                "version": "059"
+              },
+              {
+                "name": "wipe_seeded_worldcup_games",
+                "version": "060"
+              },
+              {
+                "name": "backfill_chat_room_owner_members",
+                "version": "061"
+              },
+              {
+                "name": "v8_6_stale_data_cleanup",
+                "version": "062"
+              },
+              {
+                "name": "v8_7_hardened_rsvp_and_wipe",
+                "version": "063"
+              },
+              {
+                "name": "seed_missing_wc_teams",
+                "version": "064"
+              },
+              {
+                "name": "wc_pass_grandfather_to_premium",
+                "version": "065"
+              },
+              {
+                "name": "disable_wc_cron",
+                "version": "066"
+              },
+              {
+                "name": "game_chat_rooms",
+                "version": "067"
+              },
+              {
+                "name": "mvp_votes",
+                "version": "068"
+              },
+              {
+                "name": "cfb_league_and_team_upsert",
+                "version": "069"
+              },
+              {
+                "name": "open_creation_flows",
+                "version": "070"
+              },
+              {
+                "name": "sunset_wc_gates",
+                "version": "071"
+              },
+              {
+                "name": "messages_media_columns",
+                "version": "072"
+              },
+              {
+                "name": "rsvp_rpc_delete_on_cancel",
+                "version": "073"
+              },
+              {
+                "name": "fix_watch_party_rsvps_recursion",
+                "version": "074"
+              },
+              {
+                "name": "wnba_and_cbb_leagues",
+                "version": "075"
+              },
+              {
+                "name": "sweep_wc_groups_and_parties",
+                "version": "076"
+              },
+              {
+                "name": "fix_wnba_sport_uuid_collision",
+                "version": "077"
+              },
+              {
+                "name": "backfill_wnba_cfb_leagues",
+                "version": "078"
+              },
+              {
+                "name": "ensure_teams_league_name_unique",
+                "version": "079"
+              },
+              {
+                "name": "clips_engagement_hotfix",
+                "version": "080"
+              },
+              {
+                "name": "get_creator_stats_engagement_window",
+                "version": "081"
+              },
+              {
+                "name": "subscription_tiers",
+                "version": "082"
+              },
+              {
+                "name": "clip_quota",
+                "version": "083"
+              },
+              {
+                "name": "watch_party_attendees_and_affinity",
+                "version": "084"
+              },
+              {
+                "name": "affinity_real_fan_groups_only",
+                "version": "085"
+              },
+              {
+                "name": "public_profiles_for_feeds",
+                "version": "086"
+              },
+              {
+                "name": "venue_city_truth_and_metro_anchor",
+                "version": "087"
+              },
+              {
+                "name": "fix_notification_cron_auth",
+                "version": "088"
+              },
+              {
+                "name": "tier_benefits_that_exist",
+                "version": "089"
+              },
+              {
+                "name": "espn_schedule_horizon",
+                "version": "090"
+              },
+              {
+                "name": "lock_scaffolding_and_drain_queue",
+                "version": "091"
+              },
+              {
+                "name": "ops_health_alerts",
+                "version": "092"
+              },
+              {
+                "name": "purge_orphan_seed_groups",
+                "version": "093"
+              },
+              {
+                "name": "backfill_member_count",
+                "version": "094"
+              },
+              {
+                "name": "fix_clip_quota_key",
+                "version": "095"
+              },
+              {
+                "name": "city_as_venue_cleanup",
+                "version": "096"
+              },
+              {
+                "name": "attendee_totals_survive_empty_roster",
+                "version": "097"
+              },
+              {
+                "name": "repair_default_coordinate_parties",
+                "version": "098"
+              },
+              {
+                "name": "rate_limit_auth_uid",
+                "version": "099"
+              },
+              {
+                "name": "publish_watch_parties",
+                "version": "100"
+              },
+              {
+                "name": "kill_switch_flags",
+                "version": "101"
+              },
+              {
+                "name": "clip_quota_server_enforced",
+                "version": "102"
+              },
+              {
+                "name": "rate_limit_server_ceilings",
+                "version": "103"
+              },
+              {
+                "name": "notification_queue_claiming",
+                "version": "104"
+              },
+              {
+                "name": "storage_hardening",
+                "version": "105"
+              },
+              {
+                "name": "query_indexes",
+                "version": "106"
+              },
+              {
+                "name": "sync_runs",
+                "version": "107"
+              }
+            ],
+            "count_drift": 0,
+            "count_functions": [
+              {
+                "name": "decrement_member_count",
+                "owner": "postgres",
+                "config": [
+                  "search_path=public, pg_temp"
+                ],
+                "definition": "CREATE OR REPLACE FUNCTION public.decrement_member_count()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nBEGIN\r\n    UPDATE public.chat_rooms\r\n       SET member_count = GREATEST(member_count - 1, 0)\r\n     WHERE id = OLD.chat_room_id;\r\n    RETURN OLD;\r\nEND;\r\n$function$\n",
+                "anon_execute": false,
+                "security_definer": true,
+                "authenticated_execute": false
+              },
+              {
+                "name": "increment_member_count",
+                "owner": "postgres",
+                "config": [
+                  "search_path=public, pg_temp"
+                ],
+                "definition": "CREATE OR REPLACE FUNCTION public.increment_member_count()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nBEGIN\r\n    UPDATE public.chat_rooms\r\n       SET member_count = member_count + 1\r\n     WHERE id = NEW.chat_room_id;\r\n    RETURN NEW;\r\nEND;\r\n$function$\n",
+                "anon_execute": false,
+                "security_definer": true,
+                "authenticated_execute": false
+              }
+            ],
+            "realtime_tables": [
+              "users",
+              "games",
+              "messages",
+              "watch_parties",
+              "watch_party_rsvps",
+              "match_moments",
+              "media_clips"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
