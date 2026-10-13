@@ -1,0 +1,18 @@
+{
+  "at": "2026-10-13T06:28:15.404Z",
+  "bundleId": "org.fansphere.app",
+  "beforePushKey": null,
+  "result": {
+    "id": "8da668e6-6571-4841-977d-4bc68019247e",
+    "pushKey": {
+      "id": "f8f561db-2e07-420c-91a4-9813d31912d2",
+      "keyIdentifier": "9986279943",
+      "appleTeam": {
+        "appleTeamIdentifier": "D887TLA6L9"
+      }
+    }
+  },
+  "generatedKey": false,
+  "rotatedKey": false,
+  "limitation": "Push credential linked; actual device delivery remains UAT."
+}

@@ -1,0 +1,17 @@
+{
+  "at": "2026-10-13T06:14:13.056Z",
+  "app": {
+    "id": "6774325670",
+    "name": "Fan Sphere - Sports Social",
+    "bundleId": "org.fansphere.app"
+  },
+  "groups": [
+    {
+      "id": "0026109c-6450-41f6-8416-9070a9731747",
+      "name": "Outside Testers",
+      "isInternalGroup": true,
+      "publicLinkEnabled": null
+    }
+  ],
+  "productionSentryDsnUsable": true
+}

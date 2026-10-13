@@ -1,0 +1,6 @@
+{
+  "at": "2026-10-13T06:38:01.165Z",
+  "id": "d68837a8-129e-4082-a9d0-04171491efb5",
+  "locale": "en-US",
+  "whatsNew": "Fan Sphere 1.0.0 (37) — physical iPhone UAT. Please use the owner-provided 31-check P3.7 checklist. Test sign-in/password reset, all five tabs, sport filters, recording/video previews, uploads and restart/retry, watch-party RSVP, chat/network recovery, push notifications, purchase/restore/account switching, and 30 minutes of mixed use. Recheck Discover offline recovery, upload retry cards after refresh, query-URL and legacy video previews, and repeated Clips filter changes. Record iPhone model, iOS version, build 37, test time, PASS/FAIL/BLOCKED per check, and steps/screenshots for failures. Use an ordinary test account rather than the reviewer entitlement-bypass account. This candidate uses the live backend: label newly created test content UAT and do not use global kill-switch tests on production. TestFlight purchases use the sandbox. This is a beta UAT candidate; device verification is not yet complete."
+}

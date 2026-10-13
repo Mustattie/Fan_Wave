@@ -1,12 +1,12 @@
 # Physical iPhone UAT handoff — October 12, 2026
 
-Tester: owner's friend. Status: awaiting a signed iOS candidate containing final v9.5 fixes. Latest recorded iOS EAS Build 36 (September 16) is too old for this run. Do not judge candidate identity solely by the build number.
+Tester: owner's friend. Current candidate is **TestFlight1.0.0 (37)**, source a60461e, EAS6b9ee448-403d-443f-8b37-99ddbae50231. Apple processing passed and it is available in the existing internal Outside Testers group; tester installation is not yet confirmed. See [candidate identity and evidence](ios-testflight-2026-10-13.md). Do not use the older September16 Build36 for this run.
 
 Before starting, record iPhone model, iOS version, install/distribution method, app version/build, exact EAS build ID/source commit, test date/timezone, backend and telemetry environment. Codex will supply/verify candidate details. Required product source is 57cf4e6 or a later approved commit retaining all its fixes.
 
 Use the full [31-row checklist](../qa/p3.7-ios-device-uat.md). For each row record PASS, FAIL or BLOCKED, observations, evidence location and time. BLOCKED is not PASS. The document's historical build suggestion and production-backend assertions are superseded by actual candidate verification.
 
-Have two ordinary test accounts and a second device for chat/party checks. Use an Apple sandbox purchase account; the reviewer account bypasses entitlements and cannot prove purchases. Codex/operator assists with backend row counts, RevenueCat identity, Instruments/proxy measurements, notifications and Sentry. The friend should not be asked to access production secrets or perform database changes.
+Have two ordinary Fan Sphere test accounts and a second device for chat/party checks. For TestFlight, purchases use sandbox and are free during beta testing; a normal Apple Account works, while a separate Sandbox Apple Account is optional for controlled scenarios. The Fan Sphere reviewer account bypasses entitlements and cannot prove purchases. Codex/operator assists with backend row counts, RevenueCat identity, Instruments/proxy measurements, notifications and Sentry. The friend should not be asked to access production secrets or perform database changes. See [Apple's TestFlight guidance](https://beta.itunes.apple.com/).
 
 Run auth/session interruption and reset-link checks, all five tabs, sport changes, capture/playback, uploads/restart/retry, watch parties, chat/reconnect, notifications, purchase/restore and 30-minute mixed use as detailed in the checklist. Row 29 kill-switch testing is operator-controlled on an authorized test backend; never flip the shared production chat flag. If the candidate only points at production, record that row BLOCKED until a safe test candidate or accepted exception is available.
 

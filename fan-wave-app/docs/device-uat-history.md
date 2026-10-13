@@ -1,5 +1,13 @@
 # Device UAT history — v9.5 stability program
 
+October13 iOS candidate update: TestFlight1.0.0 (37), source a60461e,
+EAS6b9ee448-403d-443f-8b37-99ddbae50231, uploaded/processed VALID and
+IN_BETA_TESTING in the existing internal Outside Testers group. IPA identity
+and store profile checked; no physical iPhone pass claimed. Owner's friend
+owns P3.7; details in docs/ios-testflight-2026-10-13.md. Android Build35 targeted
+installation/smoke remains open. This supersedes historical "no iOS candidate"
+statements below without changing earlier device results.
+
 Physical-device baseline for the v9.5 stability program. **Build 33
 (v9.5.41, f131669) is the most recent physically TESTED Android build**
 (S10+, 2026-10-01/02, adb-driven; Build 32 was emulator-only). Phase 1 on

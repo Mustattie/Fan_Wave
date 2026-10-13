@@ -1,0 +1,14 @@
+{
+  "id": "6b9ee448-403d-443f-8b37-99ddbae50231",
+  "status": "FINISHED",
+  "platform": "IOS",
+  "profile": "production",
+  "distribution": "STORE",
+  "version": "1.0.0",
+  "build": "37",
+  "commit": "a60461ecda3cd2c9d1fbf6a8ef1eb5433989ad62",
+  "created": "2026-10-13T06:17:09.664Z",
+  "completed": "2026-10-13T06:23:34.651Z",
+  "runtimeVersion": "1.0.0",
+  "url": "https://expo.dev/artifacts/eas/cbyu_Zqx344w5xx4lmCWZxS741TTwZWKyNWJcAmy9Ow.ipa"
+}

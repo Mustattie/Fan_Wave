@@ -1,0 +1,43 @@
+{
+  "at": "2026-10-13T06:33:54.185Z",
+  "buildId": "4a36e2f3-fc82-40d5-b80e-b968cd684ed1",
+  "group": {
+    "id": "0026109c-6450-41f6-8416-9070a9731747",
+    "publicLinkLimit": null,
+    "iosBuildsAvailableForAppleSiliconMac": true,
+    "createdDate": "2026-06-02T21:02:48.39Z",
+    "publicLinkEnabled": null,
+    "publicLink": null,
+    "hasAccessToAllBuilds": true,
+    "publicLinkId": null,
+    "isInternalGroup": true,
+    "name": "Outside Testers",
+    "feedbackEnabled": true,
+    "publicLinkLimitEnabled": null,
+    "iosBuildsAvailableForAppleVision": true
+  },
+  "explicitlyLinked": false,
+  "availableInGroup": true,
+  "groupBuildVersions": [
+    "37",
+    "35",
+    "33",
+    "32",
+    "31",
+    "19",
+    "17",
+    "16",
+    "15",
+    "14",
+    "13",
+    "10",
+    "9",
+    "8",
+    "7",
+    "6"
+  ],
+  "testerCount": 2,
+  "hasMoreTesters": false,
+  "invitedNewTesters": false,
+  "submittedReview": false
+}

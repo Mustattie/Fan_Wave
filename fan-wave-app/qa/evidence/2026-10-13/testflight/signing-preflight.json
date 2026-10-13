@@ -1,0 +1,24 @@
+{
+  "at": "2026-10-13T06:09:11.451Z",
+  "bundleId": "org.fansphere.app",
+  "ascAppId": "6774325670",
+  "certificate": {
+    "subject": "UID=D887TLA6L9\nCN=Apple Distribution: Thabtech LLC (D887TLA6L9)\nOU=D887TLA6L9\nO=Thabtech LLC\nC=US",
+    "validFrom": "Aug 31 06:36:19 2026 GMT",
+    "validTo": "Aug 31 06:36:18 2027 GMT",
+    "fingerprint256": "1A:89:B7:58:BB:5D:65:F3:1F:91:41:E1:0B:0B:9E:D2:38:49:66:5C:03:38:C6:FC:A5:86:D9:05:43:4C:5D:C3"
+  },
+  "profile": {
+    "uuid": "c614586e-b832-4d4a-80bd-ef3131a1813e",
+    "name": "Fan Sphere Distribution 2026",
+    "expiration": "2027-08-31T06:36:18",
+    "team": [
+      "D887TLA6L9"
+    ],
+    "appId": "D887TLA6L9.org.fansphere.app",
+    "debugAllowed": false,
+    "deviceRestricted": false,
+    "allDevices": false
+  },
+  "expectedAppId": "D887TLA6L9.org.fansphere.app"
+}

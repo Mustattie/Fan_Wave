@@ -1,0 +1,17 @@
+{
+  "sha256": "45fad71a8799fababdabea2b0d3c452ca68ae59925f65479d712ff0d4607fe72",
+  "sizeBytes": 23641037,
+  "bundleId": "org.fansphere.app",
+  "version": "1.0.0",
+  "build": "37",
+  "platforms": [
+    "iPhoneOS"
+  ],
+  "minimumOS": "15.1",
+  "usesNonExemptEncryption": false,
+  "profileUUID": "c614586e-b832-4d4a-80bd-ef3131a1813e",
+  "appId": "D887TLA6L9.org.fansphere.app",
+  "pushEnvironment": "production",
+  "betaReports": true,
+  "updatesPlistPresent": true
+}
