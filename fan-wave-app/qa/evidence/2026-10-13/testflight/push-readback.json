@@ -1,0 +1,28 @@
+{
+  "at": "2026-10-13T06:50:11.353Z",
+  "bundleId": "org.fansphere.app",
+  "pushKeyConfigured": true,
+  "metadata": [
+    {
+      "id": "8da668e6-6571-4841-977d-4bc68019247e",
+      "appleAppIdentifier": {
+        "bundleIdentifier": "org.fansphere.app"
+      },
+      "pushKey": {
+        "id": "f8f561db-2e07-420c-91a4-9813d31912d2",
+        "keyIdentifier": "9986279943",
+        "updatedAt": "2025-08-17T21:12:17.352Z"
+      }
+    }
+  ],
+  "availableKeyMetadata": [
+    {
+      "id": "f8f561db-2e07-420c-91a4-9813d31912d2",
+      "keyIdentifier": "9986279943",
+      "appleTeam": {
+        "appleTeamIdentifier": "D887TLA6L9"
+      }
+    }
+  ],
+  "hasMore": false
+}

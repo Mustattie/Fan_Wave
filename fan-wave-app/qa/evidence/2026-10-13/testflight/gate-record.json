@@ -1,0 +1,70 @@
+{
+  "recordedAt": "2026-10-13T06:53:16.564Z",
+  "candidateCommit": "a60461ecda3cd2c9d1fbf6a8ef1eb5433989ad62",
+  "queuedAt": "2026-10-13T06:17:09.664Z",
+  "productBaseline": "57cf4e6",
+  "unexpectedProductDelta": [],
+  "nonProductDeltaPaths": [
+    "fan-wave-app/docs/codex-sync-2026-10-03.md",
+    "fan-wave-app/docs/device-uat-history.md",
+    "fan-wave-app/docs/iphone-uat-handoff-2026-10-12.md",
+    "fan-wave-app/docs/production-execution-2026-10-12.md",
+    "fan-wave-app/docs/production-readiness-2026-10-06.md",
+    "fan-wave-app/docs/release-resumption-2026-10-12.md",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/apply-101.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/apply-102.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/apply-103.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/apply-104.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/apply-105.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/apply-106.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/apply-107.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/apply-108.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/deployed-health-check.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/deployed-process-notification-queue.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/deployed-sync-game-schedules.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/precheck-103.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/precheck-104.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/queue-runtime.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/runtime-check-1791847715651.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/runtime-check-1791847929359.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/sentry-postdeploy.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/socket-system-error-proof.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/source-manifest.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/verification-queries.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/verify-101.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/verify-102.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/verify-103.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/verify-104.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/verify-105.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/verify-106.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/verify-107.json",
+    "fan-wave-app/qa/evidence/2026-10-12/approved-production/verify-108.json",
+    "fan-wave-app/qa/evidence/2026-10-12/eas-build-inventory-20261012.json",
+    "fan-wave-app/qa/evidence/2026-10-12/release-backend-parity-20261012.json",
+    "fan-wave-app/qa/evidence/2026-10-12/release-backend-readonly-20261012.json",
+    "fan-wave-app/tests/load/README.md"
+  ],
+  "preQueueGate": {
+    "evidenceClass": "Operator-attested from live tool transcript; original raw stdout not saved. These counts are not retroactively timestamped command logs.",
+    "typescript": "PASS, no errors reported",
+    "iosJest": {
+      "suites": 35,
+      "passedTests": 302,
+      "totalTests": 302
+    },
+    "expoDoctor": {
+      "passed": 18,
+      "total": 18
+    },
+    "publicReleaseGo": false,
+    "betaBuildApprovedByOwner": true
+  },
+  "androidConfirmation": {
+    "stage": "during cloud build",
+    "logModifiedAt": "2026-10-13T06:19:01.557Z",
+    "summaryFile": "android-tests-summary.txt",
+    "suites": 35,
+    "passedTests": 302,
+    "totalTests": 302
+  }
+}

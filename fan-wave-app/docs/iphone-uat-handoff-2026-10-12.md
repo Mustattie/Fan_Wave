@@ -1,6 +1,6 @@
 # Physical iPhone UAT handoff — October 12, 2026
 
-Tester: owner's friend. Current candidate is **TestFlight1.0.0 (37)**, source a60461e, EAS6b9ee448-403d-443f-8b37-99ddbae50231. Apple processing passed and it is available in the existing internal Outside Testers group; tester installation is not yet confirmed. See [candidate identity and evidence](ios-testflight-2026-10-13.md). Do not use the older September16 Build36 for this run.
+Tester: owner's friend. Current candidate is **TestFlight 1.0.0 (37)**, source a60461e, EAS 6b9ee448-403d-443f-8b37-99ddbae50231. Apple processing passed and it is available in the existing internal Outside Testers group; tester installation is not yet confirmed. See [candidate identity and evidence](ios-testflight-2026-10-13.md). Select build37 rather than any earlier TestFlight build.
 
 Before starting, record iPhone model, iOS version, install/distribution method, app version/build, exact EAS build ID/source commit, test date/timezone, backend and telemetry environment. Codex will supply/verify candidate details. Required product source is 57cf4e6 or a later approved commit retaining all its fixes.
 
