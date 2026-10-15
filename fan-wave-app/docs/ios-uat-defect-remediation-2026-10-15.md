@@ -4,6 +4,11 @@ Branch: `codex/ios-uat-defects`. Scope: **23 issues, SKYC-123–SKYC-145** on
 [peacefuldata Jira](https://peacefuldata.atlassian.net/issues/?jql=project%20%3D%20SKYC%20AND%20labels%20%3D%20%22uat-2026-10-14%22).
 The owner confirmed 25 was approximate.
 
+Delivered for review in [draft PR21](https://github.com/Mustattie/Fan_Wave/pull/21),
+source commit `bfb6707ae9663da46f4015758858f06eaa0a0b7a` (remote verified).
+All 23 Jira comments link to the PR and verification evidence; readback is
+19 In Progress, four To Do, zero Done.
+
 Codex and Claude share the implementation and cross-review. Jira remains the
 defect source of truth. No issue is closed on source/unit evidence alone.
 The imported tickets describe iOS18.3 simulators at b9b75b9; these records do not

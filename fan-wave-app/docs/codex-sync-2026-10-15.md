@@ -110,3 +110,14 @@ Final CI-style result: both iOS and Android pass 43 suites / 380 tests and exit
 cleanly. TypeScript and both Deno checks pass. Evidence is saved under
 `qa/evidence/2026-10-15/uat-remediation/verification.json`. The combined patch is
 approved for source review, with deployment and physical-device gates unchanged.
+
+## Delivered handoff
+
+- Source commit: `bfb6707ae9663da46f4015758858f06eaa0a0b7a`, pushed and remote verified.
+- Draft PR: https://github.com/Mustattie/Fan_Wave/pull/21 (base `v9.5`).
+- All 23 Jira remediation comments now link to this PR, source commit and evidence.
+  Readback confirms 19 In Progress, four To Do, zero Done. Four held issues:
+  SKYC-126, SKYC-129, SKYC-134, SKYC-138.
+- No hosted migration, function deployment or new TestFlight build performed.
+  Next acceptance gates remain the hosted staging/rollout and targeted device
+  checklist in the remediation map. No manual production cleanup or store release.
