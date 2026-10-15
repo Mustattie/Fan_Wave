@@ -6,8 +6,11 @@ The owner confirmed 25 was approximate.
 
 Delivered for review in [draft PR21](https://github.com/Mustattie/Fan_Wave/pull/21),
 source commit `bfb6707ae9663da46f4015758858f06eaa0a0b7a` (remote verified).
-All 23 Jira comments link to the PR and verification evidence; readback is
-19 In Progress, four To Do, zero Done.
+All 23 Jira comments link to the PR and verification evidence. After the owner's
+physical-Keychain follow-up, readback is 19 In Progress, three To Do, one Done.
+SKYC-126 was closed by the owner: the tester completed sign-up with Keychain
+on a real iPhone (Jira comment11234 includes the recording). No sign-up code
+change was needed. Exact device/iOS/build and typed/pasted cases are unconfirmed.
 
 Codex and Claude share the implementation and cross-review. Jira remains the
 defect source of truth. No issue is closed on source/unit evidence alone.
@@ -34,10 +37,8 @@ establish physical TestFlight results.
 | 144 | Yesterday-specific empty-state copy | Device empty-day |
 | 145 | Zero-vote state and honest failed tally read | Zero/one-sided/even split, vote success/failure |
 
-The19 implementation issues are In Progress. Four remain To Do pending evidence:
+The 19 implementation issues are In Progress. Three remain To Do pending evidence:
 
-- **126:** physical iPhone with Keychain and AutoFill enabled; typed, suggested and
-  pasted passwords. Do not disable password-manager support on simulator evidence.
 - **129:** reproduce keyboard and footer coordinate overlap. Jira attachment10051
   shows a post-create alert, but does not establish the cause of the tap.
 - **134:** physical playback failure with clip id and `clips:playerStatus` error.

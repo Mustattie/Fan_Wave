@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-15",
+  "issue": "SKYC-126",
+  "status": "Done",
+  "authority": "Owner/tester confirmation; owner closed Jira issue",
+  "result": "Real iPhone sign-up using iCloud Keychain succeeded",
+  "jiraComment": "11234",
+  "recordingAlreadyAttachedToJira": true,
+  "independentVideoAnalysis": false,
+  "deviceModel": null,
+  "iosVersion": null,
+  "build": null,
+  "codeChangeRequired": false,
+  "fullDeviceChecklistPassed": false,
+  "readback": {
+    "In Progress": 19,
+    "Done": 1,
+    "To Do": 3
+  }
+}

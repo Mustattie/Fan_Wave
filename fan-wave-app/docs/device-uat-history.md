@@ -1,5 +1,11 @@
 # Device UAT history — v9.5 stability program
 
+October15 follow-up: owner/tester confirmed successful sign-up on a real iPhone
+using iCloud Keychain and closed SKYC-126. Jira comment11234 contains the tester's
+screen recording. This is confirmation of that reported blocker only: the exact
+device, iOS version and tested build were not provided, and the full P3.7 checklist
+is not closed by this result. No sign-up patch was shipped for this finding.
+
 October13 iOS candidate update: TestFlight1.0.0 (37), source a60461e,
 EAS6b9ee448-403d-443f-8b37-99ddbae50231, uploaded/processed VALID and
 IN_BETA_TESTING in the existing internal Outside Testers group. IPA identity

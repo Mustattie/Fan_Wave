@@ -58,12 +58,13 @@ a fake time, or those need a backfill.
 "Confirm your email|Email not verified" and the widened body match, so the
 flow matches the new error path.
 
-## Note on SKYC-126
+## SKYC-126 — closed, no code change
 
-This session wrote a fix for it before reading the "deliberately unfixed"
-constraint, then reverted it: `app/(auth)/sign-up.tsx` is back at HEAD and the
-new test file is deleted. The patch is kept outside the repo and the Jira
-ticket records what it contained. Nothing to merge.
+The owner confirmed on a real iPhone on 2026-10-15 that sign-up completes with
+iCloud Keychain and closed the ticket. This verifies the Keychain path without
+establishing the simulator failure's root cause. `app/(auth)/sign-up.tsx` is unmodified at HEAD; the
+escape-hatch patch this session wrote and reverted is moot and must not be
+applied.
 
 ## Gate state at 02:46 CDT (Claude, read-only except the TS2556 fix)
 
@@ -121,3 +122,12 @@ approved for source review, with deployment and physical-device gates unchanged.
 - No hosted migration, function deployment or new TestFlight build performed.
   Next acceptance gates remain the hosted staging/rollout and targeted device
   checklist in the remediation map. No manual production cleanup or store release.
+
+### Owner device follow-up: SKYC-126
+
+Jira readback after the owner's closure is 19 In Progress, three To Do, one Done.
+The tester's recording is already attached to Jira comment11234. Codex updated
+its earlier confirmation-pending comment to reflect the result. Remaining
+reproduction items are SKYC-129, SKYC-134 and SKYC-138. This single successful
+Keychain sign-up does not close the full physical UAT checklist or establish an
+exact tested build. Evidence: `qa/evidence/2026-10-15/uat-remediation/skyc-126-device-followup.json`.
