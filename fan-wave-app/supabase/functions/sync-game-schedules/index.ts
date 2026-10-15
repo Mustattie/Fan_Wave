@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { gameChanged } from "../_shared/gameDiff.ts";
+import { scheduledGameTime, gameTimeForWrite } from "../_shared/gameTime.ts";
 
 // ---------------------------------------------------------------------------
 // CORS headers
@@ -71,7 +72,8 @@ interface ParsedGame {
   homeScore: number | null;
   awayScore: number | null;
   venue: string | null;
-  scheduledAt: string;
+  scheduledAt: string | null;
+  timeExplicitlyUnknown: boolean;
   status: string;
   league: string;
   // Live-game extras for in-progress / final games. period is the
@@ -90,6 +92,7 @@ interface ParsedGame {
 }
 
 interface SportsDataProvider {
+  takeFetchFailures(): string[];
   getUpcomingGames(sport: string, days: number): Promise<ParsedGame[]>;
   getLiveScores(sport: string): Promise<ParsedGame[]>;
 }
@@ -234,7 +237,8 @@ class ESPNAdapter implements SportsDataProvider {
               ? Number(awayTeamData.score ?? 0)
               : null,
           venue: comp.venue?.fullName ?? null,
-          scheduledAt: event.date ?? new Date().toISOString(),
+          scheduledAt: scheduledGameTime(event, comp),
+          timeExplicitlyUnknown: comp.timeValid === false,
           status: normalizedStatus,
           league: sport,
           period,
@@ -569,8 +573,7 @@ Deno.serve(async (req: Request) => {
       const { data: existingRows } = await supabase
         .from("games")
         .select(
-          "espn_id, home_team_id, away_team_id, home_score, away_score, " +
-            "venue_name, scheduled_at, status, sport_id, event_id, metadata",
+          "espn_id, home_team_id, away_team_id, home_score, away_score, venue_name, scheduled_at, status, sport_id, event_id, metadata",
         )
         .in("espn_id", espnIds);
 
@@ -626,7 +629,7 @@ Deno.serve(async (req: Request) => {
           home_score: game.homeScore,
           away_score: game.awayScore,
           venue_name: game.venue,
-          scheduled_at: game.scheduledAt,
+          scheduled_at: gameTimeForWrite(game.scheduledAt, game.timeExplicitlyUnknown, existingByEspnId.get(game.espnId)?.scheduled_at),
           status: game.status,
           sport_id: sportIdForRow,
           metadata: mergedMetadata,

@@ -775,7 +775,7 @@ export default function CreateWatchPartyScreen() {
   };
 
   const isStep1Valid = manualEntry
-    ? manualName.trim().length > 0
+    ? manualName.trim().length > 0 && manualAddress.trim().length >= 3
     : selectedVenue !== null;
 
   const filteredGames =

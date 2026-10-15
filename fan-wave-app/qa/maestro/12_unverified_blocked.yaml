@@ -8,11 +8,10 @@ tags:
 # Regression test for the P0 bug:
 #   "Email verification not sent / bypassed on signup"
 #
-# The hotfix server-side now requires email confirmation. The client-side
-# guard in sign-in.tsx checks `data.session.user.email_confirmed_at` and
-# signs the user back out if the field is null, then surfaces an alert
-# with the title "Email not verified", body that contains the phrase
-# "Please verify your email", and two buttons: "Resend" + "OK".
+# With Confirm Email enabled, Supabase rejects sign-in without returning
+# a session. SKYC-136 offers a resend on that error path as well as on
+# the defensive session-without-confirmation path. Both must block entry
+# and offer a real resend action; a successful resend is required here.
 #
 # This scenario:
 #   1. Signs up with a fresh email (unique per run, NOT confirmed)
@@ -121,24 +120,24 @@ tags:
 # ─── ASSERTION 1: "Email not verified" alert appears ────────────────
 - extendedWaitUntil:
     visible:
-      text: "Email not verified"
+      text: "Confirm your email|Email not verified"
     timeout: 15000
 
 - takeScreenshot: screenshots/hotfix_c_04_email_not_verified_alert
 
 - assertVisible:
-    text: "Email not verified"
+    text: "Confirm your email|Email not verified"
 
 - assertVisible:
-    text: ".*[Pp]lease verify your email.*"
+    text: ".*([Pp]lease verify your email|confirmation link).*"
 
 # ─── ASSERTION 2: "Resend" button is visible ────────────────────────
 - assertVisible:
-    text: "Resend"
+    text: "^Resend( link)?$"
 
 # Also confirms OK button exists for dismissal.
 - assertVisible:
-    text: "OK"
+    text: "^(OK|Not now)$"
 
 # REGRESSION GUARD: must NOT land in the app. If the unverified bug
 # regresses, the user would slip past this dialog into tabs.
@@ -149,13 +148,12 @@ tags:
 
 # ─── ASSERTION 3: tapping Resend triggers the "Email sent" toast ────
 - tapOn:
-    text: "Resend"
+    text: "^Resend( link)?$"
 
 - extendedWaitUntil:
     visible:
       text: "Email sent"
     timeout: 15000
-    optional: true
 
 - takeScreenshot: screenshots/hotfix_c_05_resent
 

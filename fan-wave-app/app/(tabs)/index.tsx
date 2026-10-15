@@ -21,7 +21,10 @@ import { GroupCard } from '@/components/GroupCard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { subscribeToWatchParties } from '@/lib/realtime';
 import { mapGameToDisplay, mapWatchPartyToDisplay } from '@/lib/mappers';
-import { useGames, useWatchParties, useMyGroups, useUserCity, clearGamesCache } from '@/hooks/useData';
+import { useWatchParties, useMyGroups, useUserCity, clearGamesCache } from '@/hooks/useData';
+import { useHomeGames } from '@/hooks/useHomeGames';
+import { homeGamesCacheKey } from '@/lib/homeGameQuery';
+import { invalidateCache } from '@/lib/cache';
 import { selectTodaysGames } from '@/lib/homeGames';
 import { queryClient } from '@/hooks/useQueryClient';
 import { supabase, getLocalUser } from '@/lib/supabase';
@@ -33,10 +36,11 @@ export default function HomeScreen() {
   // users.display_name (set at sign-up) and falls back to the email
   // local-part / "there" so the greeting never renders "Hi undefined".
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [dayFilter, setDayFilter] = useState<'today' | 'yesterday'>('today');
 
   // Shared React Query hooks — data is deduplicated across screens
   const { data: city = '' } = useUserCity();
-  const { data: games = [], isLoading: gamesLoading } = useGames(30);
+  const { data: games = [], isLoading: gamesLoading, isError: gamesError, refetch: reloadGames } = useHomeGames(dayFilter);
   const { data: watchParties = [], isLoading: partiesLoading } = useWatchParties(city, 3);
   const { data: groups = [], isLoading: groupsLoading } = useMyGroups(3);
 
@@ -144,7 +148,6 @@ export default function HomeScreen() {
   // finished-cutoff (server-side, TZ-agnostic). Add a local-day
   // window filter + a Today/Yesterday toggle so users can see finals
   // from either day intentionally.
-  const [dayFilter, setDayFilter] = useState<'today' | 'yesterday'>('today');
 
   const filteredGames = useMemo(
     () => selectTodaysGames(games, interestSports, dayFilter),
@@ -206,6 +209,7 @@ export default function HomeScreen() {
     // Build 31 UAT: a manual pull must reach the server, not the 30 s
     // AsyncStorage shortcut that returns the rows already on screen.
     await clearGamesCache();
+    await Promise.all((['today', 'yesterday'] as const).map(day => invalidateCache('games', homeGamesCacheKey(day))));
     await queryClient.invalidateQueries({ queryKey: ['games'] });
     await queryClient.invalidateQueries({ queryKey: ['watchParties'] });
     await queryClient.invalidateQueries({ queryKey: ['myGroups'] });
@@ -293,7 +297,14 @@ export default function HomeScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-        {filteredGames.length > 0 ? (
+        {gamesError && games.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>Couldn't load games. Check your connection and try again.</Text>
+            <TouchableOpacity onPress={() => { void reloadGames(); }} accessibilityRole="button" accessibilityLabel="Retry loading games">
+              <Text style={styles.emptyText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : filteredGames.length > 0 ? (
           <FlatList
             data={filteredGames}
             horizontal
@@ -310,7 +321,7 @@ export default function HomeScreen() {
           />
         ) : (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No games on deck today — check back tomorrow!</Text>
+            <Text style={styles.emptyText}>{dayFilter === 'yesterday' ? 'No games found for yesterday.' : 'No games on deck today — check back tomorrow!'}</Text>
           </View>
         )}
 
@@ -370,6 +381,8 @@ export default function HomeScreen() {
       {/* FAB for creating a watch party */}
       <TouchableOpacity
         style={styles.fab}
+        accessibilityRole="button"
+        accessibilityLabel="Create watch party"
         activeOpacity={0.8}
         onPress={() => router.push('/create-watch-party')}
       >

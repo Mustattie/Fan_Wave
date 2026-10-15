@@ -24,6 +24,7 @@ import {
   Smile,
   Users,
   Share2,
+  LogOut,
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 import { supabase, getLocalUser } from '@/lib/supabase';
@@ -100,6 +101,12 @@ export default function FanGroupDetailScreen() {
   const [isMember, setIsMember] = useState<boolean>(false);
   const [isOwner, setIsOwner] = useState<boolean>(false);
   const [joining, setJoining] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  // SKYC-143: `isMember` starts false and only becomes true after a
+  // round-trip, so anything that renders a membership-dependent message
+  // has to know whether the answer is in yet -- otherwise a member sees
+  // "members only" for the first few hundred milliseconds of every open.
+  const [membershipLoaded, setMembershipLoaded] = useState(false);
 
   // Invite sheet state (v8.3): two-option chooser between contacts-picker
   // SMS invite (reusing the create-private-group flow) and the system
@@ -265,6 +272,7 @@ export default function FanGroupDetailScreen() {
         .eq('user_id', currentUserId)
         .maybeSingle();
       setIsMember(!!data);
+      setMembershipLoaded(true);
     })();
   }, [id, currentUserId]);
 
@@ -279,6 +287,7 @@ export default function FanGroupDetailScreen() {
       });
       if (error) throw error;
       setIsMember(true);
+      setMembershipLoaded(true);
       // Bump local member count so the header reflects the join.
       setGroup((prev) =>
         prev ? { ...prev, memberCount: (prev.memberCount || 0) + 1 } : prev,
@@ -295,6 +304,87 @@ export default function FanGroupDetailScreen() {
       setJoining(false);
     }
   }, [id, currentUserId, joining, refreshMemberCount]);
+
+  // Leave group (SKYC-130).
+  //
+  // The server already permits this: chat_room_members_delete (mig 051)
+  // allows `user_id = auth.uid()`, so a member can remove their own row
+  // and the AFTER DELETE trigger (mig 108) fixes member_count. What the
+  // server does NOT have is any notion of succession -- there is no
+  // ownership-transfer RPC, and chat_rooms.owner_id is not nullable in
+  // any safe sense -- so that same policy would happily let the creator
+  // delete their own membership and leave the group with an owner who is
+  // not in it, unable to be joined by a new owner. The client refuses
+  // that case outright rather than performing a half-defined action:
+  // orphaning is not a thing we can undo from here.
+  const performLeave = useCallback(async () => {
+    if (!id || !currentUserId || isOwner) return;
+    setLeaving(true);
+    try {
+      const { data: removed, error } = await withTimeout(
+        () => supabase
+          .from('chat_room_members')
+          .delete()
+          .eq('chat_room_id', id)
+          .eq('user_id', currentUserId)
+          .select('user_id'),
+        CHAT_RPC_TIMEOUT_MS,
+      );
+      if (error) throw error;
+      if (!removed?.length) throw new Error('Could not confirm that you left. Refresh and try again.');
+      setIsMember(false);
+      setMembershipLoaded(true);
+      setGroup((prev) =>
+        prev
+          ? { ...prev, memberCount: Math.max(0, (prev.memberCount || 0) - 1) }
+          : prev,
+      );
+      // messages_select is member-gated (mig 051), so the thread is no
+      // longer readable. Dropping what is on screen keeps the view
+      // honest instead of leaving a feed the user can no longer refetch.
+      setMessages([]);
+      setHasMore(false);
+      setOnlineCount(0);
+      void refreshMemberCount();
+    } catch (e: any) {
+      reportError(e, { source: 'fan-group:performLeave', groupId: id });
+      Alert.alert(
+        'Could not leave',
+        e?.message?.startsWith('Timeout after')
+          ? 'That timed out. Check your connection and try again.'
+          : e?.message || 'Please try again in a moment.',
+      );
+    } finally {
+      setLeaving(false);
+    }
+  }, [id, currentUserId, isOwner, refreshMemberCount]);
+
+  const handleLeaveGroup = useCallback(() => {
+    if (!id || !currentUserId || leaving) return;
+    if (isOwner) {
+      Alert.alert(
+        'You created this group',
+        'Leaving would leave this group without an owner. Ownership transfer is not available yet.',
+        [{ text: 'OK', style: 'cancel' }],
+      );
+      return;
+    }
+    if (!isMember) return;
+    Alert.alert(
+      'Leave group?',
+      `You will stop receiving messages from ${group?.name ?? 'this group'} and will need to join again to read or post.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Leave',
+          style: 'destructive',
+          onPress: () => {
+            void performLeave();
+          },
+        },
+      ],
+    );
+  }, [id, currentUserId, leaving, isOwner, isMember, group?.name, performLeave]);
 
   // Load initial merged feed: messages + match_moments in parallel,
   // interleaved by created_at. Both tables are chat_room-scoped and
@@ -936,6 +1026,26 @@ export default function FanGroupDetailScreen() {
             <Share2 size={20} color={Colors.dark.textSecondary} />
           </TouchableOpacity>
         )}
+        {/* SKYC-130: there was no way to leave a group from anywhere in
+            the app -- joining was one tap and permanent. Only shown once
+            membership is known, so it never offers to leave a group the
+            user may not be in. The owner sees it too, and gets told why
+            it is refused rather than finding no control at all. */}
+        {membershipLoaded && (isMember || isOwner) && (
+          <TouchableOpacity
+            style={styles.infoBtn}
+            onPress={handleLeaveGroup}
+            disabled={leaving}
+            accessibilityRole="button"
+            accessibilityLabel="Leave group"
+          >
+            {leaving ? (
+              <ActivityIndicator size="small" color={Colors.dark.textSecondary} />
+            ) : (
+              <LogOut size={20} color={Colors.dark.textSecondary} />
+            )}
+          </TouchableOpacity>
+        )}
         <TouchableOpacity style={styles.infoBtn}>
           <Users size={20} color={Colors.dark.textSecondary} />
         </TouchableOpacity>
@@ -1012,10 +1122,30 @@ export default function FanGroupDetailScreen() {
               }
               ListHeaderComponent={renderLoadingHeader}
               ListEmptyComponent={
+                // SKYC-143: messages_select is member-gated (mig 051), so
+                // a non-member's query returns zero rows no matter how
+                // busy the group is -- and the screen told them "No
+                // messages yet - start the conversation!", which is both
+                // false and an invitation to do the one thing RLS will
+                // refuse. An empty list only means "empty" for someone
+                // who can actually read it.
                 <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                  <Text style={{ color: Colors.dark.textSecondary }}>
-                    No messages yet — start the conversation!
-                  </Text>
+                  {!membershipLoaded ? null : isMember ? (
+                    <Text style={{ color: Colors.dark.textSecondary }}>
+                      No messages yet — start the conversation!
+                    </Text>
+                  ) : (
+                    <>
+                      <Text style={styles.membersOnlyTitle}>
+                        Members only
+                      </Text>
+                      <Text style={styles.membersOnlyBody}>
+                        This group's conversation is visible to members
+                        only, so there may be messages here you cannot see.
+                        {canPost ? '' : ' Join to read along and post.'}
+                      </Text>
+                    </>
+                  )}
                 </View>
               }
               onScroll={({ nativeEvent }) => {
@@ -1253,6 +1383,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   joinPinnedText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  membersOnlyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.dark.text,
+    marginBottom: 6,
+  },
+  membersOnlyBody: {
+    fontSize: 13,
+    color: Colors.dark.textSecondary,
+    textAlign: 'center',
+    lineHeight: 19,
+    paddingHorizontal: 32,
+  },
   messageList: { paddingHorizontal: 12, paddingVertical: 8 },
   messageBubbleRow: { flexDirection: 'row', marginBottom: 12, alignItems: 'flex-end', gap: 8 },
   messageBubbleRowMe: { flexDirection: 'row-reverse' },

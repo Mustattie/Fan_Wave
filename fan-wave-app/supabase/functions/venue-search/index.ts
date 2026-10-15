@@ -13,8 +13,8 @@
 //      key must NOT have HTTP referrer restrictions (those would block
 //      server-to-server calls); use an IP allowlist or no restriction
 //      for the Supabase egress range.
-//   3. verify_jwt is ON (set in Dashboard), so this function only runs
-//      for authenticated app users.
+//   3. Gateway JWT verification accepts the public anon key too. The
+//      handler verifies a real user and consumes quota before Places.
 //
 // Request body:  { query, lat, lon, radiusMeters?, userLat?, userLon? }
 //   - lat/lon: search-center coords (city centroid) — controls which
@@ -27,6 +27,9 @@
 // Response 4xx/5xx: { venues: []; status: 'api_error'; errorMessage: string }
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { authorizeVenueSearch } from '../_shared/venueAccess.ts';
+import { venueRanker } from '../_shared/venueRanking.ts';
 
 interface Venue {
   name: string;
@@ -175,6 +178,21 @@ Deno.serve(async (req: Request) => {
       { status: 405, headers: JSON_HEADERS },
     );
   }
+
+  // Gateway JWT verification also accepts the public anon key. Verify a
+  // real user before validation or any billable upstream request.
+  const authorization = req.headers.get('Authorization') ?? '';
+  const token = /^Bearer\s+(.+)$/i.exec(authorization)?.[1];
+  if (!token) return new Response(JSON.stringify({ errorMessage: 'Sign in to search venues' }), { status: 401, headers: JSON_HEADERS });
+  const caller = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+    global: { headers: { Authorization: authorization } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const denied = await authorizeVenueSearch(token, caller);
+  if (denied) return new Response(JSON.stringify({ errorMessage: denied.message }), {
+    status: denied.status,
+    headers: { ...JSON_HEADERS, ...(denied.status === 429 ? { 'Retry-After': '60' } : {}) },
+  });
 
   const apiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
   if (!apiKey) {
@@ -334,7 +352,9 @@ Deno.serve(async (req: Request) => {
         };
       })
       .filter((v): v is Venue => v !== null)
-      .sort((a, b) => a.distanceMeters - b.distanceMeters);
+      // Search center may still be the profile city. Explicit city/state
+      // matches rank first; distance remains measured from the user.
+      .sort(venueRanker(query));
 
     return { ok: true, venues };
   };

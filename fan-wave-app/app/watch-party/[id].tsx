@@ -35,14 +35,14 @@ import { WCPassPaywall } from '@/components/paywall/WCPassPaywall';
 import { WC_EVENT_ID } from '@/constants/WorldCupIds';
 import { queryClient } from '@/hooks/useQueryClient';
 
-type RsvpStatus = 'going' | 'interested' | 'cant_go' | null;
+type RsvpStatus = 'going' | 'interested' | 'declined' | null;
 
 interface Attendee {
   id: string;
   name: string;
   initial: string;
   avatarBg: string;
-  status: 'going' | 'interested' | 'cant_go';
+  status: 'going' | 'interested' | 'declined';
   /** v9.5: hydrated from get_public_profiles so paid tiers carry their
    *  badge into the guest list. Undefined renders nothing. */
   tier?: string;
@@ -287,7 +287,7 @@ export default function WatchPartyDetailScreen() {
           name: r.display_name,
           initial: r.display_name.charAt(0).toUpperCase(),
           avatarBg: AVATAR_COLORS[i % AVATAR_COLORS.length],
-          status: r.status as 'going' | 'interested' | 'cant_go',
+          status: r.status as 'going' | 'interested' | 'declined',
           userId: r.user_id,
         }));
 
@@ -466,7 +466,7 @@ export default function WatchPartyDetailScreen() {
       reportError(e, { source: 'watch-party:handleRsvp', partyId: id, status: newStatus });
       Alert.alert(
         "Couldn't save RSVP",
-        "We couldn't reach the server. Check your connection and try again.",
+        "Your RSVP was not saved. Please try again. If this continues, contact support.",
       );
     }
   };
@@ -703,16 +703,16 @@ export default function WatchPartyDetailScreen() {
           <TouchableOpacity
             style={[
               styles.rsvpButton,
-              rsvpStatus === 'cant_go'
+              rsvpStatus === 'declined'
                 ? { backgroundColor: Colors.dark.textMuted }
                 : { borderColor: Colors.dark.textMuted, borderWidth: 1 },
             ]}
-            onPress={() => handleRsvp('cant_go')}
+            onPress={() => handleRsvp('declined')}
           >
             <Text
               style={[
                 styles.rsvpButtonText,
-                { color: rsvpStatus === 'cant_go' ? '#ffffff' : Colors.dark.textMuted },
+                { color: rsvpStatus === 'declined' ? '#ffffff' : Colors.dark.textMuted },
               ]}
             >
               Can't Go
@@ -795,11 +795,11 @@ export default function WatchPartyDetailScreen() {
           )}
 
           {attendees.length === 0 ? (
-            <Text style={styles.descriptionText}>No attendees yet — be the first!</Text>
+            <Text style={styles.descriptionText}>{attendeeTotals.going + attendeeTotals.maybe + attendeeTotals.cantGo > 0 ? 'No attendees to show.' : 'No attendees yet — be the first!'}</Text>
           ) : isViewerHost ? (
             // Host: grouped by status so they can see who's on the maybe /
             // can't-go lists. Guests never see this branch.
-            (['going', 'interested', 'cant_go'] as const).map((bucket) => {
+            (['going', 'interested', 'declined'] as const).map((bucket) => {
               const rows = attendees.filter((a) => a.status === bucket);
               if (rows.length === 0) return null;
               const label = bucket === 'going' ? 'Going' : bucket === 'interested' ? 'Maybe' : "Can't Go";
@@ -819,7 +819,7 @@ export default function WatchPartyDetailScreen() {
               );
             })
           ) : (
-            // Guest: going-only list with same "View all" collapse.
+            // Guest: going rows plus their own RSVP, with its actual status.
             <>
               {displayedAttendees.map((attendee) => (
                 <View key={attendee.id} style={styles.attendeeRow}>
@@ -830,7 +830,7 @@ export default function WatchPartyDetailScreen() {
                   <TierBadge tier={attendee.tier} compact />
                   <View style={[styles.statusBadge, { backgroundColor: Colors.dark.accent + '22' }]}>
                     <Text style={[styles.statusBadgeText, { color: Colors.dark.accent }]}>
-                      Going
+                      {attendee.status === 'going' ? 'Going' : attendee.status === 'interested' ? 'Maybe' : "Can't Go"}
                     </Text>
                   </View>
                 </View>
