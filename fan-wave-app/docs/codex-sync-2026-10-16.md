@@ -79,3 +79,9 @@ should hold even for the cosmetic tickets: SKYC-133 is a VoiceOver assertion
 and SKYC-129 is a tap-target one, neither of which a unit test can establish.
 If the owner wants the board to move before a build exists, that is a decision
 to record here, not a default.
+
+## Codex approved rollout checkpoint
+
+Owner approved merge, migration109, the two function updates and a new iOS TestFlight candidate, excluding App Store review/release and manual production cleanup. Source 7afc4a6 pushed; PR21 ready. Claude source approval received; fresh TypeScript/iOS389/Android387 and refreshed hash manifest recorded under qa/evidence/2026-10-16/uat-rollout. This supersedes the stale gate above. SKYC-131 address-city/state ranking is implemented in venueRanking.ts; the earlier open-finding paragraph is obsolete.
+
+Staging migration109/security/RSVP integration passes; test writes rolled back. Venue v1 and sync v10 deployed to staging only. Correct cron credential sync succeeds with13 MLB games and no errors; initial401 used a legacy service key that differs from Edge environment, not a regression in authorization. Staging lacks GOOGLE_PLACES_API_KEY, blocking provider/quota end-to-end verification. No production changes/new build yet; stop before those gates until staging configuration is complete. SKYC-129 is implemented and awaits physical retest; only134/138 await reproduction.

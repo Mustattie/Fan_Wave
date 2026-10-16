@@ -25,6 +25,7 @@ establish physical TestFlight results.
 | 125 | Verified non-anonymous user and atomic20/min limit before Google Places | Hosted staging auth/quota tests, deployment |
 | 127 | Paginate the complete local calendar day before sports filtering | Device Today/Yesterday, minority-sport and timezone checks |
 | 128 | Search joined/suggested groups, count active tab, accurate empty/search states | Device search and tab retest |
+| 129 | Measured action bar clearance; iOS keyboard frame overlap; Android native resize retained | Physical keyboard/Next and Public/Private tap targeting |
 | 130,143 | Member leave action, owner guard, clear member-only messages and membership-aware empty copy | Join/leave/rejoin, count and privacy device retest |
 | 131 | Rank venues near searched city; user distance remains display-only | Staging/device search from another city |
 | 132 | Manual venue needs name and address | Device validation |
@@ -37,10 +38,8 @@ establish physical TestFlight results.
 | 144 | Yesterday-specific empty-state copy | Device empty-day |
 | 145 | Zero-vote state and honest failed tally read | Zero/one-sided/even split, vote success/failure |
 
-The 19 implementation issues are In Progress. Three remain To Do pending evidence:
+The 20 implementation issues are In Progress. Two remain To Do pending evidence:
 
-- **129:** reproduce keyboard and footer coordinate overlap. Jira attachment10051
-  shows a post-create alert, but does not establish the cause of the tap.
 - **134:** physical playback failure with clip id and `clips:playerStatus` error.
   That telemetry already exists; the initial Claude review missed it.
 - **138:** reproducible wrong-logo sequence and source/team identity before a fix.
@@ -98,3 +97,9 @@ Existing load-test harness validity and release gates remain separate and open.
   claim to introduce a verified-invite authorization system.
 - City ranking recognizes trailing US state abbreviations (e.g. Prosper TX).
   Full state names and other query forms retain distance ordering.
+
+## Approved rollout checkpoint — 2026-10-16
+
+Source 7afc4a6 is pushed and PR21 is ready for review. Claude approves the source. Fresh TypeScript passes; iOS 45 suites/389 tests and Android 45 suites/387 tests pass. Current hashes and evidence: `qa/evidence/2026-10-16/uat-rollout/verification.json`.
+
+Migration109 passed hosted staging integration with real auth, RLS and triggers; all test RSVP writes rolled back. Staging venue-search v1 and schedule-sync v10 are active. Anon security probes pass. A legacy service-role credential was correctly rejected; the configured cron credential succeeds (13 MLB games, no fetch errors). The remaining gate is the absent staging GOOGLE_PLACES_API_KEY, so venue provider/quota integration cannot yet pass. Production and TestFlight are unchanged. No secrets were rotated or copied between environments.
