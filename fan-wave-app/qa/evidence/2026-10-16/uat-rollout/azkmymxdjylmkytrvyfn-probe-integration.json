@@ -1,0 +1,5 @@
+[
+  {
+    "result": "PASS: real hosted auth/RLS/triggers; anon denied, private stranger denied, spoof ignored, host own statuses visible, canonical/legacy writes, count drift zero; all writes rolled back"
+  }
+]

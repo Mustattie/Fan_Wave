@@ -1,0 +1,129 @@
+{
+  "date": "2026-10-15",
+  "site": "https://peacefuldata.atlassian.net",
+  "pullRequest": "https://github.com/Mustattie/Fan_Wave/pull/21",
+  "sourceCommit": "bfb6707ae9663da46f4015758858f06eaa0a0b7a",
+  "readback": {
+    "total": 23,
+    "inProgress": 19,
+    "toDo": 4,
+    "done": 0
+  },
+  "comments": [
+    {
+      "key": "SKYC-123",
+      "commentId": "11186",
+      "success": true
+    },
+    {
+      "key": "SKYC-124",
+      "commentId": "11187",
+      "success": true
+    },
+    {
+      "key": "SKYC-125",
+      "commentId": "11188",
+      "success": true
+    },
+    {
+      "key": "SKYC-126",
+      "commentId": "11189",
+      "success": true
+    },
+    {
+      "key": "SKYC-127",
+      "commentId": "11190",
+      "success": true
+    },
+    {
+      "key": "SKYC-128",
+      "commentId": "11191",
+      "success": true
+    },
+    {
+      "key": "SKYC-129",
+      "commentId": "11192",
+      "success": true
+    },
+    {
+      "key": "SKYC-130",
+      "commentId": "11193",
+      "success": true
+    },
+    {
+      "key": "SKYC-131",
+      "commentId": "11194",
+      "success": true
+    },
+    {
+      "key": "SKYC-132",
+      "commentId": "11195",
+      "success": true
+    },
+    {
+      "key": "SKYC-133",
+      "commentId": "11196",
+      "success": true
+    },
+    {
+      "key": "SKYC-134",
+      "commentId": "11197",
+      "success": true
+    },
+    {
+      "key": "SKYC-135",
+      "commentId": "11198",
+      "success": true
+    },
+    {
+      "key": "SKYC-136",
+      "commentId": "11199",
+      "success": true
+    },
+    {
+      "key": "SKYC-137",
+      "commentId": "11200",
+      "success": true
+    },
+    {
+      "key": "SKYC-138",
+      "commentId": "11201",
+      "success": true
+    },
+    {
+      "key": "SKYC-139",
+      "commentId": "11202",
+      "success": true
+    },
+    {
+      "key": "SKYC-140",
+      "commentId": "11203",
+      "success": true
+    },
+    {
+      "key": "SKYC-141",
+      "commentId": "11204",
+      "success": true
+    },
+    {
+      "key": "SKYC-142",
+      "commentId": "11205",
+      "success": true
+    },
+    {
+      "key": "SKYC-143",
+      "commentId": "11206",
+      "success": true
+    },
+    {
+      "key": "SKYC-144",
+      "commentId": "11207",
+      "success": true
+    },
+    {
+      "key": "SKYC-145",
+      "commentId": "11208",
+      "success": true
+    }
+  ]
+}

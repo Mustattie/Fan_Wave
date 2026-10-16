@@ -1,0 +1,40 @@
+I reviewed the final source read-only. No files mutated, nothing deployed. One constraint up front: **Bash is disabled in this session**, so I could not run `git`, `tsc`, `jest`, or psql — this is a source review of the working tree at HEAD (tree is clean, so it is `7afc4a6` content), plus the recorded evidence.
+
+## Verdict
+
+**Source: approve.** Migration 109, both edge functions, and the SKYC-129 action-bar fix are correct and internally consistent.
+
+**One blocker to merging/building as currently recorded** (process, not code): `qa/evidence/.../verification.json:99` hashes `create-watch-party.tsx` at `03c5aed0…` — the **bfb6707** content. Commit `7afc4a6` changed that file, added `hooks/useKeyboardHeight.ts` (absent from the manifest) and two new suites (`__tests__/useKeyboardHeight.test.tsx`, `__tests__/createWatchPartyActionBar.test.tsx`). So the recorded 43 suites / 380 tests gate does **not** cover the commit being merged and shipped; the real count is now 45 suites. Codex should re-run tsc + both Jest presets on `7afc4a6` and refresh the manifest before PR21 merges and before the TestFlight build. I cannot run them here, so I am reporting this as an open gate rather than a pass.
+
+Also reconcile records: SKYC-129 is recorded as To Do / "needs reproduction" in `docs/ios-uat-defect-remediation-2026-10-15.md:42` and `verification.json:29`, but `7afc4a6` fixes it. Jira 129 and the remediation table need a row before this is a records-complete merge.
+
+## Migration 109
+
+- **Will apply cleanly.** Return signature is byte-identical to the live 097 definition (same 8 columns, names, types, order) and arg names match, so `CREATE OR REPLACE` will not hit 42P13. Prerequisites `blocked_user_ids()` and `has_wc_access(uuid)` are both present in the 2026-10-12 parity snapshot; `watch_parties.moderation_status` exists (002/003).
+- **The security fix is real.** 097 granted EXECUTE to `anon` and derived host identity from the caller-supplied `p_viewer_id` (`097:85`); 109 uses `auth.uid()` and revokes anon. Correct.
+- **`total_cant_go` was dead, not wrong.** 097 counts `status = 'cant_go'`, but the column CHECK only permits `going|interested|declined` (002:71), and the live RPC rejects `cant_go` with 22023 (`073:60`). So no legacy rows exist, the count has been a hard 0 in production, and 109's switch to `'declined'` needs no backfill. The "no cleanup/backfill" header is correct — I verified rather than assumed this.
+- **Client is aligned both ways:** `app/watch-party/[id].tsx` uses `declined` end-to-end and filters the NULL-id totals row (`:284`); `rsvp-history.tsx:193-194` keeps both labels; build 37's `cant_go` is normalized at `109:79`. Deploy order is therefore soft — but apply 109 **before** testers get the build, or the Can't-go count still reads 0.
+- **Residual risk (documented, worth restating):** 109 makes "has an RSVP row" the authorization fact for private rosters (`109:30-33`), while `rsvp_to_watch_party` still has no visibility or invite check (`109:91-99`). Anyone holding a private party's UUID can self-RSVP and thereby unlock its roster and totals. The remediation map discloses this (`:96-98`); I'd close it in a follow-up rather than let it ride indefinitely.
+- Minor: a private stranger gets 0 rows, and the screen's `catch {}` (`[id].tsx:344`) renders "No attendees yet — be the first!" — fails closed, but dishonest copy.
+
+## Nullable kickoff (as asked)
+
+`gameTimeForWrite` (`_shared/gameTime.ts:10-13`) is right, and `gameChanged` does treat string→null as a change, so the sync **will** write null over a stored fake time — but only when ESPN sends `timeValid === false`. If the provider merely omits the date, the stored fake time is preserved by design, so the World Series rows the 10-15 note asked about are only cleared if ESPN marks them explicitly TBD. Three downstream effects:
+
+1. **Realtime goes stale.** `mapGameRealtimePatch` only patches time when `row.scheduled_at` is truthy (`mappers.ts:270`). A live TBD transition leaves the card showing the old kickoff until a full refetch. Two-line fix; low severity but directly in this change's blast radius.
+2. **Ops alert blind spot.** `ops_health_problems()` counts `scheduled_at BETWEEN now() AND +3 days` (`092:82`) and alarms under 5. TBD rows are invisible to it, so it cannot distinguish "sync broken" from "sync wrote TBDs."
+3. **WCSchedule is not null-safe.** It normalizes stage/metadata/venue/status at the load boundary but not `scheduled_at` (`WCSchedule.tsx:173-179`), while `WCGameRow` declares it non-null. A null would group under a 1970 date header and sort first. WC cron is disabled (066), so this is latent, not live — but it reopens if WC sync is re-enabled.
+
+Home-feed exclusion of TBD rows (`homeGameQuery.ts:15-16`) and non-expiry by the timestamp crons (041/042) are both already stated as accepted limits.
+
+## Edge functions
+
+`venue-search` correctly builds its client with the anon key **and forwards the caller's Authorization header** (`:187-190`), so `check_rate_limit`'s `auth.uid()` resolves — this would silently 503/429 every search under a service-role client, and it doesn't. `venue_search` falls to the 60/60 default ceiling, tightened to 20/60 by the caller. `venueRanker` handles the Prosper TX case and degrades to pure distance on unmatched queries. Note quota is consumed before body validation (`:191` vs `:249`), so malformed requests still burn budget.
+
+## SKYC-129
+
+Mechanism is sound and verified structurally: `container` flex:1 column, `stepContent` flex:1, `bottomBar` in normal flow (not absolute), so `marginBottom: keyboardHeight` genuinely shrinks the scroll area above it. All three steps use the measured `scrollPadBottom`. The new tests pin both numbers, including the Android no-op. Two notes: step 3 still carries a leftover `<View style={{height:100}}/>` spacer (`:1814`) on top of the measured clearance — harmless dead space; and `components/KeyboardAwareScreen.tsx` (7 screens: sign-in, sign-up, create-clip, edit-profile, delete-account, forgot/reset-password) still uses the `KeyboardAvoidingView behavior="padding"` approach this fix abandoned, with a docstring calling `useKeyboardHeight` a "hack". Same defect class is latent on those screens.
+
+## Recommended sequence
+
+Re-run gates on `7afc4a6` and refresh the manifest → update Jira/doc for 129 → push/merge PR21 → capture live definitions + ACLs for `get_watch_party_attendees_v2` and `rsvp_to_watch_party` → apply 109 → deploy both functions → build TestFlight from the exact merged commit. No review submission, no release, no deletion or manual cleanup from me, and I stopped at reporting rather than acting on the one open gate.

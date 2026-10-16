@@ -55,15 +55,21 @@ export function MvpVoteSheet({
   // this session" from "vote already recorded on the server." Tapping a
   // team just highlights it; the Submit button commits.
   const [pendingSelection, setPendingSelection] = useState<string | null>(null);
+  // SKYC-145: a failed tally read left the zero-initialised state on
+  // screen, so "No votes yet — be the first." was also what a broken RPC
+  // looked like. "We don't know" is not "nobody has voted".
+  const [tallyFailed, setTallyFailed] = useState(false);
 
   const loadTally = useCallback(async (id: string) => {
     setLoading(true);
     try {
       const { data, error } = await supabase.rpc('get_mvp_tally', { p_game_id: id });
       if (error) {
+        setTallyFailed(true);
         reportError(error, { source: 'MvpVoteSheet:tally', gameId: id });
         return;
       }
+      setTallyFailed(false);
       const row = Array.isArray(data) ? data[0] : data;
       if (row) {
         setTally({
@@ -83,6 +89,7 @@ export function MvpVoteSheet({
     } else {
       setTally({ homeVotes: 0, awayVotes: 0, myVote: null });
       setPendingSelection(null);
+      setTallyFailed(false);
     }
   }, [visible, gameId, loadTally]);
 
@@ -129,8 +136,15 @@ export function MvpVoteSheet({
   };
 
   const total = tally.homeVotes + tally.awayVotes;
-  const homePct = total > 0 ? Math.round((tally.homeVotes / total) * 100) : 50;
-  const awayPct = total > 0 ? 100 - homePct : 50;
+  // iOS UAT 2026-10-15 (SKYC-145): with no votes cast, both pct values
+  // were 50 and the cards printed a confident "50%" over a half-and-half
+  // bar -- a dead heat invented out of an empty tally, which reads as
+  // real data and contradicts the "No votes yet" line directly below it.
+  // Zero stays zero; the percentage is simply undefined and is rendered
+  // as such.
+  const hasVotes = total > 0;
+  const homePct = hasVotes ? Math.round((tally.homeVotes / total) * 100) : 0;
+  const awayPct = hasVotes ? 100 - homePct : 0;
 
   const renderCard = (
     side: 'home' | 'away',
@@ -158,9 +172,13 @@ export function MvpVoteSheet({
           <ActivityIndicator size="small" color={C.accent} style={{ marginTop: 4 }} />
         ) : (
           <>
-            <Text style={styles.teamPct}>{pct}%</Text>
+            <Text style={[styles.teamPct, !hasVotes && styles.teamPctEmpty]}>
+              {hasVotes ? `${pct}%` : '—'}
+            </Text>
             <Text style={styles.teamVotes}>
-              {votes} {votes === 1 ? 'vote' : 'votes'}
+              {hasVotes
+                ? `${votes} ${votes === 1 ? 'vote' : 'votes'}`
+                : 'no votes'}
             </Text>
           </>
         )}
@@ -207,14 +225,24 @@ export function MvpVoteSheet({
                 {renderCard('away', awayTeam, awayTeamId, tally.awayVotes, awayPct)}
               </View>
 
+              {/* SKYC-145: the fills were floored at `Math.max(pct, 1)`,
+                  so an empty tally drew two equal halves and a 0-vote
+                  side always kept a sliver. An empty track for no votes,
+                  and a side with no votes takes no width. */}
               <View style={styles.barTrack}>
-                <View style={[styles.barHomeFill, { flex: Math.max(homePct, 1) }]} />
-                <View style={[styles.barAwayFill, { flex: Math.max(awayPct, 1) }]} />
+                {hasVotes ? (
+                  <>
+                    <View style={[styles.barHomeFill, { flex: homePct }]} />
+                    <View style={[styles.barAwayFill, { flex: awayPct }]} />
+                  </>
+                ) : null}
               </View>
               <Text style={styles.totalLine}>
-                {total === 0
-                  ? 'No votes yet — be the first.'
-                  : `${total} ${total === 1 ? 'fan has' : 'fans have'} voted`}
+                {tallyFailed
+                  ? "Couldn't load the vote count. Your pick will still count."
+                  : hasVotes
+                    ? `${total} ${total === 1 ? 'fan has' : 'fans have'} voted`
+                    : 'No votes yet — be the first.'}
               </Text>
 
               <TouchableOpacity
@@ -315,6 +343,9 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     letterSpacing: -0.5,
+  },
+  teamPctEmpty: {
+    color: C.textMuted,
   },
   teamVotes: {
     color: C.textSecondary,

@@ -8,7 +8,6 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Keyboard,
   Platform,
   FlatList,
@@ -16,6 +15,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { Globe, Lock, UserPlus, X, Users, Search, MapPin, CheckCircle2, CalendarDays } from 'lucide-react-native';
 import * as Contacts from 'expo-contacts';
 import * as Location from 'expo-location';
@@ -161,6 +161,28 @@ function computeTimePresets(): { label: string; value: string }[] {
 export default function CreateWatchPartyScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // SKYC-129 (iOS UAT 2026-10-14). Two reports, one cause: the sticky
+  // action bar and the step content were both positioned against
+  // assumptions instead of against the two heights that actually move.
+  //
+  //  1. With the venue field focused, Next sat under the keyboard's
+  //     predictive row, and a tap meant for Next inserted a suggested
+  //     word into the field. KeyboardAvoidingView behavior="padding"
+  //     was supposed to lift the bar; it derives the lift from the KAV's
+  //     own measured frame, and it did not. The keyboard reports its
+  //     height, so the bar is lifted by that directly instead.
+  //  2. On step 3 the Public/Private cards shared a y-range with the
+  //     Back/Create bar, so a tap on "Public" hit Create. The scroll
+  //     content had a hardcoded 120px tail; the bar is taller than that
+  //     once the home-indicator inset is added, so the last cards could
+  //     never be scrolled clear of it.
+  const keyboardHeight = useKeyboardHeight();
+  const [actionBarHeight, setActionBarHeight] = useState(0);
+  // Measured, not assumed: the bar is a single button on step 1 and a
+  // Back + primary row on steps 2-3, and it loses the home-indicator
+  // inset while the keyboard covers it. 24 is breathing room on top of
+  // clearance, not the clearance itself.
+  const scrollPadBottom = actionBarHeight + 24;
   // v9.5.19: app/game/[id].tsx has always pushed here with { gameId } for
   // "+ Host" / "Host one", but nothing read it, so the wizard opened with
   // no game linked. Consumed once the games list is loaded (below).
@@ -775,7 +797,7 @@ export default function CreateWatchPartyScreen() {
   };
 
   const isStep1Valid = manualEntry
-    ? manualName.trim().length > 0
+    ? manualName.trim().length > 0 && manualAddress.trim().length >= 3
     : selectedVenue !== null;
 
   const filteredGames =
@@ -1092,7 +1114,13 @@ export default function CreateWatchPartyScreen() {
   // -----------------------------------------------------------------------
 
   const renderStep1 = () => (
-    <ScrollView style={styles.stepContent} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      style={styles.stepContent}
+      contentContainerStyle={{ paddingBottom: scrollPadBottom }}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      testID="cwp-step-scroll"
+    >
       <Text style={styles.stepTitle}>Where are you watching?</Text>
 
       {!manualEntry ? (
@@ -1262,7 +1290,12 @@ export default function CreateWatchPartyScreen() {
   );
 
   const renderStep2 = () => (
-    <ScrollView style={styles.stepContent}>
+    <ScrollView
+      style={styles.stepContent}
+      contentContainerStyle={{ paddingBottom: scrollPadBottom }}
+      keyboardShouldPersistTaps="handled"
+      testID="cwp-step-scroll"
+    >
       <Text style={styles.stepTitle}>Link a game (optional)</Text>
 
       {/* Sport filter pills */}
@@ -1374,14 +1407,18 @@ export default function CreateWatchPartyScreen() {
   );
 
   const renderStep3 = () => (
-    // v9.2.5 UAT 2026-07-28: 120px bottom padding gives the last text field
-    // room to scroll above the on-screen keyboard on shorter Android devices
-    // where the resize alone doesn't leave the focused input visible.
+    // v9.2.5 UAT 2026-07-28: the last text field needs room to scroll
+    // above the on-screen keyboard on shorter Android devices where the
+    // window resize alone doesn't leave the focused input visible.
+    // SKYC-129: that room was a hardcoded 120, which is shorter than the
+    // action bar itself on a device with a home indicator, so the bottom
+    // of the form stayed under the bar however far it scrolled.
     <ScrollView
       style={styles.stepContent}
-      contentContainerStyle={{ paddingBottom: 120 }}
+      contentContainerStyle={{ paddingBottom: scrollPadBottom }}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
+      testID="cwp-step-scroll"
     >
       <Text style={styles.stepTitle}>Party details</Text>
 
@@ -1782,17 +1819,22 @@ export default function CreateWatchPartyScreen() {
   // Main render
   // -----------------------------------------------------------------------
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      // v9.2.5 UAT 2026-07-28: on Android, softwareKeyboardLayoutMode="resize"
-      // (app.json) already shrinks the window to fit above the keyboard, so
-      // KAV must be a no-op (behavior=undefined). Prior behavior="height"
-      // double-adjusted and reintroduced the Description field + Create
-      // button being covered by the keyboard on Step 3. iOS still needs
-      // behavior="padding" — no native resize there.
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={0}
-    >
+    // v9.2.5 UAT 2026-07-28: on Android, softwareKeyboardLayoutMode="resize"
+    // (app.json) already shrinks the window to fit above the keyboard, so
+    // any keyboard handling here must be a no-op on Android. Prior
+    // behavior="height" double-adjusted and reintroduced the Description
+    // field + Create button being covered by the keyboard on Step 3.
+    //
+    // SKYC-129: iOS used KeyboardAvoidingView behavior="padding" for the
+    // same job and the sticky bar still ended up under the predictive
+    // row. The wrapper is gone rather than tuned: the bar is lifted by
+    // the keyboard's reported overlap, and because the bar is the last
+    // child of this column that lift shrinks the step ScrollView above
+    // it by the same amount. That is the single mechanism -- deliberately
+    // NOT paired with automaticallyAdjustKeyboardInsets, which derives
+    // its own overlap from the native keyboard notification and can
+    // apply it before this margin commits, insetting the content twice.
+    <View style={styles.container}>
       {/* Header
           v9.4.0 UAT Round 3 (#7): top back-arrow used to `router.back()`
           from every step, exiting the whole wizard and dropping the
@@ -1817,7 +1859,22 @@ export default function CreateWatchPartyScreen() {
       {step === 3 && renderStep3()}
 
       {/* Bottom button */}
-      <View style={[styles.bottomBar, { paddingBottom: 12 + insets.bottom }]}>
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            // The home indicator is behind the keyboard while it is up,
+            // so reserving space for it there just wastes a safe-area
+            // inset worth of screen.
+            paddingBottom: keyboardHeight > 0 ? 12 : 12 + insets.bottom,
+            // Android resizes the window itself; adding a margin there
+            // would lift the bar twice.
+            marginBottom: Platform.OS === 'ios' ? keyboardHeight : 0,
+          },
+        ]}
+        onLayout={(e) => setActionBarHeight(e.nativeEvent.layout.height)}
+        testID="cwp-action-bar"
+      >
         {step === 1 && (
           <TouchableOpacity
             style={[styles.primaryBtn, !isStep1Valid && styles.primaryBtnDisabled]}
@@ -1934,7 +1991,7 @@ export default function CreateWatchPartyScreen() {
           )}
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

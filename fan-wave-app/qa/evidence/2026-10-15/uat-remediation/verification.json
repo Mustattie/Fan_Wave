@@ -1,0 +1,136 @@
+{
+  "date": "2026-10-15",
+  "branch": "codex/ios-uat-defects",
+  "base": "b9b75b97dce7cf49a4bda67a19fdb935f3d06f4e",
+  "issues": {
+    "implemented": [
+      "SKYC-123",
+      "SKYC-124",
+      "SKYC-125",
+      "SKYC-127",
+      "SKYC-128",
+      "SKYC-130",
+      "SKYC-131",
+      "SKYC-132",
+      "SKYC-133",
+      "SKYC-135",
+      "SKYC-136",
+      "SKYC-137",
+      "SKYC-139",
+      "SKYC-140",
+      "SKYC-141",
+      "SKYC-142",
+      "SKYC-143",
+      "SKYC-144",
+      "SKYC-145"
+    ],
+    "needsEvidence": [
+      "SKYC-126",
+      "SKYC-129",
+      "SKYC-134",
+      "SKYC-138"
+    ],
+    "closed": []
+  },
+  "jest": {
+    "ios": {
+      "suites": 43,
+      "tests": 380,
+      "failed": 0,
+      "success": true,
+      "command": "node node_modules/jest/bin/jest.js --ci --maxWorkers=2 --modulePathIgnorePatterns <rootDir>/.claude/"
+    },
+    "android": {
+      "suites": 43,
+      "tests": 380,
+      "failed": 0,
+      "success": true,
+      "command": "node node_modules/jest/bin/jest.js -c jest.android.config.js --ci --maxWorkers=2 --modulePathIgnorePatterns <rootDir>/.claude/"
+    }
+  },
+  "typecheck": {
+    "command": "npm run typecheck",
+    "exitCode": 0
+  },
+  "deno": {
+    "functions": [
+      "venue-search",
+      "sync-game-schedules"
+    ],
+    "command": "deno check --no-lock <function paths>",
+    "exitCode": 0
+  },
+  "sql109": {
+    "engine": "isolated local PostgreSQL",
+    "result": "PASS",
+    "fixture": "supabase/tests/109/local_fixture.sql",
+    "cases": [
+      "anon execute denied",
+      "private stranger no rows",
+      "spoofed viewer ignored",
+      "host own Maybe visible",
+      "legacy cant_go normalized to declined",
+      "canonical RSVP cycle and totals"
+    ],
+    "serverStopped": true,
+    "limitation": "Simplified fixture tables and auth stubs; hosted RLS/triggers and deployment not verified."
+  },
+  "review": {
+    "reviewer": "Claude Code",
+    "type": "static cross-review of Codex lane",
+    "verdict": "APPROVE after corrections",
+    "sha256": "6518f377849f9357db34e5977ac0b19834c174019a5e076e6461bbbd1cf8497e",
+    "claudeLane": "Reviewed by Codex; affected-row check, followed total, Maestro and test fixes included."
+  },
+  "runtimeSourceFilesSha256": {
+    "fan-wave-app/__tests__/createWatchPartyWizard.test.tsx": "fc90af8bcd4cf46cb8f9641b89ed58be414d351113fc2d35dd41bec411f4dded",
+    "fan-wave-app/__tests__/discoverSearchScope.test.tsx": "566b34b9d0651f64ece36c565323fc3cd86bc7c529ae12e250f2f1383935462c",
+    "fan-wave-app/__tests__/fanGroupLeaveAndMembersOnly.test.tsx": "3008832580c8c6ea26430fd42a7d47d800cdbcc7188c3471331762c15729b8a9",
+    "fan-wave-app/__tests__/homeCalendarQuery.test.ts": "a8c1da99aa57569b71288619ae3f90a54ad937dfa2c0b80caf9be860b4032ea0",
+    "fan-wave-app/__tests__/homeTodaysGames.test.tsx": "4e95d1924e6db9c7574e560fa9e918c8ee661ef3a196399168a2e088d05b4fd7",
+    "fan-wave-app/__tests__/iosUatBackend.test.ts": "bb9ca034bffdcb03d3e7aa606357f386eddbeae5ddfd7a66c6aad48903ba3146",
+    "fan-wave-app/__tests__/mvpVoteZeroState.test.tsx": "12a97ccc9011e147bd38874b723570f537cca66f66186dd0e8685c4b10e3a859",
+    "fan-wave-app/__tests__/mySportsInterests.test.tsx": "318c7ab07e5dff1ee4a0fece4c475b6398abeaa1513b69fc82856028755369a6",
+    "fan-wave-app/__tests__/notificationSettingsHonesty.test.tsx": "7ecb6c98e33eb2bf989eb1c645e911f9129d3524589b11ccbb1532691bc7e666",
+    "fan-wave-app/__tests__/signInResendConfirmation.test.tsx": "34ddb936a024db25cdf3ff9da83099e1792fbbadd263afb1ca996f3750dbf117",
+    "fan-wave-app/app/(auth)/sign-in.tsx": "773e600dd5d7c8afb69f556549385779c83cfedd37a7170b511ae3367918aa2f",
+    "fan-wave-app/app/(tabs)/discover.tsx": "decfc42f3db9bc17773c7ce578bb09397a53ffc46fa077bec8b223789d2b36b1",
+    "fan-wave-app/app/(tabs)/index.tsx": "d27cfd1e047ac0a2c2ce7dd5d79e4e937773fb75d19b04542c8188ee6eff8240",
+    "fan-wave-app/app/create-watch-party.tsx": "03c5aed09ccdc6b05d1e33835fca629579fbacad6bdeb711edcc568e891288c6",
+    "fan-wave-app/app/fan-group/[id].tsx": "575810cb84415bcdc76312d3ad62f1265bfda9c7d51050b893159fcdfb8c7ae6",
+    "fan-wave-app/app/my-sports.tsx": "57e55c63999ea25517f577ee15abe77a812ce9486c4fef9cc7ef5ba9b9927d0d",
+    "fan-wave-app/app/notification-settings.tsx": "3220e2a7409f7a83202507f5bc29b1f8fcb80057970d1e8e2996d5c328b87e28",
+    "fan-wave-app/app/watch-party/[id].tsx": "f4f82d1ff74bfc9d95ae32c05738f6f187d25edc3605be3fb62fb20e0f03e45f",
+    "fan-wave-app/components/MvpVoteSheet.tsx": "ec95cedf345f3aedfed647751a4e1aea0d804cf29f3d3d6a4f800797bd4ccc2c",
+    "fan-wave-app/components/WatchPartyCard.tsx": "d41051b5323f3eae385451e781ecef2564a5f2d977267906563c6a1612096fe4",
+    "fan-wave-app/hooks/useHomeGames.ts": "c9dba1e672d16575303974903caaee097040b6376d97c3fc5560c4e74064f9e7",
+    "fan-wave-app/lib/authErrors.ts": "7b90557309158dc52d4ef92e7863cf9d2aee13bdf88c0bbd88250e29c19004ae",
+    "fan-wave-app/lib/homeGameQuery.ts": "ec1dae361d3696cc2ff6d650384d357c12524680c450182eecd8d1da45220800",
+    "fan-wave-app/lib/interestSports.ts": "c3dedebd7df7249608f883db9eecbb9a4ef9205aca9dea05486f5ea08a754d1f",
+    "fan-wave-app/qa/maestro/12_unverified_blocked.yaml": "2d7490022b3eb25fbf492d73bdb6a2b9b42c55631f0842046f256afea50a76d2",
+    "fan-wave-app/supabase/functions/_shared/gameTime.ts": "b3cad5b03a14c4ed59090623b1ca0ff71eddcddeae9208544da505fce1215e2d",
+    "fan-wave-app/supabase/functions/_shared/venueAccess.ts": "2102e08d15a1d151600dad5847e4dac8a1de104e4e59b5ca5241aa6a3de9d816",
+    "fan-wave-app/supabase/functions/_shared/venueRanking.ts": "6bdd61158ecfdbd57ae53471e598271c8161822961db42bc525d19c308622950",
+    "fan-wave-app/supabase/functions/sync-game-schedules/index.ts": "79620489b9df5d02e6909f07d843ddf03ef4fbc296a87155a11433867914c8f3",
+    "fan-wave-app/supabase/functions/venue-search/index.ts": "c57e0c4bbc0b781221f7681a1d1ed4b4d21adfbcfbdb687872eef95c59eecefb",
+    "fan-wave-app/supabase/migrations/109_secure_attendees_and_rsvp_status.sql": "aa2414550bbc83a0ba5c9f89dfb21d07c106e461b544532c8d68696e8d076a45",
+    "fan-wave-app/supabase/tests/109/local_fixture.sql": "21191f6cf916926fe8ee2778c4f14a072462ef18f2ba46d732985b94ca5dc677"
+  },
+  "remoteActions": {
+    "productionMigration": false,
+    "stagingMigration": false,
+    "edgeDeployment": false,
+    "deviceUat": false,
+    "testFlightBuild": false,
+    "storeReview": false,
+    "publicRelease": false
+  },
+  "limits": [
+    "Four device/reproduction items remain open.",
+    "19 implementations need deployment/device acceptance; none closed.",
+    "Unknown kickoff rows have no calendar-day assignment or timestamp-based expiry; no cleanup bundled.",
+    "Existing private RSVP admission is not a new verified-invite system.",
+    "City ranking supports explicit trailing US state abbreviations."
+  ],
+  "supersededBy": "qa/evidence/2026-10-16/uat-rollout/verification.json"
+}

@@ -15,10 +15,22 @@ export type AuthErrorKind =
   | 'network'
   | 'unknown';
 
+// iOS UAT 2026-10-15 (SKYC-136): the email_not_confirmed copy told the
+// user "You can request a new one from the sign-in screen" while the
+// sign-in screen had no such control -- the resend only existed on the
+// branch where Supabase handed back a session for an unconfirmed user,
+// which is not the branch that fires when Confirm Email is enabled (that
+// one returns an error and no session, and landed in the generic catch).
+// The remedy a message names has to be reachable from where it is shown,
+// so the kind now carries the action the UI is expected to offer.
+export type AuthErrorAction = 'resend_confirmation';
+
 export type AuthErrorInfo = {
   kind: AuthErrorKind;
   title: string;
   message: string;
+  /** A remedy the caller must render as a real control, not as prose. */
+  action?: AuthErrorAction;
 };
 
 export function parseAuthError(error: unknown): AuthErrorInfo {
@@ -43,7 +55,8 @@ export function parseAuthError(error: unknown): AuthErrorInfo {
         kind: 'email_not_confirmed',
         title: 'Confirm your email',
         message:
-          'Check your inbox for a confirmation link before signing in. You can request a new one from the sign-in screen.',
+          'Check your inbox for the confirmation link before signing in. If it never arrived, we can send a new one.',
+        action: 'resend_confirmation',
       };
     case 'user_already_exists':
     case 'email_exists':
@@ -87,7 +100,9 @@ export function parseAuthError(error: unknown): AuthErrorInfo {
     return {
       kind: 'email_not_confirmed',
       title: 'Confirm your email',
-      message: 'Check your inbox for a confirmation link before signing in.',
+      message:
+        'Check your inbox for the confirmation link before signing in. If it never arrived, we can send a new one.',
+      action: 'resend_confirmation',
     };
   }
   if (msg.includes('already registered') || msg.includes('already exists')) {

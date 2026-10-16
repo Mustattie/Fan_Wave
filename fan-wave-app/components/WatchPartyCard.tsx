@@ -103,7 +103,7 @@ export function WatchPartyCard({ party, affinity }: WatchPartyCardProps) {
     }
   };
 
-  const rsvpLabel = rsvpStatus === 'going' ? '✓ Going' : rsvpStatus === 'interested' ? '★ Interested' : 'RSVP';
+  const rsvpLabel = rsvpStatus === 'going' ? '✓ Going' : rsvpStatus === 'interested' ? '★ Maybe' : 'RSVP';
   const rsvpBg = rsvpStatus === 'going' ? Colors.dark.success : rsvpStatus === 'interested' ? Colors.dark.warning : Colors.dark.accent;
   // v9.5.7 (iOS UAT BUG-14): this used to add 1 to the server count when
   // the viewer was going, on the assumption that their own RSVP wasn't in

@@ -79,6 +79,28 @@ const SPORT_ID_MAP: Record<string, string> = Object.fromEntries(
   SPORTS.map((s) => [s.id, s.name]),
 );
 
+// iOS UAT 2026-10-15 (SKYC-128). One sanitiser for the whole screen: the
+// suggested-groups and watch-party queries each had their own copy of
+// `replace(/[%,]/g, ' ').trim()` (ilike wildcards and the PostgREST `or`
+// delimiter), and the joined list had none at all because it was never
+// searched. Exported so the rule can be asserted directly.
+export function sanitizeSearch(search?: string | null): string {
+  return (search ?? '').replace(/[%,]/g, ' ').trim();
+}
+
+// The joined list is fetched whole (a nested select on the user's
+// memberships), so its search is client-side. It has to mean the same
+// thing as the server's `name ilike %q%` on the suggested list, or the two
+// halves of one search box answer two different questions.
+export function matchesGroupSearch(
+  name: string | null | undefined,
+  search?: string | null,
+): boolean {
+  const q = sanitizeSearch(search);
+  if (!q) return true;
+  return (name ?? '').toLowerCase().includes(q.toLowerCase());
+}
+
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
   const [activeFilter, setActiveFilter] = useState('all');
@@ -92,6 +114,11 @@ export default function DiscoverScreen() {
   const [hasMoreParties, setHasMoreParties] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [partyCursor, setPartyCursor] = useState<string | null>(null);
+  // SKYC-128: the query the lists on screen were actually built from.
+  // Typing is debounced 300ms, so between the keystroke and the refetch
+  // the previous query's results are still displayed -- labelling those
+  // with the new text would report a count for a search that has not run.
+  const [appliedSearch, setAppliedSearch] = useState('');
 
   // Track request ID to prevent stale overlapping loads from applying out of order
   const loadRequestRef = useRef(0);
@@ -162,8 +189,7 @@ export default function DiscoverScreen() {
       const startedAfter =
         cursor || new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
       const applySearch = (q: any) => {
-        if (!search) return q;
-        const safe = search.replace(/[%,]/g, ' ').trim();
+        const safe = sanitizeSearch(search);
         if (!safe) return q;
         return q.or(
           `title.ilike.%${safe}%,venue_name.ilike.%${safe}%,venue_city.ilike.%${safe}%`,
@@ -219,7 +245,7 @@ export default function DiscoverScreen() {
         data: { user },
       } = await getLocalUser();
       if (!user) {
-        return { joined: [], suggested: [] };
+        return { joined: [], suggested: [], memberIds: [] as string[] };
       }
 
       // v9.4.0 UAT Round 3: resolve the sport pill's UUID once and apply
@@ -253,10 +279,18 @@ export default function DiscoverScreen() {
       if (error) throw error;
 
       let joined: ChatRoomDisplay[] = [];
+      // Every room the user belongs to, before the sport pill and the
+      // search box narrow the list. SKYC-128: this set drives the "✓
+      // Joined" badge on Suggested cards and the Suggested dedupe, and
+      // neither of those is a function of what is typed in the search
+      // box -- filtering it would make a group the user is already in
+      // offer "Join" the moment a query excluded it from the Joined tab.
+      let memberIds: string[] = [];
       if (data) {
         const rawRooms = data
           .map((row: any) => row.chat_rooms)
           .filter(Boolean);
+        memberIds = rawRooms.map((r: any) => r.id).filter(Boolean);
         // Client-side sport filter -- the joined query pulls chat_rooms
         // via a nested select so sport_id is already on each row. When
         // the pill is 'all' (sportUuid=null) skip filtering entirely.
@@ -266,7 +300,15 @@ export default function DiscoverScreen() {
             : sportUuid === NONE
               ? []
               : rawRooms.filter((r: any) => r.sport_id === sportUuid);
-        joined = filteredRooms.map(mapChatRoomToDisplay);
+        // SKYC-128: the search box only ever reached the Suggested query
+        // (`name ilike`) and the watch-party query. Typing a group name
+        // left the Joined tab showing every membership untouched, so a
+        // search that matched nothing in it still looked like a full
+        // list -- and the header count came from Suggested regardless of
+        // which sub-tab was open. Same predicate, both halves.
+        joined = filteredRooms
+          .filter((r: any) => matchesGroupSearch(r?.name, search))
+          .map(mapChatRoomToDisplay);
       }
 
       // Suggested groups (public, not owned by user, not already joined).
@@ -311,12 +353,11 @@ export default function DiscoverScreen() {
         query = query.eq('sport_id', sportUuid);
       }
 
-      // Search filter (name ilike)
-      if (search && search.trim()) {
-        const safe = search.replace(/[%,]/g, ' ').trim();
-        if (safe) {
-          query = query.ilike('name', `%${safe}%`);
-        }
+      // Search filter (name ilike) -- same sanitiser the joined list and
+      // the watch-party query use.
+      const safeSearch = sanitizeSearch(search);
+      if (safeSearch) {
+        query = query.ilike('name', `%${safeSearch}%`);
       }
 
       const { data: suggestedData, error: suggestedError } = await query;
@@ -324,16 +365,16 @@ export default function DiscoverScreen() {
 
       let suggested: ChatRoomDisplay[] = [];
       if (suggestedData) {
-        const memberIds = new Set(joined.map((g) => g.id));
+        const memberIdSet = new Set(memberIds);
         suggested = (suggestedData || [])
           .filter(
             (g: any) =>
-              !memberIds.has(g.id) && g.owner_id !== user.id,
+              !memberIdSet.has(g.id) && g.owner_id !== user.id,
           )
           .map(mapChatRoomToDisplay);
       }
 
-      return { joined, suggested };
+      return { joined, suggested, memberIds };
     },
     [],
   );
@@ -423,7 +464,9 @@ export default function DiscoverScreen() {
           if (groupResults) {
             setMyGroups(groupResults.joined);
             setSuggestedGroups(groupResults.suggested);
-            setMyGroupIds(new Set(groupResults.joined.map((g) => g.id)));
+            // Membership, not the filtered Joined list -- see the note in
+            // fetchFanGroups.
+            setMyGroupIds(new Set(groupResults.memberIds));
           }
           if (partyResult) {
             setWatchParties(partyResult.items);
@@ -435,6 +478,7 @@ export default function DiscoverScreen() {
               setPartyCursor(null);
             }
           }
+          setAppliedSearch((search ?? '').trim());
           setLoading(false);
           setLoadingMyGroups(false);
           setLoadingSuggested(false);
@@ -589,6 +633,18 @@ export default function DiscoverScreen() {
     },
     [activeFilter, loadData],
   );
+
+  // SKYC-128: every search-specific empty state offers a way back to
+  // browsing. Cancels the pending debounce first so the in-flight query
+  // for the old text cannot land after the cleared one.
+  const handleClearSearch = useCallback(() => {
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
+    setSearchQuery('');
+    loadData(activeFilter, '');
+  }, [activeFilter, loadData]);
 
   const handleRefresh = useCallback(async () => {
     if (!isMountedRef.current) return;
@@ -786,6 +842,20 @@ export default function DiscoverScreen() {
   const activeGroups = groupsTab === 'joined' ? myGroups : suggestedGroups;
   const carouselGroups = activeGroups.slice(0, 8);
 
+  // SKYC-128: one query, one honest tally. The section header used to
+  // print the Suggested count while the Joined tab was open, so a search
+  // on the Joined tab reported a number from a list that was not on
+  // screen.
+  const trimmedQuery = searchQuery.trim();
+  const isSearching = trimmedQuery.length > 0;
+  // True while what is on screen does not yet answer what was typed.
+  // Counts and "nothing matched" states stay quiet until it is false.
+  const resultsPending = loading || trimmedQuery !== appliedSearch;
+  const searchTotal =
+    myGroups.length + suggestedGroups.length + watchParties.length;
+  const otherTabMatches =
+    groupsTab === 'joined' ? suggestedGroups.length : myGroups.length;
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -850,16 +920,27 @@ export default function DiscoverScreen() {
               browse titles, so a query that happened to match what was
               already showing (searching "Dallas" while in Dallas) looked
               like the search had been ignored. Name the query and count
-              what it matched. */}
-          {searchQuery.trim() ? (
-            <Text style={styles.resultsHeader}>
-              Results for "{searchQuery.trim()}"
-            </Text>
+              what it matched.
+              SKYC-128 (2026-10-15): that count came from Suggested alone,
+              so it read as "0" on the Joined tab even when the query had
+              matched one of the user's own groups. Count every surface
+              the search actually covers. */}
+          {isSearching ? (
+            <View style={styles.resultsHeaderRow}>
+              <Text style={styles.resultsHeader} numberOfLines={2}>
+                {resultsPending
+                  ? `Searching for "${trimmedQuery}"…`
+                  : `${searchTotal} ${searchTotal === 1 ? 'result' : 'results'} for "${trimmedQuery}"`}
+              </Text>
+              <TouchableOpacity onPress={handleClearSearch} activeOpacity={0.7}>
+                <Text style={styles.clearSearchText}>Clear</Text>
+              </TouchableOpacity>
+            </View>
           ) : null}
           <View style={styles.groupsSectionHeader}>
             <Text style={styles.groupsSectionTitle}>
               Fan Groups
-              {searchQuery.trim() ? ` (${suggestedGroups.length})` : ''}
+              {isSearching && !resultsPending ? ` (${activeGroups.length})` : ''}
             </Text>
             <TouchableOpacity
               style={styles.createGroupBtn}
@@ -904,7 +985,10 @@ export default function DiscoverScreen() {
                   groupsTab === 'suggested' && styles.groupsTabTextActive,
                 ]}
               >
-                Suggested
+                {/* SKYC-128: Joined has carried a count since v9.0;
+                    Suggested did not, so with a search applied one tab
+                    reported its matches and the other did not. */}
+                Suggested ({suggestedGroups.length})
               </Text>
             </TouchableOpacity>
           </View>
@@ -923,7 +1007,41 @@ export default function DiscoverScreen() {
             </View>
           )}
 
-          {!loading && activeGroups.length === 0 && groupsTab === 'joined' && (
+          {/* SKYC-128: with a query applied, "No public groups yet — be
+              the first to start one!" was a false statement about the
+              catalogue -- the catalogue was full, the query just missed.
+              A search that matches nothing says so, and offers the way
+              out of the search rather than a Create CTA. */}
+          {!resultsPending && activeGroups.length === 0 && isSearching && (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>
+                {groupsTab === 'joined'
+                  ? `None of your groups match "${trimmedQuery}".`
+                  : `No groups match "${trimmedQuery}".`}
+              </Text>
+              {/* The count in the header totals both lists, so an empty
+                  tab beside a non-zero total has to say where the
+                  matches are -- otherwise the two disagree on screen. */}
+              {otherTabMatches > 0 ? (
+                <TouchableOpacity
+                  style={styles.emptyCta}
+                  onPress={() =>
+                    setGroupsTab(groupsTab === 'joined' ? 'suggested' : 'joined')
+                  }
+                >
+                  <Text style={styles.emptyCtaText}>
+                    {groupsTab === 'joined'
+                      ? `See ${otherTabMatches} in Suggested`
+                      : `See ${otherTabMatches} in your groups`}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity style={styles.emptyCtaSecondary} onPress={handleClearSearch}>
+                <Text style={styles.emptyCtaSecondaryText}>Clear search</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {!loading && activeGroups.length === 0 && !isSearching && groupsTab === 'joined' && (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>Your crew awaits — join a fan group!</Text>
               <TouchableOpacity
@@ -934,7 +1052,7 @@ export default function DiscoverScreen() {
               </TouchableOpacity>
             </View>
           )}
-          {!loading && activeGroups.length === 0 && groupsTab === 'suggested' && (
+          {!loading && activeGroups.length === 0 && !isSearching && groupsTab === 'suggested' && (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>
                 No public groups yet — be the first to start one!
@@ -987,8 +1105,10 @@ export default function DiscoverScreen() {
               damaging than a button that does nothing. */}
           <SectionHeader
             title={
-              searchQuery.trim()
-                ? `Watch Parties (${watchParties.length})`
+              isSearching
+                ? resultsPending
+                  ? 'Watch Parties'
+                  : `Watch Parties (${watchParties.length})`
                 : partiesBroadened
                   ? 'Watch Parties · Nearby (broader area)'
                   : city
@@ -1000,7 +1120,12 @@ export default function DiscoverScreen() {
             watchParties.map((party) => (
               <WatchPartyCard key={party.id} party={party} />
             ))
-          ) : (
+          ) : isSearching && !resultsPending ? (
+            // SKYC-128: same false-statement problem as the groups list.
+            <Text style={styles.emptyText}>
+              No watch parties match "{trimmedQuery}".
+            </Text>
+          ) : isSearching ? null : (
             <Text style={styles.emptyText}>No watch parties yet — host the first one!</Text>
           )}
 
@@ -1459,14 +1584,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  // Fan Groups section header (title + Create button)
+  emptyCtaSecondary: {
+    marginTop: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+  },
+  emptyCtaSecondaryText: {
+    color: Colors.dark.accent,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  // Search results summary (count + Clear). SKYC-128: the old style
+  // carried its own paddingHorizontal:16 on top of scrollContent's, so
+  // the line sat indented from every heading below it.
+  resultsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingTop: 12,
+  },
   resultsHeader: {
+    flex: 1,
     color: Colors.dark.textSecondary,
     fontSize: 13,
     fontWeight: '600',
-    paddingHorizontal: 16,
-    paddingTop: 12,
   },
+  clearSearchText: {
+    color: Colors.dark.accent,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  // Fan Groups section header (title + Create button)
   groupsSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',

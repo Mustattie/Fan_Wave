@@ -107,7 +107,9 @@ function installGamesTable() {
   });
 }
 
-function wrapper(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+const testClients = new Set<QueryClient>();
+function wrapper(client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } })) {
+  testClients.add(client);
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
@@ -119,7 +121,7 @@ function gameDayUpcoming(games: any[], interest: Set<string>) {
   return cut.filter((g) => g.status === 'scheduled');
 }
 
-describe('Home Today\'s Games vs Game Day (Build 31 regression)', () => {
+describe('Shared useGames legs (Build 31 regression; Home now uses calendar query)', () => {
   beforeEach(() => {
     // Fake only the clock: React Query and waitFor need real timers.
     jest.useFakeTimers({
@@ -129,7 +131,11 @@ describe('Home Today\'s Games vs Game Day (Build 31 regression)', () => {
     (supabase.from as jest.Mock).mockReset();
     installGamesTable();
   });
-  afterEach(() => jest.useRealTimers());
+  afterEach(() => {
+    for (const client of testClients) client.clear();
+    testClients.clear();
+    jest.useRealTimers();
+  });
 
   it('Home (limit 30) receives today\'s scheduled games even when 30 finals fill the finished window', async () => {
     const { result } = renderHook(() => useGames(30), { wrapper: wrapper() });
@@ -202,7 +208,7 @@ describe('Home Today\'s Games vs Game Day (Build 31 regression)', () => {
     const staleDisplay = { id: 'stale-row', status: 'final', sport: 'mlb', scheduledAt: staleFinal.scheduled_at };
     (getCache as jest.Mock).mockClear();
     (getCache as jest.Mock).mockResolvedValueOnce([staleDisplay]);
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
     const { result } = renderHook(() => useGames(30), { wrapper: wrapper(client) });
     await waitFor(() => expect(result.current.data).toBeDefined());
 

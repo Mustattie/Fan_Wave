@@ -145,6 +145,18 @@ describe('Create Watch Party wizard: derived state follows the linked game', () 
     mockInserted.length = 0;
   });
 
+  it('SKYC-132 blocks a name-only manual venue until an address is entered', async () => {
+    const utils = render(<CreateWatchPartyScreen />);
+    await waitFor(() => utils.getByText('Enter venue manually'));
+    fireEvent.press(utils.getByText('Enter venue manually'));
+    fireEvent.changeText(utils.getByPlaceholderText('Venue name'), 'Name only');
+    fireEvent.press(utils.getByText('Next'));
+    expect(utils.queryByText('Link a game (optional)')).toBeNull();
+    fireEvent.changeText(utils.getByPlaceholderText('Address (start typing to search...)'), '100 Main St');
+    fireEvent.press(utils.getByText('Next'));
+    await waitFor(() => utils.getByText('Link a game (optional)'));
+  });
+
   it('switching game A -> B updates title, chips, summary, game_id and starts_at together', async () => {
     const utils = render(<CreateWatchPartyScreen />);
     const { getByText, getAllByText, getByPlaceholderText, queryByText } = utils;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,36 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  // SKYC-136: the address whose confirmation is outstanding. Set by
+  // whichever unconfirmed-email branch fired, and it keeps the resend
+  // control on screen after the alert is dismissed -- an alert button is
+  // a one-shot offer, and the user who dismisses it to go check their
+  // inbox comes back to a screen with no way to ask again.
+  const [unconfirmedEmail, setUnconfirmedEmail] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+
+  // One resend path for both unconfirmed branches (error-with-no-session,
+  // and session-without-email_confirmed_at). They used to differ: only
+  // the second had a Resend button at all.
+  const resendConfirmation = useCallback(async (target: string) => {
+    setResending(true);
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: target,
+        options: {
+          emailRedirectTo: AUTH_REDIRECT_URL,
+        },
+      });
+      if (resendError) throw resendError;
+      Alert.alert('Email sent', `We sent a new confirmation link to ${target}.`);
+    } catch (resendErr) {
+      const info = parseAuthError(resendErr);
+      Alert.alert(info.title, info.message);
+    } finally {
+      setResending(false);
+    }
+  }, []);
 
   const handleSignIn = async () => {
     if (!email.trim() || !password.trim()) {
@@ -51,30 +81,15 @@ export default function SignInScreen() {
       if (data.session && !data.session.user.email_confirmed_at) {
         markIntentionalSignOut();
         await supabase.auth.signOut();
+        setUnconfirmedEmail(trimmedEmail);
         Alert.alert(
           'Email not verified',
           'Please verify your email first. Check your inbox for the confirmation link.',
           [
             {
               text: 'Resend',
-              onPress: async () => {
-                try {
-                  const { error: resendError } = await supabase.auth.resend({
-                    type: 'signup',
-                    email: trimmedEmail,
-                    options: {
-                      emailRedirectTo: AUTH_REDIRECT_URL,
-                    },
-                  });
-                  if (resendError) throw resendError;
-                  Alert.alert(
-                    'Email sent',
-                    `We sent a new confirmation link to ${trimmedEmail}.`,
-                  );
-                } catch (resendErr) {
-                  const info = parseAuthError(resendErr);
-                  Alert.alert(info.title, info.message);
-                }
+              onPress: () => {
+                void resendConfirmation(trimmedEmail);
               },
             },
             { text: 'OK', style: 'cancel' },
@@ -82,8 +97,28 @@ export default function SignInScreen() {
         );
         return;
       }
+      // A clean sign-in clears any earlier unconfirmed state.
+      setUnconfirmedEmail(null);
     } catch (e) {
       const info = parseAuthError(e);
+      // SKYC-136: with Confirm Email enabled, signInWithPassword fails
+      // with code `email_not_confirmed` and no session, so this is the
+      // branch real users hit -- and it used to show a message promising
+      // a resend control that only existed on the other branch. Offer
+      // the resend here, and leave it on the screen afterwards.
+      if (info.action === 'resend_confirmation') {
+        setUnconfirmedEmail(trimmedEmail);
+        Alert.alert(info.title, info.message, [
+          {
+            text: 'Resend link',
+            onPress: () => {
+              void resendConfirmation(trimmedEmail);
+            },
+          },
+          { text: 'Not now', style: 'cancel' },
+        ]);
+        return;
+      }
       Alert.alert(info.title, info.message);
     } finally {
       setLoading(false);
@@ -109,7 +144,15 @@ export default function SignInScreen() {
               placeholder="Email"
               placeholderTextColor={Colors.dark.textMuted}
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(text) => {
+                setEmail(text);
+                // The resend row names an address; if the field no longer
+                // holds it, the row must go rather than silently resend
+                // to the old one.
+                if (unconfirmedEmail && text.trim() !== unconfirmedEmail) {
+                  setUnconfirmedEmail(null);
+                }
+              }}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
@@ -150,6 +193,35 @@ export default function SignInScreen() {
               <Text style={styles.signInButtonText}>Sign In</Text>
             )}
           </TouchableOpacity>
+
+          {/* SKYC-136: the resend the error message talks about, as an
+              actual control on the screen the message points at. Only
+              appears once an unconfirmed-email attempt has happened, so
+              it never advertises a step nobody needs. */}
+          {unconfirmedEmail ? (
+            <View style={styles.resendBlock}>
+              <Text style={styles.resendHint}>
+                {unconfirmedEmail} still needs to be confirmed.
+              </Text>
+              <TouchableOpacity
+                style={[styles.resendButton, resending && styles.buttonDisabled]}
+                onPress={() => {
+                  void resendConfirmation(unconfirmedEmail);
+                }}
+                disabled={resending}
+                accessibilityRole="button"
+                accessibilityLabel="Resend confirmation email"
+              >
+                {resending ? (
+                  <ActivityIndicator color={Colors.dark.accent} />
+                ) : (
+                  <Text style={styles.resendButtonText}>
+                    Resend confirmation email
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
         </View>
 
@@ -229,6 +301,28 @@ const styles = StyleSheet.create({
   signInButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '700',
+  },
+  resendBlock: {
+    gap: 8,
+    marginTop: 4,
+  },
+  resendHint: {
+    fontSize: 13,
+    color: Colors.dark.textSecondary,
+    textAlign: 'center',
+  },
+  resendButton: {
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    backgroundColor: Colors.dark.surface,
+    borderWidth: 1,
+    borderColor: Colors.dark.accent,
+  },
+  resendButtonText: {
+    color: Colors.dark.accent,
+    fontSize: 15,
     fontWeight: '700',
   },
   divider: {
