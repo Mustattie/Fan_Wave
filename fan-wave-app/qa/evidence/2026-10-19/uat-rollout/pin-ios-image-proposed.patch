@@ -1,0 +1,13 @@
+diff --git a/fan-wave-app/eas.json b/fan-wave-app/eas.json
+index c5f25ad..8130f72 100644
+--- a/fan-wave-app/eas.json
++++ b/fan-wave-app/eas.json
+@@ -44,7 +44,7 @@
+     "production": {
+       "autoIncrement": true,
+       "ios": {
+-        "image": "latest",
++        "image": "macos-tahoe-26.5-xcode-26.6",
+         "buildConfiguration": "Release",
+         "credentialsSource": "local"
+       },

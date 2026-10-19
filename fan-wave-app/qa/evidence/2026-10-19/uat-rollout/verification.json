@@ -55,8 +55,10 @@
   "testFlight": {
     "buildId": "2f6a53ae-a2fe-4259-ba52-f7c70bd03bd1",
     "buildNumber": "38",
-    "status": "NEW",
-    "sourceCommit": "e76f7055dea46eb87e090f715414e1a16e184ee3"
+    "status": "ERRORED",
+    "sourceCommit": "e76f7055dea46eb87e090f715414e1a16e184ee3",
+    "errorCode": "XCODE_BUILD_ERROR",
+    "uploadedToApple": false
   },
   "physicalDeviceAcceptance": "pending; no device attached; owner-approved sequence is candidate then tester retest",
   "appStoreReviewSubmitted": false,
@@ -65,5 +67,14 @@
     "exitCode": 0,
     "modules": 3925,
     "output": "C:/fwc/uat-rollout-20261019/ios-export"
+  },
+  "buildFailure": {
+    "actualImage": "macos-tahoe-26.6-xcode-27.1-sdk-58",
+    "lastSuccessfulBuild37Image": "macos-tahoe-26.5-xcode-26.6",
+    "cause": "Xcode 27.1 rejects dependency deployment targets below iOS 15",
+    "proposedFix": "Pin production iOS image to the exact image used by successful build 37",
+    "patch": "C:/fwc/uat-rollout-20261019/pin-ios-image.patch",
+    "implemented": false,
+    "retryStarted": false
   }
 }
