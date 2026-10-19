@@ -1,0 +1,13 @@
+{
+  "id": "c04d7f25-869d-4263-988f-3075c6df7cd3",
+  "slug": "venue-search",
+  "name": "venue-search",
+  "status": "ACTIVE",
+  "version": 6,
+  "created_at": 1781944495459,
+  "updated_at": 1792439593697,
+  "verify_jwt": true,
+  "import_map": false,
+  "entrypoint_path": "file:///tmp/user_fn_fwlfiejvxmslkpoojggs_c04d7f25-869d-4263-988f-3075c6df7cd3_6/source/supabase/functions/venue-search/index.ts",
+  "ezbr_sha256": "37b29b38b823462ed35d37819ab39fcc6c55989d2e303c47a51b310ab9ef1b22"
+}

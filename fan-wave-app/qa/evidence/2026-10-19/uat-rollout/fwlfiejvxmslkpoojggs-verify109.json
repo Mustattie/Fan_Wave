@@ -1,0 +1,22 @@
+[
+  {
+    "proname": "get_watch_party_attendees_v2",
+    "prosecdef": true,
+    "proconfig": [
+      "search_path=public, pg_temp"
+    ],
+    "anon_execute": false,
+    "authenticated_execute": true,
+    "hash": "93088681fe80d17946f4d2349774a0ad"
+  },
+  {
+    "proname": "rsvp_to_watch_party",
+    "prosecdef": true,
+    "proconfig": [
+      "search_path=public, pg_temp"
+    ],
+    "anon_execute": false,
+    "authenticated_execute": true,
+    "hash": "7244fb09e49d1d9601fc4c75eab3d33b"
+  }
+]

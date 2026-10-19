@@ -1,0 +1,69 @@
+{
+  "date": "2026-10-19",
+  "buildSourceCommit": "e76f7055dea46eb87e090f715414e1a16e184ee3",
+  "reviewedProductCommit": "7afc4a689e5364b7ae6ba47f8345eb8b56d16592",
+  "productDiffFromReviewed": "",
+  "typecheck": {
+    "exitCode": 0
+  },
+  "ios": {
+    "suites": 45,
+    "tests": 389,
+    "failed": 0,
+    "exitCode": 0,
+    "logSha256": "3caf35337c7d0af969d37c1cd412f2f9464339344e5f0e39f9110a3e3b04566f"
+  },
+  "android": {
+    "suites": 45,
+    "tests": 387,
+    "failed": 0,
+    "exitCode": 0,
+    "logSha256": "0c4c3b36534d465af6132747d095fb02066ef3b44c04a1aa2bf779aece1ed564"
+  },
+  "staging": {
+    "provider": "PASS",
+    "cityRanking": "PASS",
+    "anonStatus": 401,
+    "quotaAllowed": 20,
+    "quotaDeniedStatus": 429,
+    "fixtureDeleted": true
+  },
+  "production": {
+    "migration109": "applied and security verified",
+    "venueSearchVersion": 6,
+    "scheduleSyncVersion": 17,
+    "authenticatedVenueCount": 20,
+    "authenticatedRoster": "PASS",
+    "testSessionSignedOut": true,
+    "anonProbes": "all denied",
+    "sync": {
+      "success": true,
+      "totalSynced": 0,
+      "totalSkipped": 10,
+      "sportsWithFetchErrors": 0,
+      "breakdown": {
+        "mlb": {
+          "upserted": 0,
+          "skipped": 10,
+          "unmatched_teams": [],
+          "errors": []
+        }
+      }
+    }
+  },
+  "rollbackBackupDirectory": "C:/fwc/uat-rollout-20261019",
+  "testFlight": {
+    "buildId": "2f6a53ae-a2fe-4259-ba52-f7c70bd03bd1",
+    "buildNumber": "38",
+    "status": "NEW",
+    "sourceCommit": "e76f7055dea46eb87e090f715414e1a16e184ee3"
+  },
+  "physicalDeviceAcceptance": "pending; no device attached; owner-approved sequence is candidate then tester retest",
+  "appStoreReviewSubmitted": false,
+  "publicRelease": false,
+  "iosExport": {
+    "exitCode": 0,
+    "modules": 3925,
+    "output": "C:/fwc/uat-rollout-20261019/ios-export"
+  }
+}

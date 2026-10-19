@@ -1,0 +1,13 @@
+{
+  "id": "6abc8efd-88f6-4c99-9fc3-af84cd704f31",
+  "slug": "sync-game-schedules",
+  "name": "sync-game-schedules",
+  "status": "ACTIVE",
+  "version": 17,
+  "created_at": 1781003451685,
+  "updated_at": 1792439603503,
+  "verify_jwt": false,
+  "import_map": false,
+  "entrypoint_path": "file:///tmp/user_fn_fwlfiejvxmslkpoojggs_6abc8efd-88f6-4c99-9fc3-af84cd704f31_17/source/supabase/functions/sync-game-schedules/index.ts",
+  "ezbr_sha256": "fdaeebef7bf33b51e78ff8899d7d0997c1a7bb60f77fcc527c9c9bca1ce87f46"
+}
