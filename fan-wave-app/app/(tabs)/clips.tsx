@@ -23,7 +23,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
-import { reportError } from '@/lib/errorReporting';
+import { reportError, reportMessage } from '@/lib/errorReporting';
 import { SportPillRow } from '@/components/SportPill';
 import { EmptyState } from '@/components/EmptyState';
 import { supabase, getLocalUser } from '@/lib/supabase';
@@ -785,6 +785,17 @@ export default function ClipsScreen() {
       setPlayerFailedFor(null);
       if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
       stallTimerRef.current = setTimeout(() => {
+        // SKYC-134 (2026-10-20): this was the one path to "Couldn't load this
+        // video" that reported nothing. The other two (clips:replaceAsync,
+        // clips:playerStatus) raise a Sentry exception, so a source that
+        // simply never reaches readyToPlay looked identical to a clean feed
+        // and an empty Sentry search read as "did not reproduce".
+        reportMessage(
+          'clips.player_stall',
+          'warning',
+          { clipId: activeClipIdRef.current, stallMs: PLAYER_STALL_MS, phase: 'initial' },
+          { clip_stall_phase: 'initial' },
+        );
         // Still not ready. Stop claiming we're loading and hand the user a
         // control; the poster is already on screen behind the overlay.
         setPlayerFailedFor(activeClipIdRef.current);
@@ -956,6 +967,15 @@ export default function ClipsScreen() {
     setIsSharedReady(false);
     if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
     stallTimerRef.current = setTimeout(() => {
+      // Same silent verdict as the initial load, reached from "Try again".
+      // Distinguished by the tag: a retry stalling says something different
+      // about the asset than a first load stalling.
+      reportMessage(
+        'clips.player_stall',
+        'warning',
+        { clipId, stallMs: PLAYER_STALL_MS, phase: 'retry' },
+        { clip_stall_phase: 'retry' },
+      );
       setPlayerFailedFor(activeClipIdRef.current);
     }, PLAYER_STALL_MS);
     void source.load(clip.videoUrl, { force: true }).then(({ outcome, error }) => {
