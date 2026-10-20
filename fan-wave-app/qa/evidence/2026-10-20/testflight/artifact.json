@@ -1,0 +1,17 @@
+{
+  "bundleIdentifier": "org.fansphere.app",
+  "version": "1.0.0",
+  "build": "39",
+  "minimumOSVersion": "15.1",
+  "bytes": 23653301,
+  "sha256": "9e16b6c1f9b09ec939e102f622f67c3d71691392c1c963f8caea07ad0959f6b0",
+  "profileExpiration": "2027-08-31T06:36:18Z",
+  "apsEnvironment": "production",
+  "debuggable": false,
+  "applicationIdentifier": "D887TLA6L9.org.fansphere.app",
+  "productionBackendPresent": true,
+  "stagingBackendPresent": false,
+  "sentryDsnPresent": true,
+  "sentryHost": "o4512132182835200.ingest.us.sentry.io",
+  "sentryProject": "/4512132200202240"
+}

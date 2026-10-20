@@ -1,0 +1,65 @@
+{
+  "date": "2026-10-20",
+  "approvedChange": "Pin production iOS image to macos-tahoe-26.5-xcode-26.6 and retry/upload",
+  "sourceCommit": "d77e89f11c9d986ba731a21b27a72fb0f7198f79",
+  "sourceRemoteVerified": true,
+  "configurationValidation": {
+    "jsonParse": true,
+    "onlyApprovedImageChanged": true,
+    "gitWhitespaceCheck": true
+  },
+  "actualBuilder": {
+    "image": "macos-tahoe-26.5-xcode-26.6",
+    "xcode": "26.6 (17F113)"
+  },
+  "build": {
+    "id": "b2dd9155-31c6-4b1d-b231-28f78e8842f8",
+    "status": "FINISHED",
+    "version": "1.0.0",
+    "number": "39",
+    "detailsUrl": "https://expo.dev/accounts/dataking263/projects/fan-wave-app/builds/b2dd9155-31c6-4b1d-b231-28f78e8842f8"
+  },
+  "artifact": {
+    "bundleIdentifier": "org.fansphere.app",
+    "version": "1.0.0",
+    "build": "39",
+    "minimumOSVersion": "15.1",
+    "bytes": 23653301,
+    "sha256": "9e16b6c1f9b09ec939e102f622f67c3d71691392c1c963f8caea07ad0959f6b0",
+    "profileExpiration": "2027-08-31T06:36:18Z",
+    "apsEnvironment": "production",
+    "debuggable": false,
+    "applicationIdentifier": "D887TLA6L9.org.fansphere.app",
+    "productionBackendPresent": true,
+    "stagingBackendPresent": false,
+    "sentryDsnPresent": true,
+    "sentryHost": "o4512132182835200.ingest.us.sentry.io",
+    "sentryProject": "/4512132200202240"
+  },
+  "productTests": {
+    "date": "2026-10-19",
+    "ios": 389,
+    "android": 387,
+    "failed": 0,
+    "unchangedProductCode": true
+  },
+  "submission": {
+    "status": "uploaded",
+    "id": "230a0be7-0174-4249-be19-45b5e7981e99",
+    "appleBuildId": "e51bb27e-6377-48ef-bdfa-405d5d8a0526",
+    "processingState": "VALID",
+    "internalBuildState": "IN_BETA_TESTING",
+    "existingTesterGroupAvailable": true,
+    "group": {
+      "id": "0026109c-6450-41f6-8416-9070a9731747",
+      "name": "Outside Testers",
+      "isInternalGroup": true
+    },
+    "whatToTestAttached": true,
+    "newTesterInvitations": false
+  },
+  "physicalDeviceAcceptance": "pending",
+  "appStoreReviewSubmitted": false,
+  "publicRelease": false,
+  "privateEvidenceDirectory": "C:/fwc/testflight-20261020"
+}

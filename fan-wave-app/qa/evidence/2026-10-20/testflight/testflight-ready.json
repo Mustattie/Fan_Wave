@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-20T07:30:49.270Z",
+  "buildId": "e51bb27e-6377-48ef-bdfa-405d5d8a0526",
+  "version": "39",
+  "processingState": "VALID",
+  "group": {
+    "id": "0026109c-6450-41f6-8416-9070a9731747",
+    "name": "Outside Testers",
+    "isInternalGroup": true
+  },
+  "availableInGroup": true,
+  "whatToTest": "Fan Sphere 1.0.0 (39) — UAT fixes. Please retest watch-party RSVP (Going/Maybe/Declined), public/private attendee visibility, venue search for Prosper TX from another city, venue validation, keyboard Next and Public/Private controls, Home Today/Yesterday and sport filters, group search and leave/rejoin, VoiceOver Create label, notification permission recovery, email confirmation/resend, team-derived sports and profile layout, Maybe labels, and zero-vote displays. Record device model, iOS version, build 39, PASS/FAIL and screenshots/steps for each issue. For intermittent video playback and wrong logos, capture the exact clip/team and reproduction steps. This candidate uses the live backend: label test content UAT and avoid production kill-switch tests. Purchases in TestFlight use the sandbox. Physical-device acceptance is pending.",
+  "invitedNewTesters": false,
+  "submittedReview": false
+}
