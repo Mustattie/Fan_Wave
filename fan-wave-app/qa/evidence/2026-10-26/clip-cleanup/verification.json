@@ -1,0 +1,86 @@
+{
+  "date": "2026-10-26",
+  "authorization": "Owner asked to delete the black clips for iOS/Android review presentation",
+  "project": "fwlfiejvxmslkpoojggs",
+  "deleted": [
+    {
+      "id": "65c59ae9-c0d4-4596-8ded-63451ddc3898",
+      "title": "Build33_T3_kill",
+      "sha256": "a96e9130aeba3166f27ed8e5864ea9cbf0726ad7c78f81828988078f8f98275b",
+      "bytes": 22985062,
+      "frameSamples": [
+        {
+          "seconds": 0.5,
+          "meanLuma": 9.83
+        },
+        {
+          "seconds": 5,
+          "meanLuma": 9.81
+        },
+        {
+          "seconds": 9.5,
+          "meanLuma": 9.89
+        }
+      ]
+    },
+    {
+      "id": "a6480278-4155-4c63-9274-02f06ea6c1df",
+      "title": "Build33Build33_Test3_kill_upload",
+      "sha256": "22b74855c63ccfab7f2de9214a57448f5c1f4a7d7fb6f347c1c68cd2c73ebf91",
+      "bytes": 22747415,
+      "frameSamples": [
+        {
+          "seconds": 0.5,
+          "meanLuma": 9.83
+        },
+        {
+          "seconds": 5,
+          "meanLuma": 9.73
+        },
+        {
+          "seconds": 9.5,
+          "meanLuma": 9.91
+        }
+      ]
+    },
+    {
+      "id": "db12b285-8d90-4944-bcf7-7f2a1863d56d",
+      "title": "Build33_T5_airplane",
+      "sha256": "366a5e824b8f1d8852233f694a68f2b783a11de71daa91d818c91b080705a752",
+      "bytes": 23351411,
+      "frameSamples": [
+        {
+          "seconds": 0.5,
+          "meanLuma": 10.67
+        },
+        {
+          "seconds": 5,
+          "meanLuma": 10.63
+        },
+        {
+          "seconds": 9.5,
+          "meanLuma": 10.72
+        }
+      ]
+    }
+  ],
+  "beforeCount": 20,
+  "afterCount": 17,
+  "exactNonTargetIdsPreserved": true,
+  "remainingTargetRows": 0,
+  "storageAssetsQueuedForNormalGarbageCollection": 6,
+  "privateBackupDirectory": "C:/fwc/clip-cleanup-20261026",
+  "backupIncludes": [
+    "complete media_clips rows",
+    "three original videos",
+    "three original thumbnails",
+    "19 clip_views rows"
+  ],
+  "dependentLikes": 0,
+  "dependentComments": 0,
+  "dependentMessages": 0,
+  "codeChanged": false,
+  "newBuildRequired": false,
+  "playbackIssueSKYC134": "remains open; content cleanup is not a player fix",
+  "at": "2026-10-26T23:00:15.656Z"
+}
