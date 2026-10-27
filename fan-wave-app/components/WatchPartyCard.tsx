@@ -82,7 +82,7 @@ export function WatchPartyCard({ party, affinity }: WatchPartyCardProps) {
         const msg: string = error.message ?? 'Unknown error';
         const friendly =
           code === '42501' && msg.toLowerCase().includes('wc_pass_required')
-            ? 'Soccer Cup Pass required to RSVP to this party.'
+            ? 'This event has ended. Event passes are no longer sold.'
             : code === '53400'
               ? 'This watch party is at capacity.'
               : `RSVP could not be saved: ${msg}`;

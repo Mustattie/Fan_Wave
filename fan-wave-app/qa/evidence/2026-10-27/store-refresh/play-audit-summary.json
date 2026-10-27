@@ -1,0 +1,25 @@
+{
+  "localeCount": 1,
+  "containsWorldCup": true,
+  "images": [
+    {
+      "type": "en-US/phoneScreenshots",
+      "count": 6
+    },
+    {
+      "type": "en-US/sevenInchScreenshots",
+      "count": 6
+    },
+    {
+      "type": "en-US/tenInchScreenshots",
+      "count": 6
+    },
+    {
+      "type": "en-US/featureGraphic",
+      "count": 1
+    }
+  ],
+  "discarded": true,
+  "listingReplacement": "docs/play-listing-replacement-2026-10-27.json",
+  "committed": false
+}

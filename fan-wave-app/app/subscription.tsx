@@ -50,6 +50,9 @@ export default function SubscriptionScreen() {
 
   const status = state?.status ?? 'none';
   const tier = state?.tier ?? 'free';
+  // Reviewers retain full feature access but must also be able to inspect
+  // both purchase sheets without creating another account.
+  const canPreviewPlans = state?.isReviewer === true;
   const premiumUntil = state?.premiumActiveUntil ?? null;
   const hasPremium = state?.hasPremiumAccess ?? false;
   const TIER_TITLE: Record<string, string> = {
@@ -149,11 +152,11 @@ export default function SubscriptionScreen() {
             already have — a free user sees both, a Home Team subscriber sees
             only the MVP upgrade, an MVP subscriber sees neither because there
             is nothing left to sell them. */}
-        {tier !== 'mvp' && tier !== 'business' && (
+        {(canPreviewPlans || (tier !== 'mvp' && tier !== 'business')) && (
           <View style={styles.plans}>
             <Text style={styles.plansHeading}>Plans</Text>
 
-            {tier === 'free' && (
+            {(canPreviewPlans || tier === 'free') && (
               <TouchableOpacity style={styles.planCard} onPress={() => openPaywall('home_team')}>
                 <View style={styles.planTop}>
                   <Text style={styles.planName}>Home Team</Text>

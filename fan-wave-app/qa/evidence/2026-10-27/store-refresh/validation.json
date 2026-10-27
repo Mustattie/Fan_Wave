@@ -1,0 +1,28 @@
+{
+  "typecheck": {
+    "exitCode": 0,
+    "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "platforms": {
+    "ios": {
+      "success": true,
+      "suites": 46,
+      "tests": 393,
+      "passed": 393,
+      "failed": 0,
+      "logSha256": "4e3b69d7bbf4593e97fdb51b70ab3c95bf29e925a3aac765fdbd46131ebb7aed"
+    },
+    "android": {
+      "success": true,
+      "suites": 46,
+      "tests": 391,
+      "passed": 391,
+      "failed": 0,
+      "logSha256": "155e76d505ab432c7bfb12f02144d5ea7a04925a6dc0cb2cc57c768203177ef0"
+    }
+  },
+  "focusedTests": 14,
+  "nativePurchaseVerified": false,
+  "newBinaryBuilt": false,
+  "newScreenshotsUploaded": false
+}

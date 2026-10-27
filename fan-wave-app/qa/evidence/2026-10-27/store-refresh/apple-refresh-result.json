@@ -1,0 +1,95 @@
+{
+  "at": "2026-10-27T07:56:21.391Z",
+  "notesUpdated": [
+    "appStoreReviewDetails",
+    "home_team_annual_3499",
+    "home_team_monthly_499",
+    "mvp_annual_9999",
+    "mvp_monthly_1499",
+    "premium_monthly_999",
+    "premium_annual_10788"
+  ],
+  "screensRemoved": [
+    {
+      "id": "0a62e202-fbef-42d4-bfa6-1a798edd3747",
+      "file": "6_onboarding_parties.png",
+      "set": "a12dab0f-1ec4-40eb-9b22-d4022b980263"
+    },
+    {
+      "id": "77d8c8c1-b368-42ef-8c23-380fe3d1fc0a",
+      "file": "8_paywall_wc_pass.png",
+      "set": "a12dab0f-1ec4-40eb-9b22-d4022b980263"
+    },
+    {
+      "id": "68b2e36e-1e85-467a-a8b9-3e22f21058f6",
+      "file": "5_onboarding_hero.png",
+      "set": "a12dab0f-1ec4-40eb-9b22-d4022b980263"
+    },
+    {
+      "id": "5b64a101-5d6f-4f38-81e6-4a99d7e2ceb6",
+      "file": "7_paywall_premium.png",
+      "set": "a12dab0f-1ec4-40eb-9b22-d4022b980263"
+    },
+    {
+      "id": "dc2cdc5b-78cc-4f4d-bbb5-9d2ac1ca0660",
+      "file": "1_home_hero.png",
+      "set": "a12dab0f-1ec4-40eb-9b22-d4022b980263"
+    },
+    {
+      "id": "00711d77-bcad-424f-a897-1f95d8f79251",
+      "file": "4_groups.png",
+      "set": "a12dab0f-1ec4-40eb-9b22-d4022b980263"
+    },
+    {
+      "id": "ac161c79-5f7f-44c6-8534-297e66ee55a1",
+      "file": "3_watch_party.png",
+      "set": "a12dab0f-1ec4-40eb-9b22-d4022b980263"
+    },
+    {
+      "id": "0fbcde6e-0d1b-4473-845a-3c9c8f3f5873",
+      "file": "2_world_cup.png",
+      "set": "a12dab0f-1ec4-40eb-9b22-d4022b980263"
+    },
+    {
+      "id": "a02678cc-3692-4d0b-a086-6a1071150239",
+      "file": "IMG_5191_Soccer_Cup.PNG",
+      "set": "e9edd0dc-b44a-41f2-af40-5b91ff976222"
+    },
+    {
+      "id": "f0197688-6987-40c6-aa69-f6e8aa165a3d",
+      "file": "IMG_5189.PNG",
+      "reason": "old tournament tab still visible in navigation"
+    },
+    {
+      "id": "e543e0fa-550c-449c-9563-3b71fdf9352d",
+      "file": "IMG_5188.PNG",
+      "reason": "old tournament tab still visible in navigation"
+    },
+    {
+      "id": "017adde0-8a08-4ad7-8649-15f059acbe4c",
+      "file": "IMG_5194.PNG",
+      "reason": "old tournament tab still visible in navigation"
+    },
+    {
+      "id": "e9f43c36-1326-4d10-9775-9be29e0518eb",
+      "file": "IMG_5193.PNG",
+      "reason": "old tournament tab still visible in navigation"
+    }
+  ],
+  "submitted": false,
+  "reviewReadbackMatches": true,
+  "remainingScreens": [
+    {
+      "id": "6123c78f-00c6-4e01-aa76-83f030082a5d",
+      "name": "IMG_5183.PNG"
+    },
+    {
+      "id": "6cea0b60-6300-4243-bc97-d11c1de8bf9f",
+      "name": "IMG_5184.PNG"
+    },
+    {
+      "id": "bbf9ead5-a8a5-4fa4-9c35-867bdd226f0f",
+      "name": "IMG_5185.PNG"
+    }
+  ]
+}

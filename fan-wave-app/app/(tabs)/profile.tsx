@@ -220,7 +220,6 @@ export default function ProfileScreen() {
   // trialled without a second click.
   const tier = subState?.tier ?? 'free';
   const hasPremium = subState?.hasPremiumAccess ?? false;
-  const hasWC = subState?.hasWCAccess ?? false;
   const TIER_LABEL: Record<string, string> = {
     free: 'Free · Upgrade',
     home_team: 'Home Team',
@@ -229,11 +228,9 @@ export default function ProfileScreen() {
   };
   const baseLabel = TIER_LABEL[tier] ?? 'Free · Upgrade';
   const subBadge =
-    tier === 'free' && hasWC
-      ? 'Soccer Cup Pass'
-      : tier !== 'free' && subState?.isTrial
-        ? `${baseLabel} · Trial`
-        : baseLabel;
+    tier !== 'free' && subState?.isTrial
+      ? `${baseLabel} · Trial`
+      : baseLabel;
 
   const menuItems = [
     { icon: Edit3, label: 'Edit Profile', color: Colors.dark.text, badge: null as string | null },
@@ -336,7 +333,7 @@ export default function ProfileScreen() {
 
         {menuItems.map((item) => {
           const isUpgradeBadge =
-            item.label === 'Subscription' && !hasPremium && !hasWC;
+            item.label === 'Subscription' && !hasPremium;
           return (
             <TouchableOpacity
               key={item.label}

@@ -85,8 +85,8 @@ export default function DeleteAccountScreen() {
         <View style={styles.callout}>
           <Text style={styles.calloutTitle}>About your subscription</Text>
           <Text style={styles.calloutBody}>
-            Deleting your Fan Sphere account does NOT cancel any active Premium or
-            Soccer Cup Pass subscription billed by {STORE_NAME}. To stop future
+            Deleting your Fan Sphere account does NOT cancel any active
+            subscription billed by {STORE_NAME}. To stop future
             charges, cancel the subscription in your {STORE_NAME} account settings
             BEFORE deleting here.
           </Text>

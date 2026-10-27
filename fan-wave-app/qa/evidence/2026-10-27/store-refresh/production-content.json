@@ -1,0 +1,46 @@
+[
+  {
+    "audit": {
+      "tables": [
+        "chat_rooms",
+        "events",
+        "leagues",
+        "media_clips",
+        "watch_parties"
+      ],
+      "legacy_rows": [
+        {
+          "count": 0,
+          "table": "groups"
+        },
+        {
+          "count": 0,
+          "table": "parties"
+        },
+        {
+          "count": 0,
+          "table": "clips"
+        }
+      ],
+      "clip_columns": [
+        "id",
+        "chat_room_id",
+        "game_id",
+        "user_id",
+        "title",
+        "description",
+        "media_url",
+        "media_type",
+        "thumbnail_url",
+        "duration_seconds",
+        "view_count",
+        "like_count",
+        "created_at",
+        "sport_id",
+        "moment_type",
+        "share_count"
+      ],
+      "flagged_clips": null
+    }
+  }
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "audit": {
+      "historical_events": [
+        {
+          "id": "e0000000-0000-0000-0000-000000002026",
+          "name": "Soccer Cup 2026"
+        }
+      ],
+      "historical_leagues": [
+        {
+          "id": "b0000000-0000-0000-0000-000000000026",
+          "name": "Soccer Cup"
+        }
+      ]
+    }
+  }
+]

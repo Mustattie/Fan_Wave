@@ -109,6 +109,7 @@ export function tierAtLeast(current: SubscriptionTier, min: SubscriptionTier): b
 }
 
 export interface EntitlementState {
+  isReviewer?: boolean;
   status: SubscriptionStatus;
   tier: SubscriptionTier;
   premiumActiveUntil: Date | null;
@@ -228,7 +229,7 @@ export function useSubscriptionState() {
       // override take effect on the very next render after the file
       // reloads.
       if (isReviewerEmail(user.email)) {
-        return { ...derived, tier: 'mvp', hasPremiumAccess: true, hasWCAccess: true };
+        return { ...derived, isReviewer: true, tier: 'mvp', hasPremiumAccess: true, hasWCAccess: true };
       }
       return derived;
     },

@@ -36,7 +36,7 @@ const REASON_LABEL: Record<Reason, string> = {
   team: 'Your team',
   city_sport: 'Near you',
   city_any: 'In your city',
-  wc_country: 'Soccer Cup',
+  wc_country: 'National team',
 };
 
 export default function OnboardingSuggestedGroupsScreen() {
