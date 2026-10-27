@@ -1,0 +1,120 @@
+{
+  "date": "2026-10-27",
+  "issues": [
+    {
+      "key": "SKYC-123",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-124",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-125",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-126",
+      "status": "Done"
+    },
+    {
+      "key": "SKYC-127",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-128",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-129",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-130",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-131",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-132",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-133",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-134",
+      "status": "To Do"
+    },
+    {
+      "key": "SKYC-135",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-136",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-137",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-138",
+      "status": "To Do"
+    },
+    {
+      "key": "SKYC-139",
+      "status": "Done"
+    },
+    {
+      "key": "SKYC-140",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-141",
+      "status": "Done"
+    },
+    {
+      "key": "SKYC-142",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-143",
+      "status": "In Progress"
+    },
+    {
+      "key": "SKYC-144",
+      "status": "Done"
+    },
+    {
+      "key": "SKYC-145",
+      "status": "In Progress"
+    }
+  ],
+  "counts": {
+    "In Progress": 17,
+    "Done": 4,
+    "To Do": 2
+  },
+  "auditComments": [
+    {
+      "key": "SKYC-149",
+      "error": false,
+      "commentId": "11358"
+    },
+    {
+      "key": "SKYC-138",
+      "error": false,
+      "commentId": "11359"
+    },
+    {
+      "key": "SKYC-134",
+      "error": false,
+      "commentId": "11360"
+    }
+  ],
+  "statusTransitions": 0
+}

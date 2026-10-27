@@ -1,0 +1,80 @@
+{
+  "at": "2026-10-27T06:39:27.995Z",
+  "project": "fwlfiejvxmslkpoojggs",
+  "clips": [
+    {
+      "id": "21cafefd-b665-481e-a6f8-249d98557f6d",
+      "title": "Under the Lights: Teamwork in Motion",
+      "sourceId": "42558",
+      "sourcePage": "https://mixkit.co/free-stock-video/football-team-practicing-a-strategie-play-42558/",
+      "description": "American football practice demo, not NFL game footage. Edited for Fan Sphere. Licensed stock footage: Mixkit. Source: https://mixkit.co/free-stock-video/football-team-practicing-a-strategie-play-42558/",
+      "mediaUrl": "https://fwlfiejvxmslkpoojggs.supabase.co/storage/v1/object/public/clips/1fb5477d-7633-49d1-8581-4e1f6eecc874/reviewer-demo-20261027-42558.mp4",
+      "thumbnailUrl": "https://fwlfiejvxmslkpoojggs.supabase.co/storage/v1/object/public/clips/1fb5477d-7633-49d1-8581-4e1f6eecc874/reviewer-demo-20261027-42558.thumb.jpg",
+      "durationSeconds": 6.51,
+      "bytes": 934592,
+      "sha256": "5f0df4ede518d3d19e6d136df1b2941508772378bc302b7565eb14f75de36074",
+      "publicMediaStatus": 200,
+      "rangeStatus": 206,
+      "thumbnailStatus": 200,
+      "publisher": "Fan Sphere Reviewer",
+      "codec": "H.264",
+      "dimensions": "720x1280",
+      "fullDecodePassed": true
+    },
+    {
+      "id": "84865927-681f-49a2-b6ea-3bb6d0af8f34",
+      "title": "The Perfect Spiral: Passing Practice",
+      "sourceId": "42554",
+      "sourcePage": "https://mixkit.co/free-stock-video/portrait-of-a-quarterback-throwing-the-ball-42554/",
+      "description": "American football practice demo, not NFL game footage. Edited for Fan Sphere. Licensed stock footage: Mixkit. Source: https://mixkit.co/free-stock-video/portrait-of-a-quarterback-throwing-the-ball-42554/",
+      "mediaUrl": "https://fwlfiejvxmslkpoojggs.supabase.co/storage/v1/object/public/clips/1fb5477d-7633-49d1-8581-4e1f6eecc874/reviewer-demo-20261027-42554.mp4",
+      "thumbnailUrl": "https://fwlfiejvxmslkpoojggs.supabase.co/storage/v1/object/public/clips/1fb5477d-7633-49d1-8581-4e1f6eecc874/reviewer-demo-20261027-42554.thumb.jpg",
+      "durationSeconds": 3.17,
+      "bytes": 616031,
+      "sha256": "db3041ff8aa7399e74bfc69283c4d4367daaf19896e475d945788148476eb2f2",
+      "publicMediaStatus": 200,
+      "rangeStatus": 206,
+      "thumbnailStatus": 200,
+      "publisher": "Fan Sphere Reviewer",
+      "codec": "H.264",
+      "dimensions": "720x1280",
+      "fullDecodePassed": true
+    },
+    {
+      "id": "15212cf5-3d89-4689-b083-88d4d1704416",
+      "title": "Eyes on the Ball: Receiver Drill",
+      "sourceId": "42556",
+      "sourcePage": "https://mixkit.co/free-stock-video/wide-receiver-catching-the-ball-in-practice-42556/",
+      "description": "American football practice demo, not NFL game footage. Edited for Fan Sphere. Licensed stock footage: Mixkit. Source: https://mixkit.co/free-stock-video/wide-receiver-catching-the-ball-in-practice-42556/",
+      "mediaUrl": "https://fwlfiejvxmslkpoojggs.supabase.co/storage/v1/object/public/clips/1fb5477d-7633-49d1-8581-4e1f6eecc874/reviewer-demo-20261027-42556.mp4",
+      "thumbnailUrl": "https://fwlfiejvxmslkpoojggs.supabase.co/storage/v1/object/public/clips/1fb5477d-7633-49d1-8581-4e1f6eecc874/reviewer-demo-20261027-42556.thumb.jpg",
+      "durationSeconds": 2.84,
+      "bytes": 510035,
+      "sha256": "2df437ad22e35d904015091fc47f90b4ba8f5bb089adb3fda6e4defeafd624b3",
+      "publicMediaStatus": 200,
+      "rangeStatus": 206,
+      "thumbnailStatus": 200,
+      "publisher": "Fan Sphere Reviewer",
+      "codec": "H.264",
+      "dimensions": "720x1280",
+      "fullDecodePassed": true
+    }
+  ],
+  "authenticatedClientRows": 3,
+  "result": "PASS",
+  "testSessionSignedOut": true,
+  "authorization": "Owner explicitly selected all three and requested publication with nice titles",
+  "license": {
+    "name": "Mixkit Stock Video Free License",
+    "url": "https://mixkit.co/license/#videoFree",
+    "verified": "2026-10-27",
+    "privateEvidence": "C:/fwc/reviewer-clips-20261027/license-visible.png"
+  },
+  "assets": {
+    "privateOriginalsAndPreparedFiles": "C:/fwc/reviewer-clips-20261027",
+    "codeChanged": false,
+    "newBuildRequired": false,
+    "priorClipRowsPreserved": 17,
+    "totalClipRowsAfter": 20
+  }
+}

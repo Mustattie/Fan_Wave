@@ -1,0 +1,463 @@
+{
+  "date": "2026-10-27",
+  "scope": "Independently verify Claude latest handoffs and store readiness; no code merge or new build in this audit",
+  "claudeBranch": {
+    "ref": "claude/logo-recycling-and-clip-stall-telemetry",
+    "commit": "d997aad814a52653667655b90130bb9202ca8134",
+    "mergedIntoV95": false,
+    "trialMergeTree": "ef715a3cb2e906e3904f310d9153751890c897ef",
+    "trialMergeConflicts": false,
+    "xcodePinPreserved": true,
+    "trialMergeExecutableTreeMatchesTestedBranch": true
+  },
+  "branchTests": {
+    "typecheck": {
+      "exitCode": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ios": {
+      "suites": 46,
+      "tests": 395,
+      "failed": 0,
+      "exitCode": 0,
+      "logSha256": "c69fc08407a30abe62f461a8c449962fb4c7f36a44cecc52e2e2783989844809"
+    },
+    "androidInitial": {
+      "suites": 46,
+      "passed": 392,
+      "failed": 1,
+      "failure": "fanGroupLeaveAndMembersOnly: group title did not appear within5s render wait",
+      "logSha256": "569b785c61727710095dd626555f18df64ffea51db68aec9fd875d63a17f7b27"
+    },
+    "androidFocused": {
+      "tests": 10,
+      "failed": 0,
+      "exitCode": 0,
+      "logSha256": "bea358f94dcc8134617157c9c858633e314c2907202f518f3f13d090890a108d"
+    },
+    "androidRerun": {
+      "suites": 46,
+      "tests": 393,
+      "failed": 0,
+      "exitCode": 0,
+      "logSha256": "61a778bbb56d2d5794ffe381392c52c56d204af620f37699d1ac02c4cc2ef868"
+    },
+    "sourceModifiedForRerun": false
+  },
+  "qaSignIn": {
+    "at": "2026-10-27T06:36:51.040Z",
+    "project": "fwlfiejvxmslkpoojggs",
+    "httpStatus": 400,
+    "qaPasswordLooksPlaceholder": false,
+    "errorCode": "invalid_credentials",
+    "message": "Invalid login credentials",
+    "authenticated": false
+  },
+  "appleReviewerSignIn": {
+    "at": "2026-10-27T06:44:04.432Z",
+    "credentialSource": "Current App Store Connect review details",
+    "httpStatus": 200,
+    "authenticated": true,
+    "errorCode": null,
+    "testSessionSignedOut": true
+  },
+  "reviewerAccess": {
+    "tier": "mvp",
+    "isReviewer": true,
+    "hasPremiumAccess": true
+  },
+  "logoSync": {
+    "deployedTarget": "https://fwlfiejvxmslkpoojggs.supabase.co/functions/v1/sync-team-logos",
+    "cronActive": true,
+    "cron": "0 9 * * 1",
+    "legacyTargetSuspicion": false,
+    "logoDataCorrectnessNotEstablished": true
+  },
+  "easInventory": [
+    {
+      "id": "46026cac-4b17-4e68-aaa1-698eab5fccb7",
+      "platform": "ANDROID",
+      "build": "35",
+      "status": "FINISHED",
+      "profile": "preview",
+      "distribution": "INTERNAL",
+      "commit": "57cf4e6f9c74a94f52cde841ef7304ec759de95b",
+      "created": "2026-10-06T20:34:27.315Z"
+    },
+    {
+      "id": "c63acd76-ddc4-4258-8966-53b002b397cc",
+      "platform": "ANDROID",
+      "build": "34",
+      "status": "FINISHED",
+      "profile": "preview",
+      "distribution": "INTERNAL",
+      "commit": "bac52ca4629e6627873f88e24d9d3af1244fca4f",
+      "created": "2026-10-04T00:35:08.744Z"
+    },
+    {
+      "id": "5e78ef42-fa9f-4001-b506-61ea213d6c71",
+      "platform": "ANDROID",
+      "build": "33",
+      "status": "FINISHED",
+      "profile": "preview",
+      "distribution": "INTERNAL",
+      "commit": "f131669aa02f1f7a33c37ba5de33fa87cad4256a",
+      "created": "2026-09-28T08:48:54.305Z"
+    },
+    {
+      "id": "f760b063-1966-4531-9a92-93cfeebd45af",
+      "platform": "ANDROID",
+      "build": "32",
+      "status": "FINISHED",
+      "profile": "preview",
+      "distribution": "INTERNAL",
+      "commit": "9e3128f0aeb518219766d4ab0f7d90dd1d8438f5",
+      "created": "2026-09-26T20:09:39.935Z"
+    },
+    {
+      "id": "d035de6b-b1e1-4239-9034-c9251bec56df",
+      "platform": "ANDROID",
+      "build": "31",
+      "status": "FINISHED",
+      "profile": "preview",
+      "distribution": "INTERNAL",
+      "commit": "e59a65fd8c3b209ca0b5d051eba4aad766189b2b",
+      "created": "2026-09-25T08:38:16.388Z"
+    },
+    {
+      "id": "b2dd9155-31c6-4b1d-b231-28f78e8842f8",
+      "platform": "IOS",
+      "build": "39",
+      "status": "FINISHED",
+      "profile": "production",
+      "distribution": "STORE",
+      "commit": "d77e89f11c9d986ba731a21b27a72fb0f7198f79",
+      "created": "2026-10-20T07:20:21.745Z"
+    },
+    {
+      "id": "2f6a53ae-a2fe-4259-ba52-f7c70bd03bd1",
+      "platform": "IOS",
+      "build": "38",
+      "status": "ERRORED",
+      "profile": "production",
+      "distribution": "STORE",
+      "commit": "e76f7055dea46eb87e090f715414e1a16e184ee3",
+      "created": "2026-10-19T20:01:04.663Z"
+    },
+    {
+      "id": "6b9ee448-403d-443f-8b37-99ddbae50231",
+      "platform": "IOS",
+      "build": "37",
+      "status": "FINISHED",
+      "profile": "production",
+      "distribution": "STORE",
+      "commit": "a60461ecda3cd2c9d1fbf6a8ef1eb5433989ad62",
+      "created": "2026-10-13T06:17:09.664Z"
+    },
+    {
+      "id": "803e4e62-a5bf-4d24-8ba3-4dd742b78521",
+      "platform": "IOS",
+      "build": "36",
+      "status": "FINISHED",
+      "profile": "production",
+      "distribution": "STORE",
+      "commit": "75d73d10e0daa03e2b5d825a2e6531a077575799",
+      "created": "2026-09-16T08:42:24.726Z"
+    },
+    {
+      "id": "c59767c2-0a52-4ae0-9033-1c09e6a20fa2",
+      "platform": "IOS",
+      "build": "35",
+      "status": "FINISHED",
+      "profile": "production",
+      "distribution": "STORE",
+      "commit": "0d2ad9496f891c08a3fa40b6770831c91a64378f",
+      "created": "2026-09-10T08:06:08.374Z"
+    }
+  ],
+  "apple": {
+    "at": "2026-10-27T06:43:06.216Z",
+    "httpStatus": 200,
+    "versions": [
+      {
+        "id": "ae38e160-a6d0-44c1-a749-746878ba17ef",
+        "version": "1.0",
+        "state": "REJECTED",
+        "buildId": "b0ad08bf-5608-4e41-aa8c-07c83ddfb57d"
+      }
+    ],
+    "reviewNotes": [
+      {
+        "id": "7fb100cc-f992-4713-8ff8-ed38e0bca236",
+        "containsWorldCup": true,
+        "containsFiveTabNames": false,
+        "demoAccountRequired": true,
+        "hasDemoAccountName": true,
+        "hasDemoAccountPassword": true
+      }
+    ],
+    "listingLocales": [
+      {
+        "id": "286e96ef-93eb-4f35-ba6f-bc10b7fc1759",
+        "locale": "en-US",
+        "descriptionMentionsWorldCup": false,
+        "descriptionMentionsFifa": false,
+        "keywordsMentionFifa": false
+      }
+    ],
+    "linkedBuilds": [
+      {
+        "id": "b0ad08bf-5608-4e41-aa8c-07c83ddfb57d",
+        "build": "9",
+        "processingState": "VALID"
+      }
+    ]
+  },
+  "google": {
+    "at": "2026-10-27T06:43:04.089Z",
+    "package": "org.fansphere.app",
+    "committed": false,
+    "editCreateStatus": 200,
+    "trackReadStatus": 200,
+    "tracks": [
+      {
+        "track": "production",
+        "releases": [
+          {
+            "name": "1.0.0",
+            "status": "completed",
+            "versionCodes": [
+              "5"
+            ]
+          }
+        ]
+      },
+      {
+        "track": "beta"
+      },
+      {
+        "track": "alpha",
+        "releases": [
+          {
+            "name": "6 (1.0.0)",
+            "status": "completed",
+            "versionCodes": [
+              "6"
+            ]
+          }
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          {
+            "name": "2 (1.0.0)",
+            "status": "completed",
+            "versionCodes": [
+              "2"
+            ]
+          }
+        ]
+      }
+    ],
+    "bundleReadStatus": 200,
+    "bundleVersions": [
+      {
+        "versionCode": 2,
+        "sha256": "f5bc7cc2f252fb40d2284406ff8a1c542477c51a8b5cbbf5c9230154c504fc0f"
+      },
+      {
+        "versionCode": 3,
+        "sha256": "a00bbf93025bc2bcf32e72a7c74b53bb57e10e4d3d76282677675701e1bd5a3b"
+      },
+      {
+        "versionCode": 4,
+        "sha256": "4b278da64b1b501859d4b427cda39e197f19f128ecf549c65482bc330a188e20"
+      },
+      {
+        "versionCode": 5,
+        "sha256": "171374504a005fba767b540007f74058466720c5a162bfc4efaa7ad114e4a128"
+      },
+      {
+        "versionCode": 6,
+        "sha256": "36f029222279120dbbcc395b4ee527da8636573546175096b7691feaf2c6bbe9"
+      }
+    ],
+    "readSessionDiscarded": true
+  },
+  "appleSubscriptions": {
+    "at": "2026-10-27T06:43:59.345Z",
+    "groupsStatus": 200,
+    "subscriptions": [
+      {
+        "id": "6805361495",
+        "group": "22335867",
+        "productId": "home_team_annual_3499",
+        "state": "READY_TO_SUBMIT",
+        "name": "Home Team Annual"
+      },
+      {
+        "id": "6805356889",
+        "group": "22335867",
+        "productId": "home_team_monthly_499",
+        "state": "READY_TO_SUBMIT",
+        "name": "Home Team Monthly"
+      },
+      {
+        "id": "6805367086",
+        "group": "22335867",
+        "productId": "mvp_annual_9999",
+        "state": "READY_TO_SUBMIT",
+        "name": "MVP Annual"
+      },
+      {
+        "id": "6805364362",
+        "group": "22335867",
+        "productId": "mvp_monthly_1499",
+        "state": "READY_TO_SUBMIT",
+        "name": "MVP Monthly"
+      },
+      {
+        "id": "6774527960",
+        "group": "22120755",
+        "productId": "premium_monthly_999",
+        "state": "READY_TO_SUBMIT",
+        "name": "Fan Sphere Premium"
+      },
+      {
+        "id": "6774546126",
+        "group": "22120755",
+        "productId": "premium_annual_10788",
+        "state": "READY_TO_SUBMIT",
+        "name": "Premium Annual"
+      }
+    ]
+  },
+  "googleSubscriptions": {
+    "at": "2026-10-27T06:44:48.502Z",
+    "httpStatus": 200,
+    "hasMore": false,
+    "subscriptions": [
+      {
+        "productId": "home_team_annual_3499",
+        "plans": [
+          {
+            "basePlanId": "annual",
+            "state": "ACTIVE",
+            "usPrice": {
+              "currencyCode": "USD",
+              "units": "34",
+              "nanos": 990000000
+            }
+          }
+        ]
+      },
+      {
+        "productId": "home_team_monthly_499",
+        "plans": [
+          {
+            "basePlanId": "monthly",
+            "state": "ACTIVE",
+            "usPrice": {
+              "currencyCode": "USD",
+              "units": "4",
+              "nanos": 990000000
+            }
+          }
+        ]
+      },
+      {
+        "productId": "mvp_annual_9999",
+        "plans": [
+          {
+            "basePlanId": "annual",
+            "state": "ACTIVE",
+            "usPrice": {
+              "currencyCode": "USD",
+              "units": "99",
+              "nanos": 990000000
+            }
+          }
+        ]
+      },
+      {
+        "productId": "mvp_monthly_1499",
+        "plans": [
+          {
+            "basePlanId": "monthly",
+            "state": "ACTIVE",
+            "usPrice": {
+              "currencyCode": "USD",
+              "units": "14",
+              "nanos": 990000000
+            }
+          }
+        ]
+      },
+      {
+        "productId": "premium_annual_10788",
+        "plans": [
+          {
+            "basePlanId": "annual",
+            "state": "ACTIVE",
+            "usPrice": {
+              "currencyCode": "USD",
+              "units": "107",
+              "nanos": 990000000
+            }
+          }
+        ]
+      },
+      {
+        "productId": "premium_monthly_999",
+        "plans": [
+          {
+            "basePlanId": "monthly",
+            "state": "ACTIVE",
+            "usPrice": {
+              "currencyCode": "USD",
+              "units": "9",
+              "nanos": 990000000
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "sentry": {
+    "at": "2026-10-27T06:40:58.750Z",
+    "queries": [
+      {
+        "query": "build_number:39 platform:ios",
+        "httpStatus": 200,
+        "returned": 0,
+        "matchingTaggedEvents": 0,
+        "hasMore": false,
+        "matchingEvents": [],
+        "limitation": "Event search is not proof of app usage or defect absence; only records returned in this window are assessed"
+      },
+      {
+        "query": "build_number:40 platform:ios",
+        "httpStatus": 200,
+        "returned": 0,
+        "matchingTaggedEvents": 0,
+        "hasMore": false,
+        "matchingEvents": [],
+        "limitation": "Event search is not proof of app usage or defect absence; only records returned in this window are assessed"
+      }
+    ]
+  },
+  "unverified": [
+    "Actual Apple rejection message/resolution-center thread",
+    "Current screenshot suitability",
+    "Apple version/IAP attachment",
+    "Outstanding commercial agreements",
+    "Complete physical TestFlight and Android acceptance",
+    "Full purchase/restore acceptance on ordinary accounts"
+  ],
+  "physicalDevicesAttached": 0,
+  "storeSubmissionPerformed": false,
+  "productionFunctionsOrSchemaChanged": false,
+  "newBuildStarted": false,
+  "privateEvidenceDirectory": "C:/fwc/reviewer-clips-20261027"
+}
