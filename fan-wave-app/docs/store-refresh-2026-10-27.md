@@ -2,6 +2,10 @@
 
 Status: preparation in progress. No resubmission or public release authorised by this document.
 
+Update: the owner subsequently authorised a replacement iOS build. **1.0.0 (40)** is now
+VALID / IN_BETA_TESTING and verified available in the existing Outside Testers group.
+Use build 40 for the friend's collection; see `ios-testflight-2026-10-27.md`.
+
 Apple's supplied June 13 rejection concerns version 1.0, build **9**, submission
 `9cb026fb-1ad4-48ce-9d42-e29a9b0bfe16`. It cites non-iOS status bars (2.3.10),
 content resembling FIFA (5.2.1), and inaccessible legacy purchases (2.1(b)).
@@ -51,7 +55,7 @@ tablet captures if tablet presentation is retained. Update the feature graphic i
 
 ## Purchase review notes for the replacement build
 
-The full reviewer-access path below requires the source fix from this refresh; it is **not yet in build 39**.
+The full reviewer-access path below is included in **build 40**, and is **not in build 39**.
 Do not claim this path was hardware-tested or that a replacement build was selected until verified.
 
 Sign in using the credentials stored in App Review Information. The review account receives
@@ -108,5 +112,6 @@ Private exact screenshot backups, original store records and detailed logs are i
 `C:/fwc/store-refresh-20261027/`. The backup of App Review Information contains credentials and
 must never be committed. Sanitised results are in `qa/evidence/2026-10-27/store-refresh/`.
 
-No store submission, Google Play edit commit, binary build, customer entitlement change,
-historical event deletion or public release was performed in this refresh.
+During the initial metadata refresh no store submission, Google Play edit commit, binary build,
+customer entitlement change, historical event deletion or public release was performed.
+The subsequent owner-authorised iOS build/upload is recorded separately in `ios-testflight-2026-10-27.md`.

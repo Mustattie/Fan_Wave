@@ -1,0 +1,16 @@
+{
+  "at": "2026-10-27T08:49:57.090Z",
+  "buildId": "9870c5b8-ccb3-402e-abe9-25629ff15896",
+  "version": "40",
+  "processingState": "VALID",
+  "group": {
+    "id": "0026109c-6450-41f6-8416-9070a9731747",
+    "name": "Outside Testers",
+    "isInternalGroup": true
+  },
+  "availableInGroup": true,
+  "whatToTest": "Fan Sphere 1.0.0 (40) — replacement candidate for final iPhone testing and store screenshots.\n\nIncludes October 27 reviewer-plan access and retired-event cleanup. Source 12497238cf147350593096c065f73a841dc0a909. Built with Xcode 26.6. Uses the live production backend: label test posts UAT, use your own short footage, and do not change production flags.\n\nPlease confirm TestFlight shows build 40, then record iPhone model, iOS, test time, network and pass/fail results. Capture original native screenshots of Home, Discover, Game Day, a licensed demo playing in Clips, watch-party details, a test group conversation and Profile. Avoid keyboards, loading states, notifications and private messages. Send originals as files.\n\nCapture all four paywalls before purchases: Profile > Subscription > See Home Team / See MVP > Monthly / Annual. Record the native Apple sheet opening; cancel each while collecting the four options. Reviewer accounts retain full access but can now inspect both tiers. Use a separate ordinary non-entitled app account for actual sandbox purchase and restore acceptance; complimentary reviewer access is not a receipt. Test Home Team monthly purchase, persistence after relaunch, Restore Purchases and MVP upgrade. TestFlight transactions use Apple's sandbox.\n\nPlay all three new credited football practice demos; check scrolling, loops, mute/unmute and background silence. Record/upload your own short clip and verify playback. Check sign-up/email confirmation/reset, sign-in persistence (including an hour backgrounded), venue search, game selection, RSVP, group messages and media, offline recovery, notifications/deep links and deletion on a disposable account. Coordinate a second user for chat/RSVP/push checks. Report crashes, wrong team logos, stalled/dark playback, retired tournament wording or unavailable plans with exact steps and time. Do not call a blocked check passed.\n\nThis is a test candidate: device acceptance, native screenshots, sandbox purchase/restore and final submission checks are pending. No App Store review or public release has been submitted.",
+  "whatToTestReadbackVerified": true,
+  "invitedNewTesters": false,
+  "submittedReview": false
+}

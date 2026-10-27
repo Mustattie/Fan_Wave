@@ -1,0 +1,79 @@
+{
+  "date": "2026-10-27",
+  "approvedChange": "Build replacement iOS version containing reviewer purchase access and retired-event cleanup; upload to TestFlight for friend testing and screenshots",
+  "sourceCommit": "12497238cf147350593096c065f73a841dc0a909",
+  "sourceRemoteVerified": true,
+  "actualBuilder": {
+    "image": "macos-tahoe-26.5-xcode-26.6",
+    "xcode": "26.6 (17F113)"
+  },
+  "gate": {
+    "at": "2026-10-27T08:37:14.830Z",
+    "sourceCommit": "12497238cf147350593096c065f73a841dc0a909",
+    "checks": {
+      "image": true,
+      "release": true,
+      "store": true,
+      "localSigning": true,
+      "production": true,
+      "productionBackend": true,
+      "bundle": true,
+      "version": true,
+      "iphoneOnly": true
+    },
+    "testsReusedFrom": "ec15fdb",
+    "productAndBuildConfigUnchangedSinceTestedCommit": true,
+    "iosTests": 393,
+    "androidTests": 391,
+    "typecheck": true,
+    "physicalAcceptancePending": true,
+    "ownerAuthorisedBuildForPhysicalTesting": true,
+    "publicReleaseAuthorised": false
+  },
+  "build": {
+    "id": "47a5cc06-d1b5-41b9-89fc-970e22f4a1e2",
+    "status": "FINISHED",
+    "version": "1.0.0",
+    "number": "40",
+    "detailsUrl": "https://expo.dev/accounts/dataking263/projects/fan-wave-app/builds/47a5cc06-d1b5-41b9-89fc-970e22f4a1e2"
+  },
+  "artifact": {
+    "bundleIdentifier": "org.fansphere.app",
+    "version": "1.0.0",
+    "build": "40",
+    "minimumOSVersion": "15.1",
+    "bytes": 23648516,
+    "sha256": "dfecb02e9f247ca37427534aca9f801c891355c012fb8b84c127ecdb97b28eca",
+    "profileExpiration": "2027-08-31T06:36:18Z",
+    "apsEnvironment": "production",
+    "debuggable": false,
+    "applicationIdentifier": "D887TLA6L9.org.fansphere.app",
+    "productionBackendPresent": true,
+    "stagingBackendPresent": false,
+    "sentryDsnPresent": true,
+    "retiredEventNoticePresent": true,
+    "deviceFamily": [
+      1
+    ]
+  },
+  "submission": {
+    "status": "uploaded",
+    "appleBuildId": "9870c5b8-ccb3-402e-abe9-25629ff15896",
+    "processingState": "VALID",
+    "internalBuildState": "IN_BETA_TESTING",
+    "existingTesterGroupAvailable": true,
+    "group": {
+      "id": "0026109c-6450-41f6-8416-9070a9731747",
+      "name": "Outside Testers",
+      "isInternalGroup": true
+    },
+    "whatToTestAttached": true,
+    "newTesterInvitations": false
+  },
+  "physicalDeviceAcceptance": "pending",
+  "nativeScreenshots": "pending",
+  "sandboxPurchaseRestoreAcceptance": "pending",
+  "appStoreReviewSubmitted": false,
+  "publicRelease": false,
+  "privateEvidenceDirectory": "C:/fwc/testflight-20261027"
+}

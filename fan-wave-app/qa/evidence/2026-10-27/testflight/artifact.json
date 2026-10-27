@@ -1,0 +1,19 @@
+{
+  "bundleIdentifier": "org.fansphere.app",
+  "version": "1.0.0",
+  "build": "40",
+  "minimumOSVersion": "15.1",
+  "bytes": 23648516,
+  "sha256": "dfecb02e9f247ca37427534aca9f801c891355c012fb8b84c127ecdb97b28eca",
+  "profileExpiration": "2027-08-31T06:36:18Z",
+  "apsEnvironment": "production",
+  "debuggable": false,
+  "applicationIdentifier": "D887TLA6L9.org.fansphere.app",
+  "productionBackendPresent": true,
+  "stagingBackendPresent": false,
+  "sentryDsnPresent": true,
+  "retiredEventNoticePresent": true,
+  "deviceFamily": [
+    1
+  ]
+}
