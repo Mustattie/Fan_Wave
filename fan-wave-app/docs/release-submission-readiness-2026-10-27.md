@@ -13,14 +13,19 @@ edit store listings — every execution item belongs to Codex or the owner.
 A build is a merge, a gate run and a paid build away. The App Store side is
 further away than that, and no build shortens it:
 
-1. **The build 11 rejection has no recorded response.** iOS 1.0.0 (11) was
-   submitted 2026-06-12 and rejected on or before 2026-06-17. The response was
-   deliberately deferred until the binary worked, and this repository records
-   no reply and no statement of what Apple cited. Repository silence is not
-   proof the owner never read it — but if there is an unanswered Resolution
-   Center thread, resubmitting walks into the same guideline. Someone has to
-   open App Store Connect and look. This is the highest-value fifteen minutes
-   available right now, and it is owner-only.
+1. **The rejection has no recorded response — now read, still unanswered.**
+   The owner supplied it on 2026-10-27. It is submission `9cb026fb`, **version
+   1.0 (9)**, submitted 2026-06-12 02:31 and reviewed 2026-06-13 on an iPhone
+   17 Pro Max — note that is build **9**, not the "build 11" this project's
+   notes had recorded. Apple cited 2.3.10, 5.2.1 and 2.1(b), the second
+   message opens "The issues we previously identified still need your
+   attention", and the thread has had no reply since. Full analysis, the reply
+   draft and replacement App Review Information are in
+   `app-review-response-2026-10-27.md`. A defect that would produce the 2.1(b)
+   symptom is confirmed at HEAD — allow-listed reviewer accounts have every
+   purchase hidden from them (SKYC-150) — and Codex has an uncommitted fix for
+   it. Whether that is what happened to build 9 is not established; the code
+   and the credentials have both moved since June.
 2. **The listing probably still describes the pre-pivot app.** The June review
    notes walk the reviewer through a "World Cup" tab. The app now has five
    tabs — Home, Discover, Game Day, Clips, Profile — and no World Cup tab. A
@@ -41,15 +46,18 @@ further away than that, and no build shortens it:
 Items 1-3 are owner-owned, independent of which binary ships, and can start
 immediately in parallel with everything else here.
 
-## The tension the owner needs to resolve: parity versus speed
+## The build strategy, which is settled: one commit, both platforms
 
-These two instructions pull against each other, so the choice has to be
-explicit.
+This section originally posed parity against speed as a choice for the owner.
+Reading the rejection closed it — a new build is required on every path, so
+there is nothing left to trade. What remains open is what goes *into* the
+build, which credentials ship with it, and the public-release hold.
 
-Build 39 is already on TestFlight — VALID, IN_BETA_TESTING, built from
-`d77e89f` on a verified Xcode 26.6 toolchain, and the only iOS build that
-carries all twenty UAT fixes (build 37 predates the PR 21 merge `5f9dcf1` of
-2026-10-16). Submitting it costs no build time.
+Build 39 is on TestFlight — VALID, IN_BETA_TESTING, built from `d77e89f` on a
+verified Xcode 26.6 toolchain, and the only iOS build carrying all twenty UAT
+fixes (build 37 predates the PR 21 merge `5f9dcf1` of 2026-10-16). It is the
+right *source baseline*. It is not a submittable artifact, for the 5.2.1
+reason below.
 
 But **Android cannot match it.** The newest Android artifact on record is
 build 35 — an *internal preview APK* from commit `57cf4e6`, completed
@@ -65,31 +73,39 @@ pinned, which is itself a commit. So an Android build can never share build
    reviewed line. Do **not** merge `d997aad`.
 2. Build iOS and Android from that single commit. Whatever build numbers EAS
    assigns are whatever it assigns; do not plan around a particular one.
-3. The iOS artifact then carries **unchanged product source** relative to the
-   verified build 39 — current HEAD differs from `d77e89f` only in
-   documentation and QA evidence, and the pinned Android image key does not
-   configure the iOS binary. That is a claim about source, conditional on
-   verifying the build inputs are equivalent too: remote EAS environment
-   values, lockfile, credentials and resolved config. The build number differs
-   by definition.
+3. **Superseded in part on 2026-10-27.** The original claim here was that the
+   iOS artifact would carry unchanged product source relative to build 39.
+   That no longer holds: Codex's store-refresh work adds the SKYC-150
+   reviewer-access fix and the retired-World-Cup UI cleanup, and both belong
+   in this release — the first because it is what unblocks 2.1(b), the second
+   because 5.2.1 asks for the World Cup content to be gone. So the parity
+   build is **build 39's source plus those changes**, and its gate numbers
+   must be taken from the actual commit rather than from the expectations in
+   Gate A item 3. The pinned Android image key still does not configure the
+   iOS binary, and the build number differs by definition.
 4. "Twin" here means the two artifacts share a source commit. It does not mean
    their runtime behaviour has been shown to match — see the `Platform.OS`
    caveat below.
 5. **Accept the signed artifacts before submitting**, per Gate A item 6.
    Neither binary has been seen at this point in the sequence.
 
-This satisfies "exactly the same" honestly, keeps the badge/telemetry change
-(`d997aad`) out of a release nobody has hardware-verified, and costs one extra
-iOS build. The badge and telemetry work then ships as the next update, which
+This satisfies "exactly the same" honestly and keeps the badge/telemetry
+change (`d997aad`) out of a release nobody has hardware-verified. The badge
+and telemetry work then ships as the next update, which
 needs a **marketing version bump** in `app.json` — most likely to `1.0.1`,
 since auto-increment moves only the build number and leaves the version at
 `1.0.0`. Its build number will be assigned when it is built and has nothing to
 do with the number the parity build happens to receive.
 
-**If speed beats parity:** submit iOS 39 today as-is and let Android follow
-from the pinned commit, accepting a documented config-only source delta and a
-staggered release. Faster by one build cycle; the two stores are briefly out of
-step. Still conditional on Gate B and the release-hold decision below.
+**The "submit build 39 today" shortcut is gone.** It was the fastest path
+until the rejection was read, and it no longer works: Apple cited 5.2.1 and
+asked for the World Cup content to be removed from the app, and build 39 still
+contains it. Submitting that binary resubmits the thing that was rejected.
+A new build is required on every path, so the only real question left is what
+goes into it — not whether to cut one.
+
+That removes the parity-versus-speed tension entirely. Build once, from one
+commit, for both platforms.
 
 **If the owner wants `d997aad` in the release anyway** — reasonable if shipping
 a known-open logo defect is unacceptable — then merge it first and the build
@@ -198,8 +214,16 @@ subscription paths in particular have to be exercised on both platforms.
 
 Each of these is a guideline Apple has already cited against this app.
 
-- [ ] **Read the build 11 rejection** and tell me what it says. I will draft
-      the Resolution Center reply as the build 7 reply was drafted.
+- [x] ~~**Read the rejection**~~ — **done 2026-10-27**, owner supplied it.
+      Submission `9cb026fb`, version 1.0 (9), reviewed 2026-06-13: Guidelines
+      2.3.10 (non-iOS status bars in screenshots), 5.2.1 (content resembling
+      FIFA) and 2.1(b) (In-App Purchases could not be located). The reply
+      draft, the full analysis and the replacement App Review Information are
+      in `app-review-response-2026-10-27.md`. **SKYC-150: at HEAD, an
+      allow-listed reviewer account has every purchase hidden from it, which
+      would reproduce the 2.1(b) symptom if such an account is given to
+      Apple again. Codex has an uncommitted fix. Either ship it or supply a
+      non-allow-listed demo account.**
 - [ ] **Sign any outstanding agreements** at appstoreconnect.apple.com/business.
       An expired agreement surfaces as a 403
       `REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED` on `eas submit`, after the build
@@ -208,9 +232,12 @@ Each of these is a guideline Apple has already cited against this app.
       from the June checklist: `home_team_monthly_499`,
       `home_team_annual_3499`, `mvp_monthly_1499`, `mvp_annual_9999`
       (`lib/entitlements.ts:562`). Each must be "Ready to Submit" **and**
-      ticked in the version-binding section. Decide separately whether
-      `wc_pass_2026` stays on sale — the code still honours a `wc_pass`
-      entitlement, so withdrawing it is a product decision, not a cleanup.
+      ticked in the version-binding section.
+- [ ] **Withdraw the Soccer Cup Pass products from sale.** Apple named them
+      under 5.2.1, they are World Cup content in the storefront, and they are
+      not in the current catalogue. Continuing to honour the `wc_pass`
+      entitlement for historical buyers does not require continuing to sell
+      it. This is a required step, not an open question.
 - [ ] **Verify the purchase stack, not just the attachment.** RevenueCat
       offerings and package-to-product mappings, Play base plans, entitlement
       delivery, purchase, restore and subscription-change on both platforms.
@@ -221,10 +248,12 @@ Each of these is a guideline Apple has already cited against this app.
       `isReviewer=true`, `tier=mvp`, `hasPremiumAccess=true`, with the client
       bypass matching. The stored free/none subscription fields are
       intentional under that design, so running the legacy 2099 grant script
-      would fight it. What is still needed is a **non-bypass account** for
-      purchase acceptance, since the reviewer account cannot exercise a real
-      purchase path. The QA credential beside it is confirmed stale —
-      production returns HTTP 400 `invalid_credentials` (SKYC-149).
+      would fight it. What is still needed is an account that can actually
+      reach the purchase sheets — **either** a non-allow-listed account,
+      **or** the existing reviewer account on a build carrying the SKYC-150
+      fix. Pick one, and make the App Review notes match it. The QA
+      credential beside it is confirmed stale — production returns HTTP 400
+      `invalid_credentials` (SKYC-149).
 - [ ] **Recapture screenshots from an iOS simulator or device**, 6.7" iPhone,
       native iOS status bar, showing the current five-tab app. `supportsTablet`
       is `false`, so an iPad set is probably not required — confirm against
@@ -260,7 +289,7 @@ Each of these is a guideline Apple has already cited against this app.
 
 | Lane | Items |
 |---|---|
-| **Owner only** | Build 11 rejection, agreements, screenshots, listing metadata, IAP attachment, Play console state, and the parity-versus-speed decision |
+| **Owner only** | The submission `9cb026fb` reply, agreements, screenshots, listing metadata, IAP attachment, demo-account choice, Play console state, the release contents, and the public-release hold |
 | **Codex** | Android image pin, optional merge, gates, pre-build checks, both paid builds, artifact verification, TestFlight upload, `eas submit`, SKYC-149 |
 | **Claude** | This list, Resolution Center reply draft, App Review notes draft, Jira, release notes — no production access |
 
