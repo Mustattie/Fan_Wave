@@ -1,0 +1,57 @@
+{
+  "date": "2026-10-26",
+  "authorization": "Owner requested clearing bad clips and, if possible, adding nice short NFL clips for iOS/Android reviewers",
+  "audit": {
+    "sourceCount": 17,
+    "successfulFullDecodes": 17,
+    "visualMethod": "Contact sheet from video frames sampled throughout each clip",
+    "privateContactSheet": "C:/fwc/clip-presentation-20261026/sample-sheet.jpg"
+  },
+  "deleted": [
+    {
+      "id": "3008e979-2d73-4e11-84d9-7fc29963e973",
+      "title": "Whaat",
+      "bytes": 12030452,
+      "sha256": "2c7686dac8e8788bf366682a7637f1f8747b0c14d27d4d09fa892a8f6500cb6f",
+      "reason": "Floor recording"
+    },
+    {
+      "id": "019be06c-d0ae-4ca0-8d81-ebb35cf62224",
+      "title": "Build32 kill upload 2",
+      "bytes": 18043280,
+      "sha256": "d31e9d1605cc6e523db21661e61d43e655adbba0c31f93ebfa44ecf93ffdea6e",
+      "reason": "Internal sign-in test recording"
+    },
+    {
+      "id": "469587e7-d252-45e0-bd64-a197cb2497f0",
+      "title": "Icho",
+      "bytes": 9911376,
+      "sha256": "e2b7c1b1bede6298928da12f45aab79c64275ceb36f19680a8611deb38c6a165",
+      "reason": "Blank wall recording"
+    }
+  ],
+  "beforeCount": 17,
+  "afterCount": 14,
+  "nonTargetIdsPreserved": true,
+  "remainingTargetRows": 0,
+  "storageAssetsQueuedForNormalGarbageCollection": 5,
+  "backup": {
+    "directory": "C:/fwc/clip-presentation-20261026/cleanup-backup",
+    "videos": 3,
+    "originalThumbnails": 2,
+    "clipRows": 3,
+    "likes": 1,
+    "comments": 0,
+    "views": 30,
+    "messages": 0
+  },
+  "replacementContent": {
+    "ownerSourceStatement": "The ones i have i just took the youtube highlights",
+    "newUploads": 0,
+    "status": "awaiting choice of licensed football demo footage or NFL footage with publishing permission",
+    "proposedLabelForStock": "football demo; not NFL highlights"
+  },
+  "codeChanged": false,
+  "newBuildRequired": false,
+  "physicalAppPlaybackVerification": "not performed by this media-file audit"
+}
