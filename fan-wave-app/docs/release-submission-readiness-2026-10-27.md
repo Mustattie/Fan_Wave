@@ -25,8 +25,11 @@ further away than that, and no build shortens it:
    notes walk the reviewer through a "World Cup" tab. The app now has five
    tabs — Home, Discover, Game Day, Clips, Profile — and no World Cup tab. A
    reviewer following those notes lands somewhere that does not exist, which
-   is how 2.1(a) "could not complete" findings get written. What is currently
-   live in ASC cannot be read from here; it needs eyes on the console.
+   is how 2.1(a) "could not complete" findings get written. Codex has since
+   confirmed this against the live ASC API: the version's review notes do
+   still mention World Cup and carry no five-tab guide, and the version is
+   linked to build 9. What the API reads did **not** expose is the rejection
+   message text itself, so that part still needs eyes on the console.
 3. **The In-App Purchase product IDs in the old checklist are obsolete.** The
    repository-root `docs/app-review-resubmission-reply.md` tells the operator
    to attach `premium_monthly_999`, `premium_annual_10788` and `wc_pass_2026`.
@@ -212,11 +215,16 @@ Each of these is a guideline Apple has already cited against this app.
       offerings and package-to-product mappings, Play base plans, entitlement
       delivery, purchase, restore and subscription-change on both platforms.
       Attaching IAPs proves none of this.
-- [ ] **Re-grant the reviewer entitlement.** Run
-      `supabase/scripts/grant_reviewer_premium.sql` against production and
-      confirm the SELECT returns one active row with both `*_until` in 2099.
-      Verify `fansphere.reviewer@gmail.com` still signs in — the QA credential
-      beside it is stale (SKYC-149), so do not assume this one is not.
+- [ ] ~~**Re-grant the reviewer entitlement**~~ — **superseded by Codex's live
+      verification, do not do this.** The ASC review-detail credentials
+      authenticate today, and the server reviewer helpers already return
+      `isReviewer=true`, `tier=mvp`, `hasPremiumAccess=true`, with the client
+      bypass matching. The stored free/none subscription fields are
+      intentional under that design, so running the legacy 2099 grant script
+      would fight it. What is still needed is a **non-bypass account** for
+      purchase acceptance, since the reviewer account cannot exercise a real
+      purchase path. The QA credential beside it is confirmed stale —
+      production returns HTTP 400 `invalid_credentials` (SKYC-149).
 - [ ] **Recapture screenshots from an iOS simulator or device**, 6.7" iPhone,
       native iOS status bar, showing the current five-tab app. `supportsTablet`
       is `false`, so an iPad set is probably not required — confirm against
@@ -279,6 +287,67 @@ Each of these is a guideline Apple has already cited against this app.
   outcome — but it is a named condition of the standing NO-GO, so it is not
   discharged by observing that. It needs the decision above: hold the launch,
   or accept the risk in writing.
+
+## Live store and backend state, verified by Codex on 2026-10-27
+
+Codex ran independent live API reads the same day, recorded in
+`codex-release-verification-2026-10-27.md` and
+`qa/evidence/2026-10-27/release-verification/`. These replace several
+assumptions above with facts, and one of them is worse than this document
+assumed.
+
+**The App Store version is in a rejected state with the wrong binary attached.**
+ASC version `1.0` reads REJECTED and is currently linked to **build 9** — not
+39. Its review notes still mention World Cup and carry no five-tab guide. So
+the submission path is not "attach and send": the version needs its selected
+binary changed, its notes rewritten, and Apple's current feedback addressed.
+The rejection message text was not exposed by the API reads, which is why
+reading it in the console remains a Gate B item — and, correctly, repository
+silence never established that nobody had read it.
+
+**The purchase catalogue is in better shape than feared.** All four Apple
+subscriptions exist in READY_TO_SUBMIT; all four Google base plans are ACTIVE
+at the expected US prices — $4.99/month and $34.99/year for Home Team,
+$14.99/month and $99.99/year for MVP. Legacy premium products still exist and
+were not touched. What remains unverified is *attachment to the version*,
+complete metadata, agreements and the actual purchase flows.
+
+**Google Play live state:** production versionCode **5**, alpha 6, internal 2,
+beta empty. The next upload must exceed 6, not 5.
+
+**Build inventory confirms the parity gap.** Latest successful iOS is 39 from
+`d77e89f`, and no build 40 appeared in the returned EAS inventory. The newest
+Android artifact is the internal
+preview APK 35 from 2026-10-06, predating PR 21 — exactly as described above.
+
+**A trial merge of `d997aad` is conflict-free**, preserves the Xcode 26.6 pin,
+and produces the same executable product, config and test tree as the tested
+branch. Fresh gates: TypeScript clean, iOS 46 suites / 395 tests. The Android
+run hit one timing-sensitive group-title render-wait failure on first attempt
+and passed on re-run at 46 suites / 393 tests — preserved as verification
+evidence, not treated as a repaired defect.
+
+**`invoke_team_logo_sync` is answered, and the answer is good.** It targets
+production `fwlfiejvxmslkpoojggs`, not the legacy project, and its Monday
+09:00 UTC cron is active. The open question from the 2026-10-20 hand-off is
+closed on routing; logo-data correctness and execution success are separate
+and still unexamined.
+
+**Sentry** returned no events for `build_number:39` or `40` with
+`platform:ios` across 14 days — which, as previously noted, is not evidence
+the app was never launched.
+
+**Reviewer feed content.** Codex published three licensed Mixkit clips under
+the Fan Sphere Reviewer profile, described as generic American-football
+practice demos rather than game footage, replacing the dark QA clips removed
+yesterday. The **three new clips** decode fully with matching hosted hashes,
+range requests returning 206 and thumbnails 200; the 17 prior rows were
+preserved, for 20 in total, and were not themselves re-tested. That verifies
+files, network and readability — **not** playback on a physical iOS or
+Android device. No app build is needed for the content change.
+
+**Jira readback:** of the original 23 items, 17 In Progress, 4 Done
+(SKYC-126, 139, 141, 144) and 2 To Do (SKYC-134, 138).
 
 ## Review record
 
