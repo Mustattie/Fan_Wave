@@ -1,0 +1,90 @@
+{
+  "capturedAt": "2026-10-28T20:17:36Z",
+  "appId": "6774325670",
+  "versionId": "ae38e160-a6d0-44c1-a749-746878ba17ef",
+  "versionLocalizations": {
+    "data": [
+      {
+        "type": "appStoreVersionLocalizations",
+        "id": "286e96ef-93eb-4f35-ba6f-bc10b7fc1759",
+        "attributes": {
+          "description": "Fan Sphere is the social home for sports fans. Watch games together in public or private watch parties, capture and share unforgettable moments, follow your       \n  favorite teams across every league, and join the community that loves sports as much as you do.\n\n  WATCH TOGETHER\n  \u2022 Public watch parties \u2014 RSVP and join fellow fans for any game\n  \u2022 Private watch parties \u2014 invite your crew, no strangers\n  \u2022 Live chat inside every party as the action unfolds\n\n  YOUR TEAMS, YOUR FEED\n  \u2022 Follow teams across NBA, NFL, MLB, soccer leagues, college sports, and more\n  \u2022 Personalized scores, clips, and game alerts for the teams you care about\n  \u2022 Year-round coverage \u2014 every season, every sport\n\n  CAPTURE & SHARE\n  \u2022 Record game-day clips in seconds\n  \u2022 Share directly to TikTok and Instagram with one tap\n  \u2022 Build your following as a sports creator\n\n  FAN GROUPS\n  \u2022 Join unlimited fan groups for any team or interest\n  \u2022 Live chat with fellow members anytime\n  \u2022 Find your people, build your community\n\n SOCCER CUP 2026\n  \u2022 Dedicated Soccer Cup tab covering every match\n  \u2022 Available with Premium or the one-time WC Pass\n\n  PREMIUM\n  Fan Sphere Premium unlocks unlimited watch parties, advanced clip tools, and the Soccer Cup 2026 tab. Try free for 7 days. $9.99/month or $107.99/year (save 10%).  \n  Soccer Cup Pass available as one-time $19.99 purchase.\n\n  Subscriptions auto-renew unless cancelled at least 24 hours before the end of the current period. Manage subscriptions in your App Store account settings.\n\n  Privacy Policy: https://fansphere.org/privacy/\n  Terms: https://fansphere.org/terms/\n  Support: support@thabtech.com",
+          "locale": "en-US",
+          "keywords": "sports,watch party,nba,nfl,mlb,soccer,soccer cup,fan,social,clips,highlights,scores,live,community",
+          "marketingUrl": null,
+          "promotionalText": "Watch every game with friends. Join public watch parties, create private ones with your crew, share clips to TikTok & Instagram, follow your teams across all Sports.",
+          "supportUrl": "https://fansphere.org/",
+          "whatsNew": null
+        },
+        "relationships": {
+          "appScreenshotSets": {
+            "links": {
+              "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/286e96ef-93eb-4f35-ba6f-bc10b7fc1759/relationships/appScreenshotSets",
+              "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/286e96ef-93eb-4f35-ba6f-bc10b7fc1759/appScreenshotSets"
+            }
+          },
+          "appPreviewSets": {
+            "links": {
+              "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/286e96ef-93eb-4f35-ba6f-bc10b7fc1759/relationships/appPreviewSets",
+              "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/286e96ef-93eb-4f35-ba6f-bc10b7fc1759/appPreviewSets"
+            }
+          },
+          "searchKeywords": {
+            "links": {
+              "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/286e96ef-93eb-4f35-ba6f-bc10b7fc1759/relationships/searchKeywords",
+              "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/286e96ef-93eb-4f35-ba6f-bc10b7fc1759/searchKeywords"
+            }
+          },
+          "placements": {
+            "links": {
+              "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/286e96ef-93eb-4f35-ba6f-bc10b7fc1759/relationships/placements",
+              "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/286e96ef-93eb-4f35-ba6f-bc10b7fc1759/placements"
+            }
+          }
+        },
+        "links": {
+          "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/286e96ef-93eb-4f35-ba6f-bc10b7fc1759"
+        }
+      }
+    ],
+    "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersions/ae38e160-a6d0-44c1-a749-746878ba17ef/appStoreVersionLocalizations"
+    },
+    "meta": {
+      "paging": {
+        "total": 1,
+        "limit": 50
+      }
+    }
+  },
+  "appInfoLocalizations": [
+    {
+      "data": [
+        {
+          "type": "appInfoLocalizations",
+          "id": "936ac5ac-5fb5-4ee6-a993-7c780df5284a",
+          "attributes": {
+            "locale": "en-US",
+            "name": "Fan Sphere - Sports Social",
+            "subtitle": "Sports watch parties & clips",
+            "privacyPolicyUrl": "https://fansphere.org/privacy/",
+            "privacyChoicesUrl": null,
+            "privacyPolicyText": null
+          },
+          "links": {
+            "self": "https://api.appstoreconnect.apple.com/v1/appInfoLocalizations/936ac5ac-5fb5-4ee6-a993-7c780df5284a"
+          }
+        }
+      ],
+      "links": {
+        "self": "https://api.appstoreconnect.apple.com/v1/appInfos/ad62dd0b-b27c-4bc2-b832-87f0207a11ac/appInfoLocalizations"
+      },
+      "meta": {
+        "paging": {
+          "total": 1,
+          "limit": 50
+        }
+      }
+    }
+  ]
+}

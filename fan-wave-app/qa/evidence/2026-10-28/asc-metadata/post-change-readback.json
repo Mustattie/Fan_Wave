@@ -1,0 +1,24 @@
+{
+  "appliedAt": "2026-10-28T20:26:14Z",
+  "localizationId": "286e96ef-93eb-4f35-ba6f-bc10b7fc1759",
+  "patchStatus": 200,
+  "readbackMatches": {
+    "description": true,
+    "keywords": true,
+    "promotionalText": true
+  },
+  "lengths": {
+    "description": 2114,
+    "keywords": 99,
+    "promotionalText": 130
+  },
+  "attributes": {
+    "description": "Fan Sphere brings sports fans together around the teams and games they care about. Find watch parties, join fan groups, browse game schedules and share short videos with your community.\n\nHOME\n\u2022 See games, nearby watch parties and your fan groups in one place\n\u2022 Follow the sports and teams you care about\n\nDISCOVER\n\u2022 Find fan groups, watch parties and venues\n\u2022 Meet fans who share your interests\n\nGAME DAY\n\u2022 Browse game schedules across football, basketball, baseball, soccer, college sports and more\n\u2022 Live, upcoming and final states as the day unfolds\n\nCLIPS\n\u2022 Record and share your own game-day videos\n\u2022 Watch what your community is posting\n\u2022 Upload content you own or have permission to share\n\nFAN GROUPS AND WATCH PARTIES\n\u2022 Public watch parties \u2014 RSVP and join fellow fans for any game\n\u2022 Private watch parties \u2014 invite your crew, no strangers\n\u2022 Live chat inside every group and party\n\nOPTIONAL SUBSCRIPTIONS\nFan Sphere is free to use. Public watch parties, joining fan groups, RSVPing and watching clips need no paid plan.\n\nHome Team adds unlimited clip posting, private invite-only watch parties, the full RSVP guest list and a fan badge. US $4.99 per month or US $34.99 per year, with a 7-day free trial where eligible.\n\nMVP includes everything in Home Team plus audience analytics, a verified creator badge and featured placement in Discover. US $14.99 per month or US $99.99 per year.\n\nPayment is charged to your Apple Account at confirmation of purchase, or after any applicable free trial ends. Subscriptions renew automatically unless cancelled at least 24 hours before the current period ends, and your account is charged for renewal within 24 hours before the current period ends. Manage or cancel subscriptions in your App Store account settings. Prices vary by region; your local price and any eligible trial terms are shown before purchase.\n\nFan Sphere is an independent fan community app.\n\nPrivacy Policy: https://fansphere.org/privacy/\nTerms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/\nService Terms: https://fansphere.org/terms/\nSupport: support@thabtech.com",
+    "locale": "en-US",
+    "keywords": "sports,watch party,fan groups,clips,highlights,scores,community,game day,football,basketball,soccer",
+    "marketingUrl": null,
+    "promotionalText": "Find public watch parties, join fan groups and share your own game-day videos. Home Team adds private watch parties for your crew.",
+    "supportUrl": "https://fansphere.org/",
+    "whatsNew": null
+  }
+}
