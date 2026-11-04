@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-04T02:56:37Z",
+  "versionId": "ae38e160-a6d0-44c1-a749-746878ba17ef",
+  "previousBuild": {
+    "id": "b0ad08bf-5608-4e41-aa8c-07c83ddfb57d",
+    "version": "9"
+  },
+  "selectedBuild": {
+    "id": "9870c5b8-ccb3-402e-abe9-25629ff15896",
+    "version": "40"
+  },
+  "patchStatus": 204,
+  "versionState": "PREPARE_FOR_SUBMISSION"
+}
