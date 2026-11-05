@@ -1,0 +1,227 @@
+{
+  "capturedAt": "2026-11-05T08:24:41Z",
+  "package": "org.fansphere.app",
+  "listings": {
+    "kind": "androidpublisher#listingsListResponse",
+    "listings": [
+      {
+        "language": "en-US",
+        "title": "Fan Sphere",
+        "fullDescription": "Fan Sphere is where sports fans gather to watch live, hype together, and never miss a moment.\n\n  Whether you're cheering on your national team during the World Cup, debating playoff calls, or sharing a last-second buzzer beater with your group \u2014 Fan Sphere    \n  makes every match feel like you're in the stadium together.\n\n  \u26bd LIVE WATCH PARTIES\n  Create or join real-time watch parties for any game. React, chat, and celebrate every goal with fans around the world \u2014 synced to the action.\n\n  \ud83c\udfc6 FAN GROUPS\n  Build a community around the teams you love. Private invite-only groups for your crew, or public hubs to find your fellow fans.\n\n  \ud83c\udfac MATCH CLIPS\n  Capture, share, and discover the moments that mattered. Clip every highlight and let it ride across the Fan Sphere feed.\n\n  \ud83c\udf0d BUILT FOR WORLD CUP 2026\n  Group-stage tracking, knockout brackets, country-by-country fan rooms, and live match coverage \u2014 built from the ground up for the biggest tournament on Earth.     \n\n  \ud83d\udd14 NEVER MISS A MOMENT\n  Real-time push notifications for kickoff, goals, and group activity. Live ESPN match schedules keep you locked in.\n\n  \u2b50 FAN SPHERE PASSES\n  \u2022 World Cup Pass \u2014 $19.99 one-time, unlocks the World Cup tab for the full tournament\n  \u2022 Pro \u2014 full-season premium (coming soon)\n\n  \ud83d\udd12 PRIVACY-FIRST\n  We don't sell your data. Your fan groups are yours. Granular controls over who sees your posts and joins your parties.\n\n  Why Fan Sphere?\n  Sports is the world's biggest social moment, and you deserve more than a stale feed. Fan Sphere brings the energy of the stadium to your phone \u2014 every game, every \n  team, every fan.\n\n  Built by fans. For fans.",
+        "shortDescription": "Live sports watch parties, fan groups & clips. Built for World Cup 2026"
+      }
+    ]
+  },
+  "tracks": {
+    "kind": "androidpublisher#tracksListResponse",
+    "tracks": [
+      {
+        "track": "production",
+        "releases": [
+          {
+            "name": "1.0.0",
+            "versionCodes": [
+              "5"
+            ],
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "track": "beta"
+      },
+      {
+        "track": "alpha",
+        "releases": [
+          {
+            "name": "6 (1.0.0)",
+            "versionCodes": [
+              "6"
+            ],
+            "releaseNotes": [
+              {
+                "language": "en-US",
+                "text": "v6 beta \u2014 Soccer Cup rebrand + reliability fixes. Fan group creation now works. Watch parties show in the Soccer Cup tab. Clip posting is      \n  instant with optimistic UI. Venue search uses a 30 km radius and matches your query. Chat + RSVPs update in real time. Soccer Cup Pass purchase   works again. Keyboard no longer covers form fields. Free users no longer kicked to Subscription on resume. Please test and report issues.     "
+              }
+            ],
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          {
+            "name": "2 (1.0.0)",
+            "versionCodes": [
+              "2"
+            ],
+            "releaseNotes": [
+              {
+                "language": "en-US",
+                "text": "Initial internal testing build of Fan Sphere."
+              }
+            ],
+            "status": "completed"
+          }
+        ]
+      }
+    ]
+  },
+  "details": {
+    "defaultLanguage": "en-US",
+    "contactEmail": "Support@thabtech.com"
+  },
+  "images": {
+    "phoneScreenshots": [
+      {
+        "id": "1578122758129317841",
+        "url": "https://lh3.googleusercontent.com/t89cbHyTx06lLPtplwHoeit5FrdCWqbIqf-ufw3LCu0vPOcnntMcl4PE9uyAevISPQLejKbcARh8wmY3lkQ68g",
+        "sha1": "3456749f944d8d62d2569760c239d702c8707920",
+        "sha256": "b31db73578180650911a0a59ee85e7e993936b7d0d1fb5d895fb1b6a71085989",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "14203998220654525757",
+        "url": "https://lh3.googleusercontent.com/MOhGj0ExZzRjUMoQ3dS24yJkn-Atmv1WbSiT2QvFRPoM5Y9JbWAECqbV9fCVHXJe5DKOFqODJ3_2mT7SKxY-",
+        "sha1": "bcd315add22232db47fdc439593c14128b033ca5",
+        "sha256": "0a14765c81e6685a4f3fabafa06d55118ea9a460fefbf1f73a6995f45fd56862",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "5162397522586112062",
+        "url": "https://lh3.googleusercontent.com/wMYeP9WusEjxjwe8DR_UGcVFro2wRFRGJdLq4AYtJUVujUA7vLKR1ilVcb-yXf9FuFzqxGpnkXD_Ftm1MaH9",
+        "sha1": "c74b979b725e177177c64f15533b2599520dd544",
+        "sha256": "750766d04f3fc58e3b1d2bb91e83628b57b119c4a88fe6bfe532987110f2fce7",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "778791980340658261",
+        "url": "https://lh3.googleusercontent.com/dxl-1jIGQ8mU-uyigng5UxLrYbyHBVPrhx1pCxZHWKSW7Fq2TcV1SCYIdAcqCGoC0tUGhuJm5dAQbQ-wh59h3Q",
+        "sha1": "235eb20591cdbdf5dcaabcff5da9793c33131348",
+        "sha256": "77a6807b8897defc220b79f1e653de6b7c01f5eda3ec5f6618c89d9b7ddf16ec",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "604036068874825831",
+        "url": "https://lh3.googleusercontent.com/inbDgK8W7bFmz3FB0ZFp1gpexzJtRweu79gV0ltVJNr7kVqVjWH35waSLT1YPR9OpDtRGHSFF0hVkMKpEhyGgw",
+        "sha1": "e73d88ffbe1560bc10affd456e1e8f5e66f3e728",
+        "sha256": "1d20600ef80ad6a72215654b74079341fabe2ac6017cae6a7c441989eaee3146",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "10676780000976636333",
+        "url": "https://lh3.googleusercontent.com/SbZLSBpgZFt5byU2yqP-Una_Vobk8Kx_1NxtrWjiGe1_nct-R4LhhWF2ANAnJYRnmRxtBKr8og2JrbofySUCpQ",
+        "sha1": "475d13fb632e5a72136ec2d06b612e04f02af8b7",
+        "sha256": "753f92cec9a812de0be247665fcd0906f8d0278ab0c860d7f21edc7c8f88ccd2",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      }
+    ],
+    "sevenInchScreenshots": [
+      {
+        "id": "16696971531308323529",
+        "url": "https://lh3.googleusercontent.com/dr-WoMnQAA8wgWOwcESmVNZTHXMI39ExQfe4pS3PTgLJ4aRJ7JRbD9sXSPzsGr18zH0VftNOka-Jih8elYY5bg",
+        "sha1": "f14d3eff57f9e05f2b55feb42d1fa7cbafc7dd73",
+        "sha256": "f8f8f37e2262f25886365e089189f824f45ef166fda89de39081bc60569df8d6",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "13170196939071133086",
+        "url": "https://lh3.googleusercontent.com/FWbg_prQoD_mzQxQ2alI3I1xd-jVv6hmTQeRbXHhQpB2iDroNS_0QM6ddmYmsWIodQ4QY2Hzb5pEzvCvSIuVqhY",
+        "sha1": "92f17579c29cdec1f1cdf8fe1ac0f389f65f9845",
+        "sha256": "6912288b1c8c4a7ef06021a06eaa14bfa48e1075690954bf8daa68feb32b1141",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "509923881178333648",
+        "url": "https://lh3.googleusercontent.com/v8ZYr5Tx9W5lSC11lKDpKz8mKu6Lg9nlQdvxpSjD6PY5hOQKcUGkrZ8JNiDJbMP1bItDW7kwAlGpRsotP7Yrlg",
+        "sha1": "1ca60ca7bc12a9980e0486905972dfa94c2e6cf9",
+        "sha256": "3106fd4cfe578964e604605ea7d0a1bd8a5ec9cf9e68b6a7ebe786cc54612800",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "10275450126081611067",
+        "url": "https://lh3.googleusercontent.com/tAgH0JbRQLLuZev61BYI3gTsC4tRcPElctib77Na00CBy61AnxK2nbsgXgMKnwozWkJJW2kbGZVv_zofqkTzVnI",
+        "sha1": "4fbb272bc93e58371d3feebb2967275993757720",
+        "sha256": "1e3f67aef62de9bbb21254d95c0ce81000a82422815197d80e88010ef792123b",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "6083435303211467785",
+        "url": "https://lh3.googleusercontent.com/KCKs1XxLVpPitGjZC_O5Hg1nmH08tR3OeoF6QgE3uSaZHdCEGXXsC0H9DakzXTJGrI75RMdxR92ot5b1xGUs",
+        "sha1": "6cf1d1201e94c0226f59cdc3bbed387dd1c4d842",
+        "sha256": "e447c0a2b8a088f1e54b138f307236fde600a155f4267a10eb486957e73f4c7f",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "12291054049586224799",
+        "url": "https://lh3.googleusercontent.com/3xmPDhDPXGE2sUYL2Y8yIugFROjE_aXVAWvlH80QpJ4chUyS7AH4TyEBxhJ3ESrEiv94LDT0rMbPpYPI_xlQ6Q",
+        "sha1": "c9ae1fd12ba8d7d3e5e6121da91dedd987d0db77",
+        "sha256": "5f1e3cb36952200c03ac6efeea279c045cd3be0beff17e6c58ea56bc483f8f14",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      }
+    ],
+    "tenInchScreenshots": [
+      {
+        "id": "10965993605238972233",
+        "url": "https://lh3.googleusercontent.com/04bp19QOQg_Jn98vWZPSdfvla-1BHTSYhATG6pLE_6hz4In05RRVLPSmxIS2htAc0TWDPDXPncQS4HVB3IAJCA",
+        "sha1": "eb4a8c4c2de105cb2fbf22cc74a3c0de4f0e097a",
+        "sha256": "131f5ab55104fd0072dd9bc5c41cd8d64ce83f1b6b15e24f0da9547db36cc134",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "11603350346817597171",
+        "url": "https://lh3.googleusercontent.com/g0ssJxI6sEX5avNrYVRXsUk55N0Lz_SpPaO7JxK9hMneJO1Bi-SlXu_w6ivbt9Do3d0jwOzD9Q6ms9TCmE_T44Y",
+        "sha1": "704cadc660915135a4f8b7c6369ee0dc3527b8b4",
+        "sha256": "89a30fab3658d4747962e0a470b01adb20ac032fd5e092dac8224ac6997d56d6",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "12523562738636215113",
+        "url": "https://lh3.googleusercontent.com/PJ6lR0kzogOfL1BrUhPDQqIl_oSFCnwiheR5A1poGU6fYoX9gZfF4w3J2ZxKJTul2BRShQM6CngJkrDXFUnwyQ",
+        "sha1": "eadbade00326009b2b2ba81d0c94b89c9cdb4cbd",
+        "sha256": "022696891c767cae5752d4dcf4141946a9ba5166a8277f98632f985a5ddb712f",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "4516390118801190087",
+        "url": "https://lh3.googleusercontent.com/j1YpL7_0Gd5Ug_jOaO24sIZMSxMeJM75d32tM1npm0ElkvnN3nVrvp2P2Fw0Q4R_KQTQt_9p2V9n0d8Glh6I",
+        "sha1": "4a01547e2284d1116aa2f61ae90de55f134735c5",
+        "sha256": "ec0da12184b132f18af02333dda10bcebe20cc8c9d1f04ab080e43550e74069a",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "9975148923524313716",
+        "url": "https://lh3.googleusercontent.com/52c1QqPyovK17avg1SU893soXVbOlKs4XBcRfAaN0moTZpeoiirihVoQdOhVBAPZt0y4MR35Ch7ugs57uypb7A",
+        "sha1": "fe3361b5239593afbb256a634c883cf2c2c03ada",
+        "sha256": "0adbe3b0c3c7469cd799895ced86dd87befe92902a17fbd3f8cb0ad6c9e5749c",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      },
+      {
+        "id": "7407488941388985898",
+        "url": "https://lh3.googleusercontent.com/7HpKn1O1-JPifieteGES9lxgQ0nCsWd7zAqgJRMUDrWsbOganq5nNffH3s2IrBE7i899bKd5DkhOejXy4ee0bQ",
+        "sha1": "a0bebaf0d93783538750a0403e1a321f847649a2",
+        "sha256": "6341f4b6b6cc8df6d450aa60229da94635f32840577702ab91a193a2e779b219",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      }
+    ],
+    "featureGraphic": [
+      {
+        "id": "13687303143514957165",
+        "url": "https://lh3.googleusercontent.com/yO_qzE2c2lmGl_DhWnOocI6KuEmq6v7qVHJUMxV25JUE_cBxLyboKfoY5usXfxIX0tZwbmxHwxNd8cSt6BPg",
+        "sha1": "d140d9bb2a35135c6df6d73c8410bccd5c5917c2",
+        "sha256": "12f62dd225dad9e8db21faec1b2d31599c03f7b4c96840f228831c40064fa406",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      }
+    ],
+    "icon": [
+      {
+        "id": "9070621060449677311",
+        "url": "https://lh3.googleusercontent.com/uRaRKgLu4Ox-mwMvM5RZKZufJKyNZbBou6gHwIUwoe_4bOjzBLxod_77CTZnp8NWgrITj754VomYBpBsuna2qQ",
+        "sha1": "c7c267045d057c540f702b65ff1b5e594efa5bc4",
+        "sha256": "2648a19e7a7c5523965c694824c85d9e91210ea90738c2ebf803dbf61e2f21d5",
+        "aiGeneratedState": "aiGeneratedStateUnspecified"
+      }
+    ]
+  }
+}
