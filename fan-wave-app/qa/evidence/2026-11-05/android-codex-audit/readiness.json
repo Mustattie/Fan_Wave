@@ -1,0 +1,279 @@
+{
+  "checkedAt": "2026-11-05T08:35:53.330Z",
+  "readyForSubmission": false,
+  "scope": "Read-only readiness audit; no build, listing commit, submission or release",
+  "tracks": [
+    {
+      "track": "production",
+      "releases": [
+        {
+          "name": "1.0.0",
+          "status": "completed",
+          "versionCodes": [
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "track": "beta"
+    },
+    {
+      "track": "alpha",
+      "releases": [
+        {
+          "name": "6 (1.0.0)",
+          "status": "completed",
+          "versionCodes": [
+            "6"
+          ]
+        }
+      ]
+    },
+    {
+      "track": "internal",
+      "releases": [
+        {
+          "name": "2 (1.0.0)",
+          "status": "completed",
+          "versionCodes": [
+            "2"
+          ]
+        }
+      ]
+    }
+  ],
+  "uploadedBundleVersionCodes": [
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "temporaryPlayEditsDiscarded": true,
+  "latestEasAndroidBuild": {
+    "id": "46026cac-4b17-4e68-aaa1-698eab5fccb7",
+    "status": "FINISHED",
+    "number": "35",
+    "commit": "57cf4e6f9c74a94f52cde841ef7304ec759de95b",
+    "createdAt": "2026-10-06T20:34:27.315Z",
+    "distribution": "INTERNAL",
+    "profile": "preview",
+    "artifactIsApk": true
+  },
+  "subscriptions": [
+    {
+      "productId": "home_team_annual_3499",
+      "plans": [
+        {
+          "basePlanId": "annual",
+          "state": "ACTIVE",
+          "usPrice": {
+            "currencyCode": "USD",
+            "units": "34",
+            "nanos": 990000000
+          }
+        }
+      ]
+    },
+    {
+      "productId": "home_team_monthly_499",
+      "plans": [
+        {
+          "basePlanId": "monthly",
+          "state": "ACTIVE",
+          "usPrice": {
+            "currencyCode": "USD",
+            "units": "4",
+            "nanos": 990000000
+          }
+        }
+      ]
+    },
+    {
+      "productId": "mvp_annual_9999",
+      "plans": [
+        {
+          "basePlanId": "annual",
+          "state": "ACTIVE",
+          "usPrice": {
+            "currencyCode": "USD",
+            "units": "99",
+            "nanos": 990000000
+          }
+        }
+      ]
+    },
+    {
+      "productId": "mvp_monthly_1499",
+      "plans": [
+        {
+          "basePlanId": "monthly",
+          "state": "ACTIVE",
+          "usPrice": {
+            "currencyCode": "USD",
+            "units": "14",
+            "nanos": 990000000
+          }
+        }
+      ]
+    },
+    {
+      "productId": "premium_annual_10788",
+      "plans": [
+        {
+          "basePlanId": "annual",
+          "state": "ACTIVE",
+          "usPrice": {
+            "currencyCode": "USD",
+            "units": "107",
+            "nanos": 990000000
+          }
+        }
+      ]
+    },
+    {
+      "productId": "premium_monthly_999",
+      "plans": [
+        {
+          "basePlanId": "monthly",
+          "state": "ACTIVE",
+          "usPrice": {
+            "currencyCode": "USD",
+            "units": "9",
+            "nanos": 990000000
+          }
+        }
+      ]
+    }
+  ],
+  "listing": [
+    {
+      "language": "en-US",
+      "title": "Fan Sphere",
+      "fullDescription": "Fan Sphere is where sports fans gather to watch live, hype together, and never miss a moment.\n\n  Whether you're cheering on your national team during the World Cup, debating playoff calls, or sharing a last-second buzzer beater with your group — Fan Sphere    \n  makes every match feel like you're in the stadium together.\n\n  ⚽ LIVE WATCH PARTIES\n  Create or join real-time watch parties for any game. React, chat, and celebrate every goal with fans around the world — synced to the action.\n\n  🏆 FAN GROUPS\n  Build a community around the teams you love. Private invite-only groups for your crew, or public hubs to find your fellow fans.\n\n  🎬 MATCH CLIPS\n  Capture, share, and discover the moments that mattered. Clip every highlight and let it ride across the Fan Sphere feed.\n\n  🌍 BUILT FOR WORLD CUP 2026\n  Group-stage tracking, knockout brackets, country-by-country fan rooms, and live match coverage — built from the ground up for the biggest tournament on Earth.     \n\n  🔔 NEVER MISS A MOMENT\n  Real-time push notifications for kickoff, goals, and group activity. Live ESPN match schedules keep you locked in.\n\n  ⭐ FAN SPHERE PASSES\n  • World Cup Pass — $19.99 one-time, unlocks the World Cup tab for the full tournament\n  • Pro — full-season premium (coming soon)\n\n  🔒 PRIVACY-FIRST\n  We don't sell your data. Your fan groups are yours. Granular controls over who sees your posts and joins your parties.\n\n  Why Fan Sphere?\n  Sports is the world's biggest social moment, and you deserve more than a stale feed. Fan Sphere brings the energy of the stadium to your phone — every game, every \n  team, every fan.\n\n  Built by fans. For fans.",
+      "shortDescription": "Live sports watch parties, fan groups & clips. Built for World Cup 2026"
+    }
+  ],
+  "assetHashMatches": [
+    {
+      "type": "en-US/phoneScreenshots",
+      "images": [
+        {
+          "sha256": "b31db73578180650911a0a59ee85e7e993936b7d0d1fb5d895fb1b6a71085989",
+          "local": "play-store-screenshots/5_onboarding_hero.png"
+        },
+        {
+          "sha256": "0a14765c81e6685a4f3fabafa06d55118ea9a460fefbf1f73a6995f45fd56862",
+          "local": "play-store-screenshots/6_onboarding_parties.png"
+        },
+        {
+          "sha256": "750766d04f3fc58e3b1d2bb91e83628b57b119c4a88fe6bfe532987110f2fce7",
+          "local": "play-store-screenshots/3_watch_party.png"
+        },
+        {
+          "sha256": "77a6807b8897defc220b79f1e653de6b7c01f5eda3ec5f6618c89d9b7ddf16ec",
+          "local": "play-store-screenshots/1_home_hero.png"
+        },
+        {
+          "sha256": "1d20600ef80ad6a72215654b74079341fabe2ac6017cae6a7c441989eaee3146",
+          "local": "play-store-screenshots/4_groups.png"
+        },
+        {
+          "sha256": "753f92cec9a812de0be247665fcd0906f8d0278ab0c860d7f21edc7c8f88ccd2",
+          "local": "play-store-screenshots/2_world_cup.png"
+        }
+      ]
+    },
+    {
+      "type": "en-US/sevenInchScreenshots",
+      "images": [
+        {
+          "sha256": "f8f8f37e2262f25886365e089189f824f45ef166fda89de39081bc60569df8d6",
+          "local": "play-store-screenshots/tablet-7/1_home_hero.png"
+        },
+        {
+          "sha256": "6912288b1c8c4a7ef06021a06eaa14bfa48e1075690954bf8daa68feb32b1141",
+          "local": "play-store-screenshots/tablet-7/2_world_cup.png"
+        },
+        {
+          "sha256": "3106fd4cfe578964e604605ea7d0a1bd8a5ec9cf9e68b6a7ebe786cc54612800",
+          "local": "play-store-screenshots/tablet-7/3_watch_party.png"
+        },
+        {
+          "sha256": "1e3f67aef62de9bbb21254d95c0ce81000a82422815197d80e88010ef792123b",
+          "local": "play-store-screenshots/tablet-7/4_groups.png"
+        },
+        {
+          "sha256": "e447c0a2b8a088f1e54b138f307236fde600a155f4267a10eb486957e73f4c7f",
+          "local": "play-store-screenshots/tablet-7/5_onboarding_hero.png"
+        },
+        {
+          "sha256": "5f1e3cb36952200c03ac6efeea279c045cd3be0beff17e6c58ea56bc483f8f14",
+          "local": "play-store-screenshots/tablet-7/6_onboarding_parties.png"
+        }
+      ]
+    },
+    {
+      "type": "en-US/tenInchScreenshots",
+      "images": [
+        {
+          "sha256": "131f5ab55104fd0072dd9bc5c41cd8d64ce83f1b6b15e24f0da9547db36cc134",
+          "local": "play-store-screenshots/tablet-10/1_home_hero.png"
+        },
+        {
+          "sha256": "89a30fab3658d4747962e0a470b01adb20ac032fd5e092dac8224ac6997d56d6",
+          "local": "play-store-screenshots/tablet-10/2_world_cup.png"
+        },
+        {
+          "sha256": "022696891c767cae5752d4dcf4141946a9ba5166a8277f98632f985a5ddb712f",
+          "local": "play-store-screenshots/tablet-10/3_watch_party.png"
+        },
+        {
+          "sha256": "ec0da12184b132f18af02333dda10bcebe20cc8c9d1f04ab080e43550e74069a",
+          "local": "play-store-screenshots/tablet-10/4_groups.png"
+        },
+        {
+          "sha256": "0adbe3b0c3c7469cd799895ced86dd87befe92902a17fbd3f8cb0ad6c9e5749c",
+          "local": "play-store-screenshots/tablet-10/5_onboarding_hero.png"
+        },
+        {
+          "sha256": "6341f4b6b6cc8df6d450aa60229da94635f32840577702ab91a193a2e779b219",
+          "local": "play-store-screenshots/tablet-10/6_onboarding_parties.png"
+        }
+      ]
+    },
+    {
+      "type": "en-US/featureGraphic",
+      "images": [
+        {
+          "sha256": "12f62dd225dad9e8db21faec1b2d31599c03f7b4c96840f228831c40064fa406",
+          "local": "play-store-screenshots/feature_graphic_1024x500.png"
+        }
+      ]
+    }
+  ],
+  "featureGraphic": {
+    "matchesLive": true,
+    "visuallyInspected": true,
+    "retiredTournamentWording": false
+  },
+  "sourceChecks": {
+    "productionAndroidImage": "latest",
+    "reactNativeDefaultTargetSdk": 36,
+    "finalBundleTargetVerified": false,
+    "applicationSourceUnchangedSinceIosBuild40": true
+  },
+  "notVerified": [
+    "final AAB/signing/upload certificate",
+    "final merged permissions and native library/page-size compatibility",
+    "RevenueCat offering/package mappings and eligible trial",
+    "Play purchase, restore and upgrade on ordinary non-entitled account",
+    "device/pre-launch test acceptance",
+    "App access, Data safety, deletion URL, age/content ratings and relevant declarations",
+    "Policy status and developer verification",
+    "managed publishing/release hold"
+  ],
+  "consoleAccess": "Browser reached Google sign-in; Console-only forms were not read",
+  "remainingContentRightsDecision": true
+}
