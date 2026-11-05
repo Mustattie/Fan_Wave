@@ -1,0 +1,8 @@
+[
+  {
+    "buildId": "de24781b-920b-4133-8a85-c35dc6b8d8e9",
+    "phase": "SPIN_UP_BUILDER",
+    "message": "Using image \"ubuntu-24.04-jdk-17-ndk-r27b\" based on \"ubuntu-2404-noble-amd64-v20250805\"",
+    "time": "2026-11-05T21:56:42.756Z"
+  }
+]
