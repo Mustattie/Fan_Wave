@@ -1,0 +1,84 @@
+{
+  "editId": "02559184000460287013",
+  "at": "2026-11-05T08:48:46Z",
+  "actions": [
+    {
+      "delete": "5162397522586112062",
+      "type": "phoneScreenshots",
+      "reason": "phone3 watch-party detail, stale + contradictory attendance",
+      "status": 204
+    },
+    {
+      "delete": "778791980340658261",
+      "type": "phoneScreenshots",
+      "reason": "phone4 old Home, World Cup tab + World Cup Crew",
+      "status": 204
+    },
+    {
+      "delete": "604036068874825831",
+      "type": "phoneScreenshots",
+      "reason": "phone5 My Groups, World Cup Crew + World Cup tab",
+      "status": 204
+    },
+    {
+      "delete": "10676780000976636333",
+      "type": "phoneScreenshots",
+      "reason": "phone6 World Cup tab, reads 'FIFA World Cup 2026'",
+      "status": 204
+    },
+    {
+      "deleteAll": "sevenInchScreenshots",
+      "status": 200
+    },
+    {
+      "deleteAll": "tenInchScreenshots",
+      "status": 200
+    },
+    {
+      "updateListing": "en-US",
+      "status": 200
+    }
+  ],
+  "verify": {
+    "phoneScreenshots": 2,
+    "sevenInchScreenshots": 0,
+    "tenInchScreenshots": 0,
+    "featureGraphic": 1,
+    "icon": 1,
+    "shortDescription": "Live sports watch parties, fan groups and clips",
+    "tracksUnchanged": [
+      {
+        "track": "production",
+        "releases": [
+          [
+            "5"
+          ]
+        ]
+      },
+      {
+        "track": "beta",
+        "releases": []
+      },
+      {
+        "track": "alpha",
+        "releases": [
+          [
+            "6"
+          ]
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          [
+            "2"
+          ]
+        ]
+      }
+    ]
+  },
+  "commit": {
+    "status": 200,
+    "body": "{\n  \"id\": \"02559184000460287013\",\n  \"expiryTimeSeconds\": \"1793875727\"\n}\n"
+  }
+}
