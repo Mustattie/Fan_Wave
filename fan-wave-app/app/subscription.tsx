@@ -213,8 +213,8 @@ export default function SubscriptionScreen() {
 
         <Text style={styles.legalCopy}>
           Subscriptions auto-renew unless cancelled at least 24 hours before the period ends.
-          To cancel, use the "Manage" link above — Apple and Google policy requires cancellation
-          to happen through your account settings, not inside the app.
+          To cancel, use the "Manage" link above in your{' '}
+          {Platform.OS === 'ios' ? 'App Store' : 'Google Play'} account settings.
         </Text>
       </ScrollView>
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 let mockState: any;
 jest.mock('expo-router', () => ({ useRouter: () => ({ back: jest.fn() }) }));
@@ -53,4 +54,14 @@ test('historical event gate can be dismissed and offers no retired purchase', ()
   expect(screen.queryByText(/Buy.*Pass/)).toBeNull();
   fireEvent.press(screen.getByText('Close'));
   expect(close).toHaveBeenCalledTimes(1);
+});
+
+test('subscription instructions name only the device store', async () => {
+  mockState = { tier: 'free', status: 'none', hasPremiumAccess: false };
+  const screen = render(<SubscriptionScreen />);
+  await waitFor(() => expect(screen.getByText('See Home Team ›')).toBeTruthy());
+  const ownStore = Platform.OS === 'ios' ? 'App Store' : 'Google Play';
+  const otherStore = Platform.OS === 'ios' ? 'Google' : 'Apple';
+  expect(screen.getByText(new RegExp(`To cancel.*${ownStore}`))).toBeTruthy();
+  expect(screen.queryByText(new RegExp(otherStore))).toBeNull();
 });
