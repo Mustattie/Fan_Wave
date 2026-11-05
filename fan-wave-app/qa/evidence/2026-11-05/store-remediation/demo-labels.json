@@ -1,0 +1,21 @@
+{
+  "at": "2026-11-05T09:19:46.347Z",
+  "clips": [
+    {
+      "id": "21cafefd-b665-481e-a6f8-249d98557f6d",
+      "title": "Under the Lights: Teamwork in Motion",
+      "sport_id": null
+    },
+    {
+      "id": "15212cf5-3d89-4689-b083-88d4d1704416",
+      "title": "Eyes on the Ball: Receiver Drill",
+      "sport_id": null
+    },
+    {
+      "id": "84865927-681f-49a2-b6ea-3bb6d0af8f34",
+      "title": "The Perfect Spiral: Passing Practice",
+      "sport_id": null
+    }
+  ],
+  "method": "Authenticated owner through RLS; only sport_id changed"
+}

@@ -17,11 +17,11 @@ The reviewer account has a feature-access override. Use an ordinary account to v
 
 ## Still required
 
-- Replace the live Google Play phone/tablet images and old tournament listing with current Android captures and prepared multi-sport copy. Until the replacement binary is verified, avoid advertising new subscriptions against the old production release.
+- Claude's concurrent cleanup record (`qa/evidence/2026-11-05/play-listing/cleanup-20261105.json`) records removal of 16 obsolete Play screenshots and replacement of tournament descriptions with interim copy. Two onboarding screenshots remain; tablet sets are empty. Release tracks were unchanged. Public propagation is not established. Current authenticated Android captures are still needed; do not advertise new subscriptions against the old production release.
 - Build and validate a current Android production AAB, including target SDK, signing, merged permissions and native library alignment. Existing production version code 5 and preview APK 35 are not the replacement candidate.
 - Verify Play Console App Content, Data safety, app access, policy status and release controls in an authenticated Console session.
 - Verify native purchase flows and restored entitlements on both platforms.
-- Confirm content and logo rights. Generic practice demos still carry an NFL category; the attempted narrowly scoped metadata correction stopped at an authentication failure before any database mutation.
+- Confirm content and logo rights. The initial management-token attempt failed before mutation. Subsequently, the existing review account signed in successfully; its ownership of all three generic practice demos was verified, their `sport_id` changed from `nfl` to null through RLS, and all three changes were verified by readback. No other clip fields changed.
 - Reconcile Apple's complete review conversation and current subscription attachments before resubmission.
 
 No review submission or public release was performed during this preparation.
