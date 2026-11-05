@@ -102,9 +102,46 @@ represents 41.
 Note also that the reviewer-plan access fix was already in 40 via `ec15fdb` —
 it is not new in 41, and the review notes should not imply otherwise.
 
-### The one gap: attendees
+### Attendees — RESOLVED 2026-11-05
 
-**`rsvp_count` is 1** — the host's automatic RSVP.
+**Four Going, verified via the same roster RPC the detail screen calls**
+(`get_watch_party_attendees_v2`, `p_party_id` + `p_viewer_id`):
+
+| Attendee | Status |
+|---|---|
+| Fan Sphere Reviewer *(host)* | going |
+| Tatenda Musanhi | going |
+| mustattie | going |
+| Tattie Mus | going |
+
+`rsvp_count` = 4, `total_going` = 4, `total_maybe` = 0, `total_cant_go` = 0.
+At capacity 15 the progress bar renders around a quarter full — a long way
+from the "1/50" the old capture showed.
+
+Three real users signed in and RSVP'd. Nothing was written on their behalf.
+
+**One thing checked and cleared:** the RPC returns `is_host: true` on *every*
+row, which looked at first like a bug that would put a Host badge on all four
+attendees. It is not. `is_host` is a **viewer-level** flag repeated per row,
+exactly as `total_going` and the other totals are, and the client reads it as
+`data[0].is_host` to answer "is the viewer the host"
+(`app/watch-party/[id].tsx:325`). The attendee rows render name, tier badge
+and status badge only — no per-attendee host badge. I was signed in as the
+creator, so `true` was the right answer for me; I could not test it as a
+non-host viewer.
+
+**Two cosmetic notes for the capture:**
+
+- All four are Going, so the Going / Maybe / Can't Go breakdown is a single
+  column. If one person switches to **Maybe**, the detail screen shows a more
+  representative split. Optional.
+- The three names are variants of the same person — "Tatenda Musanhi",
+  "mustattie", "Tattie Mus". Honest, but it reads oddly in a marketing shot.
+  Worth a thought before the party screen is captured.
+
+### Original gap, for the record
+
+**`rsvp_count` was 1** — the host's automatic RSVP.
 
 I could not seed more **with the access I have**. Signup on this project
 requires email confirmation: `/auth/v1/signup` returns `confirmation_sent_at`
@@ -205,9 +242,8 @@ better than Frisco.
 
 ## Brief for the tester
 
-The party exists and the city is decided, so this is ready to send — **except
-for one gate**: do not send it until enough people have tapped Going that the
-party screen is worth photographing. One attendee defeats the purpose.
+**Ready to send.** The party exists, the city is Dallas, and four people are
+Going as of 2026-11-05.
 
 > Thanks — the Home and Game Day shots came out well and are already uploaded.
 > I need five retaken, and there are two setup steps first.
@@ -268,8 +304,8 @@ six would leave the sole set empty, which is the thing to avoid.
 ## Sequence
 
 1. ~~Seed the party~~ — **done 2026-11-05**, details above.
-2. **Get people to RSVP Going** — owner, tester, anyone else. **Blocking the
-   party-detail capture**, and the only step with nobody assigned.
+2. ~~Get people to RSVP Going~~ — **done 2026-11-05**, four Going, verified
+   through the roster RPC.
 3. **Verify on the device, not the database.** Open Home and the party detail
    on the **capture account, on build 41, with Dallas selected**, and confirm
    the city, title, venue, description, host, sport label and linked game all
