@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-05T09:59:12Z",
+  "partyId": "556bf7fe-9ddb-4803-ad99-b16e0ff45aa0",
+  "corrections": [
+    "description rewritten to drop promises of a reserved back room and sound control that were never arranged with the venue",
+    "sport_id set via the sports table lookup the app uses; watch_parties.sport_id is a uuid while games.sport_id is a slug"
+  ],
+  "localStart": "Friday 6 November 2026, 7:00 PM CST",
+  "readback": {
+    "description": "Watching Mavs vs Jazz at Harwood Tavern. Casual meet-up for Dallas fans - turn up when you like, grab a seat, say hi. All Mavs fans welcome.",
+    "sport_id": "a0000000-0000-0000-0000-000000000002",
+    "starts_at": "2026-11-07T01:00:00+00:00"
+  }
+}

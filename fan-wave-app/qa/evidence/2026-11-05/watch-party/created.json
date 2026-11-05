@@ -1,0 +1,36 @@
+{
+  "at": "2026-11-05T09:50:56Z",
+  "partyId": "556bf7fe-9ddb-4803-ad99-b16e0ff45aa0",
+  "gameId": "d43fcba1-691a-461c-b9c8-f5fa322be200",
+  "payload": {
+    "title": "Mavs vs Jazz Watch Party",
+    "description": "Mavs vs Jazz on the big screen. We'll take the back room and keep the sound on for tip-off. Come early if you want a seat at the rail, and say hi when you get here \u2014 easy crowd, all Mavs fans welcome.",
+    "venue_name": "Harwood Tavern",
+    "venue_address": "333 S Harwood St, Dallas, TX 75201, USA",
+    "venue_city": "Dallas",
+    "venue_metro": "Dallas",
+    "venue_lat": 32.779720399999995,
+    "venue_lon": -96.7937455,
+    "game_id": "d43fcba1-691a-461c-b9c8-f5fa322be200",
+    "atmosphere": "moderate",
+    "capacity": 15,
+    "starts_at": "2026-11-07T01:00:00+00:00",
+    "visibility": "public",
+    "creator_id": "1fb5477d-7633-49d1-8581-4e1f6eecc874"
+  },
+  "readback": [
+    {
+      "id": "556bf7fe-9ddb-4803-ad99-b16e0ff45aa0",
+      "title": "Mavs vs Jazz Watch Party",
+      "description": "Mavs vs Jazz on the big screen. We'll take the back room and keep the sound on for tip-off. Come early if you want a seat at the rail, and say hi when you get here \u2014 easy crowd, all Mavs fans welcome.",
+      "venue_name": "Harwood Tavern",
+      "venue_address": "333 S Harwood St, Dallas, TX 75201, USA",
+      "venue_city": "Dallas",
+      "venue_metro": "Dallas",
+      "starts_at": "2026-11-07T01:00:00+00:00",
+      "capacity": 15,
+      "visibility": "public",
+      "rsvp_count": 1
+    }
+  ]
+}
