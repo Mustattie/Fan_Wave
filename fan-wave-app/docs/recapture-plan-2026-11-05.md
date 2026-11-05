@@ -21,13 +21,9 @@ What is needed is a public watch party with:
 - a written description, so About is not "No description provided"
 - **several genuine RSVPs** through the normal flow
 
-**The attendee count must be true.** A screenshot showing a crowd that does
-not exist is inaccurate metadata, and accurate metadata is the guideline we
-are already being judged under. Codex's qualification, which is correct: six
-accounts driven by one operator are not six genuine attendees. Use actual
-participating testers RSVPing normally. A party showing "6 going" that really
-has six people is worth more than a fabricated crowd and carries none of the
-risk.
+**The attendee count must be what the app actually rendered.** See the spec
+below for how that is satisfied — seeded accounts that genuinely RSVP are
+fine; writing a number the app did not produce is not.
 
 ### Readiness check before the tester is told to start
 
@@ -53,14 +49,49 @@ draft of this plan called it "Codex's step", which overstated its access.
 **This needs the owner, or a Codex session with production write access.**
 Everything downstream waits on it.
 
+## The party to create — spec, decided 2026-11-05
+
+Owner chose **Dallas**. It matches the data already present better than Frisco
+did: the existing groups are *Dallas Legends* (9 members) and *Dallas Wings*.
+Frisco sits in the Dallas metro, and Home matches on `venue_city` **or**
+`venue_metro`, so the existing Frisco venue still surfaces alongside it.
+
+| Field | Value |
+|---|---|
+| City | **Dallas** |
+| Game | a real upcoming fixture, picked from the live schedule at creation time |
+| Venue | a real Dallas venue |
+| Start | a few days out, timezone confirmed |
+| Visibility | **public** (private is Home Team gated; public is free) |
+| Description | written — must not read "No description provided" |
+| **Capacity** | **~15** |
+| RSVPs | **4–5 seeded accounts**, actually RSVPing through the normal flow, with one or two as *Maybe* so the Going / Maybe / Can't Go split is not all one column |
+
+**On the capacity number.** The old capture read "1/50 going" over a nearly
+empty progress bar, which looks sad whatever the attendee count. A capacity
+around 15 means 5 going renders as a healthy, half-full bar — real data,
+sensibly chosen, nothing inflated.
+
+**On seeded accounts.** An earlier draft of this plan, following Codex's
+caution, said test accounts would not constitute genuine attendees. That
+conflated two different things and was stricter than it should have been:
+
+- **Fabricating a number** — writing "45/80 going" into a row, or editing an
+  image — is the inaccurate-metadata trap, and stays out.
+- **Seeding demo data** — accounts that genuinely RSVP, so the app genuinely
+  renders the count — is normal practice, and the screenshot is then a true
+  rendering of real database state.
+
+The rule held here is only that nothing is written that the app did not
+render, and no image is edited.
+
 ## Prerequisite 2: a city on the capture account
 
 `01-home.png` shows a location pin followed by "· Change" with **no city
 name**. That reads as unfinished and is the strongest reason to retake Home.
 
-Frisco is the best-supported provisional choice, since the documented venue is
-there — but give the tester **one exact city**, decided after the new party's
-fields and visibility are confirmed. "Frisco or Dallas" is too loose.
+**Decided: Dallas.** See the spec above for why it fits the existing data
+better than Frisco.
 
 ## Brief for the tester
 
@@ -75,7 +106,7 @@ Send this once the party exists and the city is decided.
 >    banners** too — silent mode on its own doesn't stop them appearing.
 >    Four of last time's shots had a `{}` symbol next to the clock where the
 >    Focus icon sits; the 4:53 ones were fine, the 4:02–4:03 ones weren't.
-> 2. **Set your location in the app** to **[exact city]**. On Home, tap the
+> 2. **Set your location in the app** to **Dallas**. On Home, tap the
 >    pin at the top — it currently shows no city — and pick it. Then pull Home
 >    to refresh and check you can see both the city and the watch party
 >    **[party name]** before you capture anything.
