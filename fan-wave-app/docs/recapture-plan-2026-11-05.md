@@ -78,10 +78,29 @@ recorded in `corrections.json`; the third was a documentation error only:
 demo account: it is the only upcoming public party, it matches `venue_city`
 and `venue_metro` = Dallas, and it is title-searchable. That establishes the
 rows are right; it does **not** establish what the capture account sees on
-build 40. Evidence: `created.json` holds the payload and single-party
-readback, `corrections.json` holds the two fixes above. Neither file
-substantiates the discoverability queries — those were run in-session and are
-reported here, not saved.
+device. Evidence: `created.json` holds the payload and single-party readback,
+`corrections.json` holds the two production fixes. Neither file substantiates
+the discoverability queries — those were run in-session and are reported here,
+not saved.
+
+### The selected build moved to 41
+
+Codex cut build **41** and selected it on the version while this was in
+progress. The six captures currently on the version came from **40**.
+
+Per Codex's source comparison, build 40's source is `1249723` and 41's is
+`dd2bebd`, and the only user-visible iOS difference between them is on the
+**Subscription** screen — platform-specific cancellation wording, which now
+names App Store account settings instead of mentioning both stores. None of
+the six captured screens is affected. That is source evidence, not a
+device-to-device comparison.
+
+**Recapture from 41 anyway**, so the evidence matches the candidate actually
+being submitted. `02-game-day.png` is retained, subject to confirming it still
+represents 41.
+
+Note also that the reviewer-plan access fix was already in 40 via `ec15fdb` —
+it is not new in 41, and the review notes should not imply otherwise.
 
 ### The one gap: attendees
 
@@ -220,7 +239,7 @@ party screen is worth photographing. One attendee defeats the purpose.
 > check it before you do the rest. They should come out **1206 × 2622** from
 > the same phone you used last time.
 >
-> Same as before otherwise: TestFlight **build 40**, no alerts, no loading
+> Same as before otherwise: TestFlight **build 41**, no alerts, no loading
 > spinners, no keyboard, nothing private on screen, and no cropping or editing
 > afterwards.
 
@@ -252,7 +271,7 @@ six would leave the sole set empty, which is the thing to avoid.
 2. **Get people to RSVP Going** — owner, tester, anyone else. **Blocking the
    party-detail capture**, and the only step with nobody assigned.
 3. **Verify on the device, not the database.** Open Home and the party detail
-   on the **capture account, on build 40, with Dallas selected**, and confirm
+   on the **capture account, on build 41, with Dallas selected**, and confirm
    the city, title, venue, description, host, sport label and linked game all
    render. Check the phone's timezone too — picking Dallas in the app does not
    set it, and a wrong timezone shows the wrong kickoff. Confirm the roster
