@@ -1,0 +1,54 @@
+[
+  {
+    "subscription": "6805356889",
+    "tier": "Home Team",
+    "period": "Monthly",
+    "screenshot": "37120828-2e30-4fb3-b3cf-b147fc2eef24",
+    "sourceBuild": 40,
+    "entryPointOnly": false,
+    "sha256": "ed5ace5e9bfcc635e6a280a239cce9a51649bda436327d140011305f762db86c",
+    "oldScreenshot": "5c1c852a-3102-42b0-bede-c3d2e24edb11",
+    "verified": true,
+    "width": 1206,
+    "height": 2622
+  },
+  {
+    "subscription": "6805361495",
+    "tier": "Home Team",
+    "period": "Annual",
+    "screenshot": "4f0c25de-5f8c-4076-b378-bd35bb3f5b02",
+    "sourceBuild": 40,
+    "entryPointOnly": false,
+    "sha256": "64d0717a16f3c594817080d5c8ec84f9fab7cc98cf43ff0f480ffad0a017a747",
+    "oldScreenshot": "0bbf1370-6202-44fe-a715-33360e8f49c4",
+    "verified": true,
+    "width": 1206,
+    "height": 2622
+  },
+  {
+    "subscription": "6805364362",
+    "tier": "MVP",
+    "period": "Monthly",
+    "screenshot": "1fd7fe49-ad6c-43fa-a740-31fd345051d6",
+    "sourceBuild": 40,
+    "entryPointOnly": true,
+    "sha256": "70f6ba653a9cc19de40e5c2cad644f6233adf76345d2373028feea590ffe6bf1",
+    "oldScreenshot": "b3489f7a-1f7e-4c87-933e-b04d49af4bd9",
+    "verified": true,
+    "width": 1206,
+    "height": 2622
+  },
+  {
+    "subscription": "6805367086",
+    "tier": "MVP",
+    "period": "Annual",
+    "screenshot": "6c7a197e-d538-400c-9f52-18194ab0f98c",
+    "sourceBuild": 40,
+    "entryPointOnly": true,
+    "sha256": "70f6ba653a9cc19de40e5c2cad644f6233adf76345d2373028feea590ffe6bf1",
+    "oldScreenshot": "2cdb8d57-17f4-4720-bc00-ca3aff2408cd",
+    "verified": true,
+    "width": 1206,
+    "height": 2622
+  }
+]

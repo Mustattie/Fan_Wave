@@ -1,4 +1,4 @@
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { cacheDirectory, downloadAsync } from 'expo-file-system/legacy';
@@ -39,7 +39,8 @@ export async function exportClipToGallery(clip: {
     // modify request, at the cost of skipping the album step. The clip
     // still lands in Photos where users expect it.
     try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
+      // Saving an Android export only needs append access, not audio-library reads.
+      const { status } = await MediaLibrary.requestPermissionsAsync(Platform.OS === 'android');
       if (status !== 'granted') throw new Error('permission-denied');
 
       await MediaLibrary.saveToLibraryAsync(download.uri);

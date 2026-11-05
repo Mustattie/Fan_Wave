@@ -68,7 +68,7 @@ async function saveClipToGallery(clip: { id: string; mediaUrl?: string }): Promi
     // Saving to the Camera Roll is what makes the clip pickable inside
     // TikTok / Instagram's upload screens. Without this, the user opens
     // the target app and has nothing to attach.
-    const perm = await MediaLibrary.requestPermissionsAsync();
+    const perm = await MediaLibrary.requestPermissionsAsync(Platform.OS === 'android');
     if (perm.status !== 'granted') {
       // Still return the local cache path so the More-apps share sheet has
       // something to attach. TikTok hand-off won't work without gallery
