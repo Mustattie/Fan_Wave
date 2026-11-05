@@ -1,0 +1,35 @@
+{
+  "source": "feb6b28",
+  "typecheck": "passed",
+  "runs": [
+    {
+      "run": "ios-tests",
+      "suitesPassed": 46,
+      "suitesFailed": 0,
+      "testsPassed": 394,
+      "testsFailed": 0
+    },
+    {
+      "run": "android-tests",
+      "suitesPassed": 45,
+      "suitesFailed": 1,
+      "testsPassed": 391,
+      "testsFailed": 1
+    },
+    {
+      "run": "android-retry",
+      "suitesPassed": 45,
+      "suitesFailed": 1,
+      "testsPassed": 391,
+      "testsFailed": 1
+    },
+    {
+      "run": "android-games-focused",
+      "suitesPassed": 1,
+      "suitesFailed": 0,
+      "testsPassed": 5,
+      "testsFailed": 0
+    }
+  ],
+  "note": "Android group and games timing failures passed focused retries; full suite not fully green."
+}

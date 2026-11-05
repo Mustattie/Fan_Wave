@@ -1,0 +1,57 @@
+{
+  "at": "2026-11-05T08:52:54.024Z",
+  "setId": "bb6aca74-0ddf-41da-9ccd-c78a3862e3dd",
+  "displayType": "APP_IPHONE_61",
+  "screenshots": [
+    {
+      "id": "51800019-3c80-81a6-8029-daeb6d669389",
+      "file": "01-home.png",
+      "sha256": "4068719459ceb3d8d1f1f0acf191f14a55ef677b8a16e45c63aabc8a500cb6d2",
+      "width": 1206,
+      "height": 2622
+    },
+    {
+      "id": "b6000019-3c80-81a6-803b-df4c399634b4",
+      "file": "02-game-day.png",
+      "sha256": "4bbee6f421a678dbd3b7a3641321d54fef28f3dcad398695853fbe92463a1662",
+      "width": 1206,
+      "height": 2622
+    },
+    {
+      "id": "eb800019-3c80-81a6-8026-9e9bf5d8a93d",
+      "file": "03-watch-party.png",
+      "sha256": "d2327c949db61ead160e1c775cb0c80572960830e85a0a269aade46d44e4342d",
+      "width": 1206,
+      "height": 2622
+    },
+    {
+      "id": "76000019-3c80-81a6-8024-24b3276ae60b",
+      "file": "04-link-a-game.png",
+      "sha256": "b78e863ed07ad55d46dc0ae0010c767d2bb04cf52da5749bd1328c1faf016547",
+      "width": 1206,
+      "height": 2622
+    },
+    {
+      "id": "b6c00019-3c80-81a6-8036-2d919efcf316",
+      "file": "05-create-watch-party.png",
+      "sha256": "55314ea61069aae8936e632a601210fd1f2a753cc6dba622c34d0250a21c8b0a",
+      "width": 1206,
+      "height": 2622
+    },
+    {
+      "id": "be400019-3c80-81a6-8028-c678fe8e3ad5",
+      "file": "06-profile.png",
+      "sha256": "d86c9d316923d4226095448b1e9abc95c167a59842f24f695e5b178078b59110",
+      "width": 1206,
+      "height": 2622
+    }
+  ],
+  "oldSetsRemoved": [
+    {
+      "id": "e9edd0dc-b44a-41f2-af40-5b91ff976222",
+      "count": 3
+    }
+  ],
+  "reviewSubmitted": false,
+  "verified": true
+}
