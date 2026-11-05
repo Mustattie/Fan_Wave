@@ -1,0 +1,53 @@
+{
+  "at": "2026-11-05T08:59:33Z",
+  "setId": "bb6aca74-0ddf-41da-9ccd-c78a3862e3dd",
+  "displayType": "APP_IPHONE_61",
+  "uploaded": [
+    {
+      "file": "01-home.png",
+      "id": "6b800019-3c80-81a6-8024-c4b2815ea9ab",
+      "md5": "6c4394b6acfcbcc6397e7769e81a3d85",
+      "bytes": 834756
+    },
+    {
+      "file": "02-game-day.png",
+      "id": "b8400019-3c80-81a6-802f-7427ec75743d",
+      "md5": "0355c0b102b83e2c44fae9bc9f726483",
+      "bytes": 603474
+    }
+  ],
+  "readback": [
+    {
+      "fileName": "01-home.png",
+      "state": "COMPLETE"
+    },
+    {
+      "fileName": "02-game-day.png",
+      "state": "COMPLETE"
+    },
+    {
+      "fileName": "03-watch-party.png",
+      "state": "COMPLETE"
+    },
+    {
+      "fileName": "04-link-a-game.png",
+      "state": "COMPLETE"
+    },
+    {
+      "fileName": "05-create-watch-party.png",
+      "state": "COMPLETE"
+    },
+    {
+      "fileName": "06-profile.png",
+      "state": "COMPLETE"
+    },
+    {
+      "fileName": "01-home.png",
+      "state": "COMPLETE"
+    },
+    {
+      "fileName": "02-game-day.png",
+      "state": "COMPLETE"
+    }
+  ]
+}
