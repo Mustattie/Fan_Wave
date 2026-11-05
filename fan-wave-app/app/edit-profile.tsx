@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Camera } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { canSelectLibraryMedia } from '@/lib/mediaSelectionPermission';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -83,8 +84,8 @@ export default function EditProfileScreen() {
   };
 
   const pickAvatar = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
+    const allowed = await canSelectLibraryMedia();
+    if (!allowed) {
       Alert.alert('Permission Required', 'Allow Fan Sphere to access your photos.');
       return;
     }

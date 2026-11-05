@@ -21,6 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FeedAudioController, CLIPS_MUTED_KEY, parseMuted, serializeMuted } from '@/lib/clipAudio';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
+import { canSelectLibraryMedia } from '@/lib/mediaSelectionPermission';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import { reportError } from '@/lib/errorReporting';
@@ -1743,8 +1744,8 @@ export default function ClipsScreen() {
         {
           text: 'Choose from library',
           onPress: async () => {
-            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            if (status !== 'granted') {
+            const allowed = await canSelectLibraryMedia();
+            if (!allowed) {
               Alert.alert(
                 'Library permission denied',
                 'Enable photo library access in Settings to pick a clip.'

@@ -59,7 +59,9 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
 import { getVideoContentType, getImageContentType } from '@/lib/mediaContentType';
 import { withTimeout } from '@/lib/withTimeout';
+import { hydrateAuthorNames, fetchAuthorNames } from '@/lib/chatAuthors';
 import ChatMediaPreview, { createChatPreviewMedia, type ChatPreviewMedia } from '@/components/ChatMediaPreview';
+import ChatVideoPoster from '@/components/ChatVideoPoster';
 
 import { Image as RNImage } from 'react-native';
 
@@ -410,10 +412,18 @@ export default function FanGroupDetailScreen() {
             .limit(PAGE_SIZE),
         ]);
         if (msgRes.error) throw msgRes.error;
-        const msgs = (msgRes.data ?? []).map((row: any) =>
+        // Raw rows carry only `user_id`; the mappers want a name. One
+        // batched get_public_profiles call covers both tables, and a
+        // failed lookup leaves the rows untouched so the mappers fall
+        // back rather than the load failing.
+        const [msgRows, momRows] = await Promise.all([
+          hydrateAuthorNames((msgRes.data ?? []) as any[]),
+          hydrateAuthorNames((momRes.data ?? []) as any[]),
+        ]);
+        const msgs = msgRows.map((row: any) =>
           mapMessageToDisplay(row, currentUserId || undefined),
         );
-        const moms = (momRes.data ?? []).map((row: any) =>
+        const moms = momRows.map((row: any) =>
           mapMomentToMessageDisplay(row, currentUserId || undefined),
         );
         const merged = [...msgs, ...moms].sort(
@@ -472,9 +482,10 @@ export default function FanGroupDetailScreen() {
       );
       if (error || !data?.length) return;
       const uid = currentUserIdRef.current || undefined;
+      const rows = await hydrateAuthorNames(data as any[]);
       setMessages((prev) => {
         const seen = new Set(prev.map((m) => m.id));
-        const fresh = data
+        const fresh = rows
           .map((row: any) => mapMessageToDisplay(row, uid))
           .filter((m) => !seen.has(m.id) && !m.isMe);
         if (fresh.length === 0) return prev;
@@ -506,13 +517,28 @@ export default function FanGroupDetailScreen() {
       id,
       (newRow) => {
         // Avoid duplicating our own optimistic messages
-        const incoming = mapMessageToDisplay(newRow, currentUserIdRef.current || undefined);
+        const uid = currentUserIdRef.current || undefined;
+        const incoming = mapMessageToDisplay(newRow, uid);
         if (!incoming.isMe) {
           // P2.2 (2026-09-25): a re-join replays recent inserts and the
           // catch-up fetch can overlap them; the id decides, not arrival.
           setMessages((prev) =>
             prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming],
           );
+          // 2026-11-05: show the bubble first, learn the name second.
+          // Awaiting the profile lookup here would let a slow or failing
+          // RPC delay -- or, on a throw, drop -- a live message, so the
+          // name is patched in afterwards and a miss simply leaves the
+          // mapper's fallback in place.
+          void (async () => {
+            const names = await fetchAuthorNames([newRow?.user_id].filter(Boolean) as string[]);
+            const name = newRow?.user_id ? names.get(newRow.user_id) : undefined;
+            if (!name) return;
+            const named = mapMessageToDisplay({ ...newRow, user_name: name }, uid);
+            setMessages((prev) =>
+              prev.map((m) => (m.id === named.id ? { ...m, user: named.user, avatar: named.avatar } : m)),
+            );
+          })();
         }
       },
       catchUpMessages,
@@ -574,9 +600,13 @@ export default function FanGroupDetailScreen() {
     setLoadingMore(true);
     try {
       const oldestMessage = messages[0];
+      // 2026-11-05: this was the only path that resolved a name, and it
+      // did so with a `users!user_id(*)` join -- whole user rows, email
+      // included, and a shape no other path produced. Dropped in favour
+      // of the same public-projection RPC the other paths now use.
       const { data, error } = await supabase
         .from('messages')
-        .select('*, user:users!user_id(*)')
+        .select('*')
         .eq('chat_room_id', id)
         .lt('created_at', oldestMessage?.created_at ?? new Date().toISOString())
         .order('created_at', { ascending: false })
@@ -587,7 +617,8 @@ export default function FanGroupDetailScreen() {
       if (!data || data.length === 0) {
         setHasMore(false);
       } else {
-        const olderMessages = data.reverse().map((row: any) =>
+        const olderRows = await hydrateAuthorNames(data.reverse() as any[]);
+        const olderMessages = olderRows.map((row: any) =>
           mapMessageToDisplay(row, currentUserId || undefined)
         );
         if (data.length < PAGE_SIZE) setHasMore(false);
@@ -910,8 +941,12 @@ export default function FanGroupDetailScreen() {
                 onPress={() => item.mediaUrl && setPreviewMedia(createChatPreviewMedia(item.mediaUrl, item.mediaType))}
                 style={styles.mediaPosterVideo}
               >
-                <RNImage
-                  source={{ uri: item.thumbnailUrl || item.mediaUrl }}
+                {/* 2026-11-05: was <RNImage uri={thumbnailUrl || mediaUrl}>,
+                    which handed RNImage an mp4 on every legacy row and
+                    rendered the bubble solid black. */}
+                <ChatVideoPoster
+                  mediaUrl={item.mediaUrl}
+                  thumbnailUrl={item.thumbnailUrl}
                   style={styles.mediaPoster}
                   resizeMode="cover"
                 />

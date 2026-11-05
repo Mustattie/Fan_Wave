@@ -17,6 +17,7 @@ import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { CLIP_FEED_BUFFER_OPTIONS } from '@/lib/videoBuffer';
 import * as ImagePicker from 'expo-image-picker';
+import { canSelectLibraryMedia } from '@/lib/mediaSelectionPermission';
 import { uploadClip, validateClip, UploadValidationError } from '@/lib/storage';
 import { getVideoContentType, getImageContentType } from '@/lib/mediaContentType';
 import { Video, Film, X, Share2, Trash2 } from 'lucide-react-native';
@@ -176,8 +177,8 @@ export default function MomentsFeed({
   }, [chatRoomId, currentUserId]);
 
   const pickClip = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
+    const allowed = await canSelectLibraryMedia();
+    if (!allowed) {
       Alert.alert('Permission needed', 'Please allow access to your media library to attach clips.');
       return;
     }

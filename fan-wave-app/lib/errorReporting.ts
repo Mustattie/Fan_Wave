@@ -179,7 +179,10 @@ export function reportMessage(
  * printed in dev. Callers must never pass tokens or secrets in `data`.
  */
 export function addBreadcrumb(
-  category: 'auth' | 'realtime' | 'clips',
+  // 'chat' added 2026-11-05 for fan-group author hydration and video
+  // poster extraction, both of which fail soft and want a trail rather
+  // than an error-level event.
+  category: 'auth' | 'realtime' | 'clips' | 'chat',
   message: string,
   data?: Record<string, string | number | boolean | null>,
 ): void {

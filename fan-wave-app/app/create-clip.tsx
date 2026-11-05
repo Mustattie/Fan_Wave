@@ -14,6 +14,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ImagePicker from 'expo-image-picker';
+import { canSelectLibraryMedia } from '@/lib/mediaSelectionPermission';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Colors } from '@/constants/Colors';
@@ -190,8 +191,8 @@ export default function CreateClipScreen() {
   };
 
   const rePickFromLibrary = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
+    const allowed = await canSelectLibraryMedia();
+    if (!allowed) {
       Alert.alert(
         'Library permission denied',
         'Enable photo library access in Settings to pick a clip.',
