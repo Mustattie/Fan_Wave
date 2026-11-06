@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-11-06T10:28:07Z",
+  "source": "Android emulator Medium_Phone, 1080x1920 override, demo-mode status bar",
+  "apk": "C:/fwc/store-remediation-20261105/android39/universal.apk",
+  "versionCode": 39,
+  "versionName": "1.0.0",
+  "sourceSha": "78dbc9ce0ab3001381190ff88a6ee3cc27fd1589",
+  "easBuildId": "de24781b-920b-4133-8a85-c35dc6b8d8e9",
+  "account": "ASC demo account (Fan Sphere Reviewer), home_city Dallas",
+  "edited": false,
+  "screenshots": [
+    {
+      "name": "01-home.png",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 191341,
+      "sha256": "976f54e92f8ff7a60d28cc1f5a511ebd7d01f80cd6062488c679047493298b41",
+      "playOk": true,
+      "promoEligible": true
+    },
+    {
+      "name": "02-discover.png",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 145908,
+      "sha256": "0cd9d84d59d5ca676c24a56518c46bf4b8a261d71dd48017ebc3ffc5526f0f01",
+      "playOk": true,
+      "promoEligible": true
+    },
+    {
+      "name": "03-game-day.png",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 140044,
+      "sha256": "62bbefde51ce9bff41fd05641b40ca1b8ca58bb8b3090d9f7eafa2ad8715ed6d",
+      "playOk": true,
+      "promoEligible": true
+    },
+    {
+      "name": "04-clips.png",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 496331,
+      "sha256": "87e003fcce2ee9fa045468bd8846a4ac249c9880d5f69c1814b87bfc8d18552a",
+      "playOk": true,
+      "promoEligible": true
+    },
+    {
+      "name": "05-watch-party.png",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 168127,
+      "sha256": "e26c6bc2a07561651d6b869409486039f5147323f139107abb6b74661db3c26c",
+      "playOk": true,
+      "promoEligible": true
+    },
+    {
+      "name": "06-fan-group.png",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 78418,
+      "sha256": "557141706a9e7c274afe9b0dddae80ddc756742db0c51947fa36e97e3bf94ba9",
+      "playOk": true,
+      "promoEligible": true
+    }
+  ]
+}

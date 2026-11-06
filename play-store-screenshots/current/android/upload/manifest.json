@@ -1,0 +1,54 @@
+{
+  "generatedAt": "2026-11-06T10:31:56Z",
+  "note": "24-bit RGB PNG, no alpha, for Play upload. Originals (RGBA screencap) kept in ../originals/.",
+  "files": [
+    {
+      "name": "01-home.png",
+      "mode": "RGB",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 166154,
+      "sha256": "7ac2fd154beb1d5f814d678415b0a96302a5e8fb0a793b2b53ce3fae592d230f"
+    },
+    {
+      "name": "02-discover.png",
+      "mode": "RGB",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 126394,
+      "sha256": "f2fe356a467aa19ee2c2d68f4f08eb4962b5de2793a62e1d9150fd2c1820902e"
+    },
+    {
+      "name": "03-game-day.png",
+      "mode": "RGB",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 121817,
+      "sha256": "40589835c3f47b99c76f77f4528dd56bba3332e317110413f90e9d7af85c7e2e"
+    },
+    {
+      "name": "04-clips.png",
+      "mode": "RGB",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 421062,
+      "sha256": "fc55ba02622d1f61c922aefdd17d11c40066a6177ff5713cbc7ada15b29fab60"
+    },
+    {
+      "name": "05-watch-party.png",
+      "mode": "RGB",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 146631,
+      "sha256": "06b8443ed9aebe91f35d5cee562225a432da69a849a41845fdef2384fbd07c0a"
+    },
+    {
+      "name": "06-fan-group.png",
+      "mode": "RGB",
+      "width": 1080,
+      "height": 1920,
+      "bytes": 66269,
+      "sha256": "3191b0e6aab82b21bbc04f6af5a27f51adf2fc79e90827dc2ef8a2990fd6b5aa"
+    }
+  ]
+}
